@@ -1,0 +1,12 @@
+[package]
+name = "ws-web"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ws-core = { path = "../ws-core" }
+wasm-bindgen = "0.2"
