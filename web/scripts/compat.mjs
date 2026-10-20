@@ -145,6 +145,26 @@ try {
   await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('Sound is unavailable'));
   assert.equal(await page.locator('#sound').textContent(),'Enable sound');
   await unavailable.close();page = original;
+
+  // The CC0 cartridge checks byte OUT/IN, forward/reverse copies and readbacks
+  // itself. Green means success; red means its CPU assertions failed.
+  const gdma = await readFile(new URL('../../fixtures/generated/gdma.ws', import.meta.url));
+  for (const model of ['color','crystal']) {
+    await page.reload();await ready();
+    await page.locator('#model').selectOption(model);
+    await page.locator('#rom').setInputFiles({name:'gdma.ws',mimeType:'application/octet-stream',buffer:gdma});
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#screen').getContext('2d');
+      return document.querySelector('#rom-status').textContent === 'Running'
+        && [[0,0],[9,9]].every(([x,y]) => {
+          const p = c.getImageData(x,y,1,1).data;
+          return p[0] === 0 && p[1] === 255 && p[2] === 0;
+        });
+    });
+    assert.equal(await page.locator('#error').textContent(),'');
+    await pause();
+  }
+  console.log('Original GDMA CPU byte-I/O fixture: forward/reverse transfers and register assertions passed on Color/Crystal');
   assert.deepEqual(errors,[]);
   console.log('Unreadable saves preserved; storage/audio unavailable degrade safely without browser exceptions');
 } finally { await browser.close(); }

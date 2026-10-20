@@ -296,6 +296,9 @@ impl Cpu {
     /// Bounded execution: REP performs one element per step. Cycles are approximate.
     pub(crate) fn step(&mut self, bus: &mut Bus) -> Result<u32, Error> {
         bus.accesses.set(0);
+        if let Some(cycles) = bus.gdma_step() {
+            return Ok(cycles);
+        }
         if let Some(vector) = bus.interrupt() {
             // INT releases HALT even when IF prevents interrupt delivery.
             self.halted = false;

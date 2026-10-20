@@ -23,14 +23,41 @@ commercial software will run or that timing matches a physical console.
 | CPU | Generic 8/16-bit register, ModR/M, segment, stack and string operations below | Unsupported opcodes/group extensions/ports/prefix combinations stop execution visibly, with CS:IP for unknown opcodes. No silent NOP fallback. |
 | Interrupts | IF, vector table and stack entry, INT/INT3/INTO/IRET, divide faults, BOUND fault; hardware priority highest source first; B0 vector/request, B2 enable, B4 status, B6 acknowledgement | Enable gates request latching; changing enable does not clear latched status. Key edges, line match, VBlank and both timer sources generated. UART/cartridge IRQ sources, single-step trap and low-battery NMI not generated. STI and MOV/POP SS inhibit delivery for the next instruction; POPF/IRET do so when IF changes from 0 to 1. HLT wakes for a latched IRQ even with IF=0, resuming without vectoring in that case. |
 | Timers | A2 control, A4–A7 reload, A8–AB counter; HBlank and VBlank count sources, one-shot/repeat, reload-on-write and disabled-count-at-one IRQ quirk | Test modes at A3 unsupported. Word writes to A2 with high byte zero allowed. No programmable LCD line total (16 must remain 158). |
-| Timing | Shared 3.072 MHz clock, 256 clocks/line, 159 lines/frame, 144 visible; deterministic frame progression | Per-instruction execution cost + fetch/data/I/O transfers, ROM/SRAM/cartridge-I/O wait flags, aligned 16-bit ROM transfers, branch/shift/multiply/divide/interrupt costs. Approximate, not cycle-table/prefetch accurate. Instructions are atomic; events/raster output occur at instruction granularity. |
+| Timing | Shared 3.072 MHz clock, 256 clocks/line, 159 lines/frame, 144 visible; deterministic frame progression | Per-instruction execution cost + fetch/data/I/O transfers, ROM/SRAM/cartridge-I/O wait flags, aligned 16-bit ROM transfers, branch/shift/multiply/divide/interrupt costs. Approximate, not cycle-table/prefetch accurate. Instructions and DMA words are atomic; events/raster output use that granularity. |
+| General DMA | Color/Crystal registers 40–42 source, 44–45 destination, 46–47 byte length, 48 control; increment/decrement word copies from RAM or mapped fast 16-bit ROM to internal RAM | Engine requires 60.7 color enable; mono rejects all GDMA register I/O. CPU and IRQ delivery stall for 5 + 2 × copied words on the existing clock. SRAM, byte-wide ROM, wait-state ROM and unmapped ROM stop at the first invalid source word; zero/initially invalid requests cost no DMA clocks. Sound DMA remains unsupported. See semantics below. |
 | Backgrounds | Screen 1 and 2 maps, independent wrapping scroll, flips, palettes, color tile banks; inclusive inside/outside Screen 2 window | Video is rendered scanline-by-scanline from actual RAM/ports. No subpixel effects or one-line LCD pipeline delay. |
 | Sprites | 128-entry VBlank-latched table, first/count, 32 per line including clipped sprites, early-entry priority, behind/in-front Screen 2, palette 8–15, flips, wrapped coordinates, inclusive inside/outside window | Table copies atomically at line 144 rather than word-by-word over that line; mid-copy effects unsupported. Tile bank 0 only as on hardware. |
 | Mono video | 2bpp interleaved planar tiles at 2000–3FFF; palette ports 20–3F and shade LUT 1C–1F; LCD enable 14; grayscale RGBA 224×144 | No LCD ghosting, icons, contrast/panel response or gamma simulation. |
 | Color video | 60=80: 2bpp planar, 1024 tiles at 2000–5FFF; C0: 4bpp planar; E0: 4bpp packed, 1024 tiles at 4000–BFFF; FE00–FFFF 12-bit RGB palettes | Packed nibbles are left/high, right/low. 2bpp palettes 4–7/12–15 make index 0 transparent; 4bpp index 0 always transparent. Mono rejects color register writes; WSC/Crystal extra RAM requires color enable. Invalid mode combinations rejected. |
-| Sound | Four 32×4-bit wavetable channels; channel 2 unsigned PCM/voice volume; channel 3 signed sweep with wrap; channel 4 eight LFSR tap modes/reset | 80–94 register surface, 96–9B mixer readback, 9E speaker volume; 24 kHz stereo clock, bounded 200 ms queue. Speaker volume uses a linear approximation. Sound test port 95, Hyper Voice, sound/general DMA unsupported and rejected. Mixing/output filters are approximate. |
+| Sound | Four 32×4-bit wavetable channels; channel 2 unsigned PCM/voice volume; channel 3 signed sweep with wrap; channel 4 eight LFSR tap modes/reset | 80–94 register surface, 96–9B mixer readback, 9E speaker volume; 24 kHz stereo clock, bounded 200 ms queue. Speaker volume uses a linear approximation. Sound test port 95, Hyper Voice and Sound DMA (4A–52) unsupported and rejected. Mixing/output filters are approximate. |
 | Browser sound | Opt-in Enable/Mute sound, Web Audio buffers, high-pass DC removal, bounded queue, reused single AudioContext | Pause/restart/hide clears scheduled sources; failures show a notice and keep gameplay usable. No output loop while paused. Headless buffer validation does not certify physical speaker quality. Original demo stays silent. |
 | Input | B5 active-high keypad matrix (yyyy xxxx bas0); keyboard/touch adapters | No serial/UART, link cable, sound/power buttons or accessories. |
+
+## General DMA semantics
+
+GDMA register bytes are little-endian. Source is 20 bits, destination and byte
+length are 16 bits; their low bit and all reserved bits read back as zero.
+Control retains direction (bit 6) and enable (bit 7). Port 43 is unsupported.
+Registers are available on Color/Crystal; enabling without color mode stops
+without copying or charging setup time. Mono continues to report unsupported I/O.
+
+Each word is read completely before being written, in the selected direction;
+overlaps therefore follow word transfer order. Both addresses advance by two,
+wrapping source at 20 bits and destination at 16 bits, while length decreases by
+two. ROM reads reuse the CPU's current common/extended bank mapping. The header's
+ROM width/wait flags govern source eligibility. The 10000–1FFFF window is always
+rejected, including the 2003 flash mapping. DMA never writes cartridge memory.
+Completion or rejection clears enable, retains direction, and exposes the next
+addresses and remaining length (unchanged if nothing transferred).
+
+DMA runs before the next CPU instruction or IRQ delivery. The first word costs
+seven clocks, subsequent words two; no normal CPU memory-access costs are added.
+The existing scanline, timer, interrupt, audio and EEPROM clocks keep running,
+including across `run_frame()` calls. The maximum request is 32767 words.
+Timing remains approximate within a word: the enabling instruction completes
+atomically, setup is grouped with the first word, and each word's memory changes
+precede its clock advancement. Per-cycle read/write phases, display fetch
+contention and physical-device comparisons are not modeled/verified.
 
 ## CPU instruction coverage
 
@@ -57,8 +84,8 @@ Implemented with generic operands, not ROM-specific dispatch:
   on the appropriate ZF condition. IN/OUT via immediate port or DX.
 - CLC/STC/CMC, CLI/STI, CLD/STD, NOP; segment override and repeat prefixes.
   LOCK is accepted only for supported memory read/modify/write operations;
-  instructions are atomic on this single-CPU bus (DMA absent). Invalid lock
-  targets, excessive prefixes and REP on non-string instructions fail.
+  instructions are atomic on this single-CPU bus; GDMA stalls between them.
+  Invalid lock targets, excessive prefixes and REP on non-string instructions fail.
 
 Remaining gaps include NEC extended opcodes/bit and BCD-string operations,
 REPC/REPNC, WAIT/ESC coprocessor forms, undocumented aliases (82, shift /6,
@@ -99,6 +126,8 @@ Public hardware descriptions consulted (not emulator source):
 (§1.3 zero-count shifts, §5.3 interrupt delay, §6.3.1 HALT release, Table 7-2 reset FLAGS),
 [interrupts](https://ws.nesdev.org/wiki/Interrupts),
 [timers](https://ws.nesdev.org/wiki/Timers),
+[General DMA](https://ws.nesdev.org/wiki/DMA),
+[timing](https://ws.nesdev.org/wiki/Timing),
 [SoC/modes](https://ws.nesdev.org/wiki/SoC),
 [display](https://ws.nesdev.org/wiki/Display),
 [display ports](https://ws.nesdev.org/wiki/Display/IO_Ports),
@@ -111,6 +140,7 @@ Public hardware descriptions consulted (not emulator source):
 
 Native tests exercise hardware vectors and full cartridge paths. Browser smoke
 checks use original licensed files only. See [fixture provenance/builds](../fixtures/README.md)
-and [Issue #11 validation](issue-11-validation.md). Physical-device comparisons
+and [Issue #11 validation](issue-11-validation.md), plus
+[General DMA validation](issue-13-validation.md). Physical-device comparisons
 are optional and have not been performed. Public Pages deployment and live-site
 verification belong after merge and remain pending until actually executed.
