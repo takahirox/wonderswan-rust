@@ -1,3 +1,5 @@
+import { Saves, romIdentity } from "./saves";
+import { Sound } from "./audio";
 import init, { WebMachine } from "../pkg/ws_web.js";
 
 const element = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
@@ -34,7 +36,12 @@ async function main() {
   canvas.width = machine.frame_width();
   canvas.height = machine.frame_height();
   context.imageSmoothingEnabled = false;
-  let loaded: { name: string; bytes: Uint8Array } | null = null;
+  let loaded: { name: string; key: string } | null = null;
+  const report = (message: string) => { element("notice").textContent = message; };
+  const saves = new Saves(report);
+  const soundButton = element<HTMLButtonElement>("sound");
+  const sound = new Sound((message) => { report(message); soundButton.textContent = "Enable sound"; });
+  function persist() { if (loaded) saves.store(loaded.key, machine.save_data()); }
   let readRevision = 0;
   let loading = false;
   let running = false;
@@ -80,7 +87,7 @@ async function main() {
     element("debug-bytes").textContent = String(machine.rom_len());
     element("debug-state").textContent = state();
     element("debug-frames").textContent = String(machine.frame_number());
-    element("debug-error").textContent = errorStatus.textContent || "None";
+    element("debug-error").textContent = errorStatus.textContent || element("notice").textContent || "None";
   }
   function refresh() {
     modelSelect.value = machine.model();
@@ -103,7 +110,8 @@ async function main() {
     lastTime = null;
     elapsed = 0;
     clearKeys();
-    if (running) animation = requestAnimationFrame(tick);
+    if (running) { sound.resume(); animation = requestAnimationFrame(tick); }
+    else { sound.pause(); persist(); }
     refresh();
   }
   function tick(time: number) {
@@ -116,6 +124,7 @@ async function main() {
       let frames = 0;
       while (elapsed >= frameDuration && frames < 4) {
         machine.run_frame();
+        sound.push(machine.audio_samples(), machine.sample_rate());
         elapsed -= frameDuration;
         frames++;
       }
@@ -128,9 +137,13 @@ async function main() {
       setRunning(false);
     }
   }
-  function load(name: string, bytes: Uint8Array, autoplay = true) {
+  function load(name: string, bytes: Uint8Array, key: string, autoplay = true) {
+    persist();
     machine.load_rom(bytes); // Validation errors preserve the previous machine.
-    loaded = { name, bytes };
+    loaded = { name, key };
+    element("notice").textContent = "";
+    const restored = saves.restore(key, machine.save_data().length);
+    if (restored) machine.load_save(restored);
     loading = false;
     faulted = false;
     errorStatus.textContent = "";
@@ -144,15 +157,14 @@ async function main() {
     readRevision++; // Invalidate any in-flight file read or demo fetch.
     loading = false;
     setRunning(false);
-    machine.reset(model);
     errorStatus.textContent = "";
-    faulted = false;
-    if (loaded) {
-      try { load(loaded.name, loaded.bytes); }
-      catch (error) {
-        loaded = null;
-        errorStatus.textContent = `Could not restart: ${message(error)} Load another ROM.`;
-      }
+    try {
+      machine.change_model(model);
+      faulted = false;
+      setRunning(loaded !== null);
+      if (running && !help.open) canvas.focus({ preventScroll: true });
+    } catch (error) {
+      errorStatus.textContent = `Could not restart: ${message(error)} Choose a compatible model or load another ROM.`;
     }
     draw();
     refresh();
@@ -166,7 +178,8 @@ async function main() {
     setRunning(false);
     try {
       const bytes = await read();
-      if (revision === readRevision) load(name, bytes, visibleRevision === visibilityRevision);
+      const key = await romIdentity(bytes);
+      if (revision === readRevision) load(name, bytes, key, visibleRevision === visibilityRevision);
     } catch (error) {
       if (revision === readRevision) {
         loading = false;
@@ -189,6 +202,15 @@ async function main() {
     });
   }
 
+  soundButton.addEventListener("click", () => {
+    if (sound.enabled) { sound.disable(); soundButton.textContent = "Enable sound"; }
+    else void sound.enable().then(enabled => {
+      soundButton.textContent = enabled ? "Mute sound" : "Enable sound";
+      if (!running) sound.pause();
+    });
+  });
+  window.setInterval(persist, 1000);
+  window.addEventListener("pagehide", () => { persist(); sound.pause(); });
   modelSelect.addEventListener("change", () => restart(modelSelect.value));
   resetButton.addEventListener("click", () => restart(machine.model()));
   pauseButton.addEventListener("click", () => {
@@ -201,7 +223,7 @@ async function main() {
     const file = romInput.files?.[0];
     if (!file) return;
     void readROM(file.name, async () => {
-      if (file.size > 4 * 1024 * 1024) throw new Error("Supported ROM size is at most 4 MiB.");
+      if (file.size > 64 * 1024 * 1024) throw new Error("Supported ROM size is at most 64 MiB (mapper dependent).");
       return new Uint8Array(await file.arrayBuffer());
     });
   });
@@ -325,7 +347,7 @@ async function main() {
   });
   draw();
   toggleDebug(false);
-  for (const control of [modelSelect, demoButton, loadButton, settingsButton, fullscreenButton]) control.disabled = false;
+  for (const control of [modelSelect, demoButton, loadButton, settingsButton, fullscreenButton, soundButton]) control.disabled = false;
   refresh();
 }
 

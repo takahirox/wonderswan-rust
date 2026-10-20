@@ -1,9 +1,13 @@
 //! From-scratch, browser-independent WonderSwan hardware subset.
+mod audio;
 mod bus;
 mod cartridge;
 mod cpu;
+mod eeprom;
 mod video;
 
+pub use audio::SAMPLE_RATE;
+pub use cartridge::{HardwareModel, Header, Mapper, Orientation, SaveKind};
 pub use cpu::Cpu;
 use std::fmt;
 
@@ -93,25 +97,76 @@ impl Machine {
     /// Validate before replacing the running machine. Failed loads preserve it.
     pub fn load_rom(&mut self, bytes: &[u8]) -> Result<usize, Error> {
         let cartridge = cartridge::Cartridge::parse(bytes)?;
-        if cartridge.color && self.model() == Model::Mono {
-            return Err(Error::new("Color cartridges require a color model."));
+        if cartridge.header.model == HardwareModel::Color && self.model() == Model::Mono {
+            return Err(Error::new("Color cartridges (model field 0x01) require a color model; WonderSwan mono was selected."));
         }
         let len = cartridge.bytes.len();
         self.reset(self.model());
-        self.bus.cartridge = Some(cartridge);
+        self.bus.insert_cartridge(cartridge);
         Ok(len)
     }
     /// Firmware-free entry at FFFF:0000, with all other state initialized by ROM.
     pub fn restart(&mut self) {
         let cartridge = self.bus.cartridge.take();
         self.reset(self.model());
-        self.bus.cartridge = cartridge;
+        if let Some(c) = cartridge {
+            self.bus.insert_cartridge(c);
+        }
+    }
+    /// Switch the console and restart its volatile state, preserving the cartridge save.
+    /// Reject incompatible models before replacing any state.
+    pub fn change_model(&mut self, model: Model) -> Result<(), Error> {
+        if model == Model::Mono
+            && self
+                .bus
+                .cartridge
+                .as_ref()
+                .is_some_and(|c| c.header.model == HardwareModel::Color)
+        {
+            return Err(Error::new("Color cartridges (model field 0x01) require a color model; WonderSwan mono was selected."));
+        }
+        let cartridge = self.bus.cartridge.take();
+        self.reset(model);
+        if let Some(c) = cartridge {
+            self.bus.insert_cartridge(c);
+        }
+        Ok(())
+    }
+    pub fn cartridge_header(&self) -> Option<&Header> {
+        self.bus.cartridge.as_ref().map(|c| &c.header)
+    }
+    pub fn save_data(&self) -> &[u8] {
+        self.bus
+            .cartridge
+            .as_ref()
+            .map_or(&[], |c| c.save.as_slice())
+    }
+    /// A length mismatch cannot overwrite the currently loaded save.
+    pub fn load_save(&mut self, data: &[u8]) -> Result<(), Error> {
+        let c = self
+            .bus
+            .cartridge
+            .as_mut()
+            .ok_or_else(|| Error::new("Load a cartridge before importing save data."))?;
+        if data.len() != c.save.len() {
+            return Err(Error::new(format!(
+                "Save size mismatch: expected {} bytes, got {}.",
+                c.save.len(),
+                data.len()
+            )));
+        }
+        c.save.copy_from_slice(data);
+        Ok(())
+    }
+    /// Interleaved stereo samples. Taking samples also bounds frontend latency.
+    pub fn audio_samples(&mut self) -> Vec<f32> {
+        self.bus.audio.drain()
     }
     pub fn rom_len(&self) -> usize {
         self.bus.cartridge.as_ref().map_or(0, |c| c.bytes.len())
     }
     pub fn set_buttons(&mut self, mask: u16) {
-        self.bus.buttons = mask & 0xffe;
+        self.bus.set_buttons(mask & 0xffe);
     }
     pub fn cpu(&self) -> &Cpu {
         &self.cpu
@@ -135,14 +190,45 @@ impl Machine {
         let end = (self.frame_number() + 1) * CYCLES_PER_FRAME;
         while self.bus.cycles < end {
             match self.cpu.step(&mut self.bus) {
-                Ok(cycles) => self.bus.cycles += cycles as u64,
+                Ok(cycles) => {
+                    // Advance at line boundaries so rendering and event delivery share time.
+                    let mut remaining = cycles;
+                    while remaining > 0 {
+                        let line = ((self.bus.cycles / 256) % 159) as usize;
+                        let count = remaining.min(256 - (self.bus.cycles % 256) as u32);
+                        if self.bus.cycles % 256 + count as u64 == 256 && line < FRAME_HEIGHT {
+                            video::render_line(&self.bus, &mut self.framebuffer, line);
+                        }
+                        self.bus.tick(count);
+                        remaining -= count;
+                    }
+                }
                 Err(error) => {
                     self.fault = Some(error.clone());
                     return Err(error);
                 }
             }
         }
-        video::render(&self.bus, &mut self.framebuffer);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod extended_startup_tests {
+    use super::*;
+    #[test]
+    fn a_64_mib_extended_cartridge_boots_from_its_last_bank_after_restart() {
+        let mut rom = cartridge::tests::rom(67108864, 0, 1);
+        let end = rom.len();
+        rom[end - 65536] = 0xf4;
+        cartridge::tests::checksum(&mut rom);
+        let mut m = Machine::default();
+        m.load_rom(&rom).unwrap();
+        m.run_frame().unwrap();
+        assert!(m.cpu().halted);
+        assert_eq!(m.cpu().segments[1], 0xf000);
+        m.restart();
+        m.run_frame().unwrap();
+        assert!(m.cpu().halted);
     }
 }
