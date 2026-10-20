@@ -9,6 +9,13 @@ const IF: u16 = 512;
 const TF: u16 = 256;
 const DF: u16 = 1024;
 const OF: u16 = 2048;
+const FIXED_FLAGS: u16 = 0x7002;
+const WRITABLE_FLAGS: u16 = 0x0fd5;
+
+fn normalize_flags(flags: u16) -> u16 {
+    // V30MZ bits 1 and 12–14 read as one; bits 3, 5 and 15 read as zero.
+    (flags & WRITABLE_FLAGS) | FIXED_FLAGS
+}
 
 /// Intel register order: AX CX DX BX SP BP SI DI; segments ES CS SS DS.
 #[derive(Clone, Debug)]
@@ -33,7 +40,7 @@ impl Default for Cpu {
             registers: [0; 8],
             segments: [0, 0xffff, 0, 0],
             ip: 0,
-            flags: 2,
+            flags: FIXED_FLAGS,
             halted: false,
             interrupt_shadow: 0,
         }
@@ -219,7 +226,8 @@ impl Cpu {
     }
 
     fn interrupt(&mut self, bus: &mut Bus, vector: u8) {
-        self.push(bus, self.flags | 2);
+        self.flags = normalize_flags(self.flags);
+        self.push(bus, self.flags);
         self.push(bus, self.segments[1]);
         self.push(bus, self.ip);
         self.flags &= !(IF | TF);
@@ -800,8 +808,15 @@ impl Cpu {
                 self.segments[1] = cs;
                 execution = 6;
             }
-            0x9c => self.push(bus, self.flags | 2),
-            0x9d => self.flags = (self.pop(bus) & 0x0fd5) | 2,
+            0x9c => self.push(bus, normalize_flags(self.flags)),
+            0x9d => {
+                let previous_if = self.flags & IF;
+                self.flags = normalize_flags(self.pop(bus));
+                if previous_if == 0 && self.flags & IF != 0 {
+                    // Enabling IRQs via POPF also protects the following instruction.
+                    self.interrupt_shadow = 1;
+                }
+            }
             0x9e => self.flags = (self.flags & !0xd5) | (self.reg(4, false) & 0xd5) | 2,
             0x9f => self.set_reg(4, false, (self.flags & 0xd5) | 2),
             0xc0 | 0xc1 | 0xd0..=0xd3 => {
@@ -868,7 +883,7 @@ impl Cpu {
             0xcf => {
                 self.ip = self.pop(bus);
                 self.segments[1] = self.pop(bus);
-                self.flags = (self.pop(bus) & 0x0fd5) | 2;
+                self.flags = normalize_flags(self.pop(bus));
                 execution = 6;
             }
             0xd4 => {
@@ -1226,6 +1241,90 @@ mod compatibility_tests {
         u16::from_le_bytes([b.ram[a], b.ram[a + 1]])
     }
     #[test]
+    fn popf_enabling_interrupts_delays_pending_irq_until_after_next_instruction() {
+        let (mut c, mut b) = setup(&[
+            0x9d, // POPF enables IF
+            0xbb, 0x34, 0x12, // MOV BX,1234 must execute before the IRQ
+            0xf4,
+        ]);
+        c.push(&mut b, IF);
+        b.output(0xb0, 0x20).unwrap();
+        b.output(0xb2, 0x80).unwrap();
+        b.request(7);
+        b.ram[0x9c..0xa0].copy_from_slice(&[0, 3, 0, 0]);
+        b.ram[0x300..0x302].copy_from_slice(&[0x89, 0xda]); // MOV DX,BX
+        c.step(&mut b).unwrap();
+        assert_ne!(c.flags & IF, 0);
+        c.step(&mut b).unwrap();
+        assert_eq!(c.ip, 0x1004);
+        assert_eq!(c.registers[3], 0x1234);
+        c.step(&mut b).unwrap();
+        assert_eq!(c.ip, 0x300);
+        assert_eq!(word(&b, 0x1ffa), 0x1004);
+        c.step(&mut b).unwrap();
+        assert_eq!(c.registers[2], 0x1234);
+    }
+    #[test]
+    fn popf_without_enabling_if_does_not_create_an_interrupt_shadow() {
+        for (before, restored) in [(IF, IF), (IF, 0), (0, 0)] {
+            let (mut c, mut b) = setup(&[0x9d, 0xbb, 0x34, 0x12]);
+            c.flags |= before;
+            c.push(&mut b, restored);
+            c.step(&mut b).unwrap();
+            b.output(0xb2, 0x80).unwrap();
+            b.request(7);
+            b.ram[0x1c..0x20].copy_from_slice(&[0, 3, 0, 0]);
+            c.step(&mut b).unwrap();
+            if restored & IF != 0 {
+                assert_eq!(c.ip, 0x300);
+                assert_eq!(c.registers[3], 0);
+            } else {
+                assert_eq!(c.ip, 0x1004);
+                assert_eq!(c.registers[3], 0x1234);
+            }
+        }
+    }
+    #[test]
+    fn pushf_and_popf_preserve_fixed_bits_and_mask_reserved_bits() {
+        assert_eq!(Cpu::default().flags, 0x7002);
+        let (c, _) = run(&[0x31, 0xc0, 0x9c, 0x58, 0xf4]); // XOR AX,AX; PUSHF; POP AX
+        assert_eq!(c.registers[0], 0x7046);
+        for (input, expected) in [(0, 0x7002), (0xffff, 0x7fd7)] {
+            let (mut c, mut b) = setup(&[0x9d, 0x9c, 0x58]);
+            c.push(&mut b, input);
+            c.step(&mut b).unwrap();
+            assert_eq!(c.flags, expected);
+            c.step(&mut b).unwrap();
+            assert_eq!(word(&b, 0x1ffe), expected);
+            c.step(&mut b).unwrap();
+            assert_eq!(c.registers[0], expected);
+            assert_eq!(c.registers[4], 0x2000);
+        }
+    }
+    #[test]
+    fn interrupt_and_iret_normalize_flags_on_the_stack_and_on_restore() {
+        for (restored, expected) in [(0, 0x7002), (0xffff, 0x7fd7)] {
+            let (mut c, mut b) = setup(&[0xcd, 0x30]);
+            c.flags = 0xffff;
+            b.ram[0xc0..0xc4].copy_from_slice(&[0, 2, 0x10, 0]);
+            b.ram[0x300] = 0xcf; // IRET at 0010:0200
+            c.step(&mut b).unwrap();
+            assert_eq!(c.ip, 0x200);
+            assert_eq!(c.segments[1], 0x10);
+            assert_eq!(c.registers[4], 0x1ffa);
+            assert_eq!(word(&b, 0x1ffa), 0x1002);
+            assert_eq!(word(&b, 0x1ffc), 0);
+            assert_eq!(word(&b, 0x1ffe), 0x7fd7);
+            assert_eq!(c.flags, 0x7cd7); // IF and TF cleared during the handler
+            b.ram[0x1ffe..0x2000].copy_from_slice(&u16::to_le_bytes(restored));
+            c.step(&mut b).unwrap();
+            assert_eq!(c.ip, 0x1002);
+            assert_eq!(c.segments[1], 0);
+            assert_eq!(c.registers[4], 0x2000);
+            assert_eq!(c.flags, expected);
+        }
+    }
+    #[test]
     fn adc_sbb_exhaustive_byte_results_and_signed_carry_flags() {
         let mut c = Cpu::default();
         for a in 0..=255u16 {
@@ -1383,7 +1482,7 @@ mod compatibility_tests {
             assert_eq!(c.segments[1], 0);
             assert_eq!(c.registers[4], 0x1ffa);
             assert_eq!(word(&b, 0x1ffa), 0x1000);
-            assert_eq!(word(&b, 0x1ffe), IF | CF | 2);
+            assert_eq!(word(&b, 0x1ffe), IF | CF | 0x7002);
             assert_eq!(c.flags & IF, 0);
         }
     }
@@ -1397,11 +1496,11 @@ mod compatibility_tests {
         c.step(&mut b).unwrap();
         assert_eq!(word(&b, 0x1ffa), 0x1002);
         assert_eq!(word(&b, 0x1ffc), 0);
-        assert_eq!(word(&b, 0x1ffe), IF | OF | DF | CF | 2);
+        assert_eq!(word(&b, 0x1ffe), IF | OF | DF | CF | 0x7002);
         assert_eq!(c.flags & (IF | TF), 0);
         c.step(&mut b).unwrap();
         assert_eq!(c.ip, 0x1002);
-        assert_eq!(c.flags, IF | OF | DF | CF | 2);
+        assert_eq!(c.flags, IF | OF | DF | CF | 0x7002);
         c.step(&mut b).unwrap();
         assert_eq!(c.ip, 0x300);
         c.step(&mut b).unwrap();
