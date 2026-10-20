@@ -21,7 +21,7 @@ commercial software will run or that timing matches a physical console.
 | Bandai 2003 | CA/CB RTC transport with no attached RTC; CC/CD four GPO directions/data; CE read-only ROM mapping into save area; CF alias of C0; D0/D2/D4 low banks alias C1/C2/C3; D1/D3/D5 high two bits | RTC commands 10–1B transfer documented payload lengths, busy/ready handshake at byte granularity (64 clocks), and FF from absent RTC pull-up. No S-3511A date/time emulation, alarms, attached GPO peripherals, flash programming or lockout handshake. Invalid commands/control values and self-flash writes fail explicitly. |
 | Nonvolatile browser saves | localStorage per SHA-256 of complete ROM bytes, automatic once/second, on pause/hide/pagehide, before replacing a ROM | Reset/model changes preserve in-memory saves. Reload/reopen requires reselecting local ROM. No ROM/save upload or server storage. Corrupt/size-mismatched slots are preserved and not overwritten; denied/full storage shows a notice. Browser profile clearing/private-session expiry removes browser data. No import/export UI. |
 | CPU | Generic 8/16-bit register, ModR/M, segment, stack and string operations below | Unsupported opcodes/group extensions/ports/prefix combinations stop execution visibly, with CS:IP for unknown opcodes. No silent NOP fallback. |
-| Interrupts | IF, vector table and stack entry, INT/INT3/INTO/IRET, divide faults, BOUND fault; hardware priority highest source first; B0 vector/request, B2 enable, B4 status, B6 acknowledgement | Enable gates request latching; changing enable does not clear latched status. Key edges, line match, VBlank and both timer sources generated. UART/cartridge IRQ sources, single-step trap and low-battery NMI not generated. STI and MOV/POP SS inhibit delivery for the next instruction. HLT wakes for eligible maskable IRQs. |
+| Interrupts | IF, vector table and stack entry, INT/INT3/INTO/IRET, divide faults, BOUND fault; hardware priority highest source first; B0 vector/request, B2 enable, B4 status, B6 acknowledgement | Enable gates request latching; changing enable does not clear latched status. Key edges, line match, VBlank and both timer sources generated. UART/cartridge IRQ sources, single-step trap and low-battery NMI not generated. STI and MOV/POP SS inhibit delivery for the next instruction; POPF/IRET do so when IF changes from 0 to 1. HLT wakes for a latched IRQ even with IF=0, resuming without vectoring in that case. |
 | Timers | A2 control, A4–A7 reload, A8–AB counter; HBlank and VBlank count sources, one-shot/repeat, reload-on-write and disabled-count-at-one IRQ quirk | Test modes at A3 unsupported. Word writes to A2 with high byte zero allowed. No programmable LCD line total (16 must remain 158). |
 | Timing | Shared 3.072 MHz clock, 256 clocks/line, 159 lines/frame, 144 visible; deterministic frame progression | Per-instruction execution cost + fetch/data/I/O transfers, ROM/SRAM/cartridge-I/O wait flags, aligned 16-bit ROM transfers, branch/shift/multiply/divide/interrupt costs. Approximate, not cycle-table/prefetch accurate. Instructions are atomic; events/raster output occur at instruction granularity. |
 | Backgrounds | Screen 1 and 2 maps, independent wrapping scroll, flips, palettes, color tile banks; inclusive inside/outside Screen 2 window | Video is rendered scanline-by-scanline from actual RAM/ports. No subpixel effects or one-line LCD pipeline delay. |
@@ -39,9 +39,11 @@ Implemented with generic operands, not ROM-specific dispatch:
 - MOV register/memory/immediate/segment, XCHG, LEA, LES/LDS, XLAT; CBW/CWD.
 - ADD/ADC, SUB/SBB, CMP, AND/OR/XOR, TEST; immediate/accumulator/register/memory
   forms including sign-extended imm8; INC/DEC preserve carry, NEG/NOT.
-- ROL/ROR/RCL/RCR, SHL/SHR/SAR, byte/word, one/CL/immediate counts; zero-count
-  flags preserved, defined one-bit OF, CF/SZP updates as appropriate. Shift /6
-  is rejected. Undefined flag values are deterministic, not hardware guarantees.
+- ROL/ROR/RCL/RCR, SHL/SHR/SAR, byte/word, one/CL/immediate counts; counts
+  masked to five bits. Zero-count shifts update SZP from the unchanged operand;
+  zero-count rotates preserve flags. Defined one-bit OF, CF/SZP updates as
+  appropriate. Shift /6 is rejected. Undefined flag values are deterministic,
+  not hardware guarantees.
 - Unsigned/signed MUL/IMUL, immediate IMUL, DIV/IDIV with zero/quotient-overflow
   vector 0; AAM zero-base fault. Fault return points at the instruction start.
 - DAA/DAS, AAA/AAS, AAM/AAD; CF/PF/AF/ZF/SF/OF arithmetic; logical AF cleared.
@@ -65,9 +67,11 @@ prefetch and exact instruction/bus cycle tables. Unknown instructions still fail
 
 ## Firmware-free startup and reset
 
-Entry is FFFF:0000, physical FFFF0; no boot ROM is loaded. FLAGS=0002,
-other CPU registers/segments zero, internal RAM zero, display/channels disabled,
-C0=0F and C2=C3=FF for the common interface. Bandai 2003 uses C0/CF=3F
+Entry is FFFF:0000, physical FFFF0; no boot ROM is loaded. FLAGS=F002
+(including MD=1; 8080 emulation is unavailable). PUSHF, interrupt entry and
+POPF/IRET keep bits 1 and 12–15 set and reserved bits 3 and 5 clear.
+Other CPU registers/segments and internal RAM are zero, display/channels are
+disabled, and C0=0F and C2=C3=FF for the common interface. Bandai 2003 uses C0/CF=3F
 and ROM bank high bits=3 so even a 64 MiB ROM starts at its final bank;
 RAM bank high bits remain zero. Cartridge save bytes start FF
 unless restored by the adapter. ROM code must initialize stack, segments,
@@ -91,6 +95,8 @@ Public hardware descriptions consulted (not emulator source):
 [Bandai 2003](https://ws.nesdev.org/wiki/Bandai_2003),
 [EEPROM](https://ws.nesdev.org/wiki/EEPROM),
 [V30MZ](https://ws.nesdev.org/wiki/NEC_V30MZ),
+[NEC V30MZ hardware manual](https://www.renesas.com/en/document/lbr/v30mztm-hardware-preliminary)
+(§1.3 zero-count shifts, §5.3 interrupt delay, §6.3.1 HALT release, Table 7-2 reset FLAGS),
 [interrupts](https://ws.nesdev.org/wiki/Interrupts),
 [timers](https://ws.nesdev.org/wiki/Timers),
 [SoC/modes](https://ws.nesdev.org/wiki/SoC),

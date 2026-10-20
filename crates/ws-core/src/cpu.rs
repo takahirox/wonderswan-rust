@@ -9,11 +9,12 @@ const IF: u16 = 512;
 const TF: u16 = 256;
 const DF: u16 = 1024;
 const OF: u16 = 2048;
-const FIXED_FLAGS: u16 = 0x7002;
+const FIXED_FLAGS: u16 = 0xf002;
 const WRITABLE_FLAGS: u16 = 0x0fd5;
 
 fn normalize_flags(flags: u16) -> u16 {
-    // V30MZ bits 1 and 12–14 read as one; bits 3, 5 and 15 read as zero.
+    // V30MZ bits 1 and 12–14 read as one; bits 3 and 5 read as zero.
+    // MD (bit 15) stays set: V30MZ has no 8080 emulation mode.
     (flags & WRITABLE_FLAGS) | FIXED_FLAGS
 }
 
@@ -247,6 +248,9 @@ impl Cpu {
         let sign = if wide { 32768 } else { 128 };
         let count = count & 31;
         if count == 0 {
+            if op >= 4 {
+                self.szp(value, wide);
+            }
             return Ok(value);
         }
         let old = value;
@@ -289,8 +293,10 @@ impl Cpu {
     /// Bounded execution: REP performs one element per step. Cycles are approximate.
     pub(crate) fn step(&mut self, bus: &mut Bus) -> Result<u32, Error> {
         bus.accesses.set(0);
-        if self.interrupt_shadow == 0 && self.flags & IF != 0 {
-            if let Some(vector) = bus.interrupt() {
+        if let Some(vector) = bus.interrupt() {
+            // INT releases HALT even when IF prevents interrupt delivery.
+            self.halted = false;
+            if self.interrupt_shadow == 0 && self.flags & IF != 0 {
                 self.interrupt(bus, vector);
                 return Ok(12 + bus.accesses.get());
             }
@@ -883,7 +889,11 @@ impl Cpu {
             0xcf => {
                 self.ip = self.pop(bus);
                 self.segments[1] = self.pop(bus);
+                let previous_if = self.flags & IF;
                 self.flags = normalize_flags(self.pop(bus));
+                if previous_if == 0 && self.flags & IF != 0 {
+                    self.interrupt_shadow = 1;
+                }
                 execution = 6;
             }
             0xd4 => {
@@ -1285,11 +1295,50 @@ mod compatibility_tests {
         }
     }
     #[test]
+    fn iret_interrupt_delay_depends_on_the_if_transition() {
+        for (before, restored) in [(0, IF), (IF, IF), (IF, 0), (0, 0)] {
+            let (mut c, mut b) = setup(&[0xcf]); // IRET to 0010:0200
+            c.flags |= before;
+            c.push(&mut b, restored);
+            c.push(&mut b, 0x10);
+            c.push(&mut b, 0x200);
+            b.ram[0x300..0x303].copy_from_slice(&[0xbb, 0x34, 0x12]); // MOV BX,1234
+            b.ram[0x1c..0x20].copy_from_slice(&[0, 4, 0, 0]);
+            b.output(0xb2, 0x80).unwrap();
+            if before == 0 {
+                b.request(7); // Already pending when IRET enables IF
+            }
+            c.step(&mut b).unwrap();
+            assert_eq!((c.segments[1], c.ip), (0x10, 0x200));
+            assert_eq!(c.registers[4], 0x2000);
+            if before != 0 {
+                b.request(7); // Avoid vectoring before the IRET under test
+            }
+            c.step(&mut b).unwrap();
+            if before != 0 && restored != 0 {
+                assert_eq!((c.segments[1], c.ip), (0, 0x400));
+                assert_eq!(c.registers[3], 0); // Already-enabled IF has no delay
+                assert_eq!(word(&b, 0x1ffa), 0x200);
+            } else {
+                assert_eq!((c.segments[1], c.ip), (0x10, 0x203));
+                assert_eq!(c.registers[3], 0x1234);
+                if restored != 0 {
+                    c.step(&mut b).unwrap();
+                    assert_eq!((c.segments[1], c.ip), (0, 0x400));
+                    assert_eq!(word(&b, 0x1ffa), 0x203);
+                    assert_eq!(word(&b, 0x1ffc), 0x10);
+                }
+            }
+        }
+    }
+    #[test]
     fn pushf_and_popf_preserve_fixed_bits_and_mask_reserved_bits() {
-        assert_eq!(Cpu::default().flags, 0x7002);
+        assert_eq!(Cpu::default().flags, 0xf002);
+        let (c, _) = run(&[0x9c, 0x58, 0xf4]); // Initial PUSHF; POP AX reports MD=1
+        assert_eq!(c.registers[0], 0xf002);
         let (c, _) = run(&[0x31, 0xc0, 0x9c, 0x58, 0xf4]); // XOR AX,AX; PUSHF; POP AX
-        assert_eq!(c.registers[0], 0x7046);
-        for (input, expected) in [(0, 0x7002), (0xffff, 0x7fd7)] {
+        assert_eq!(c.registers[0], 0xf046);
+        for (input, expected) in [(0, 0xf002), (0xffff, 0xffd7)] {
             let (mut c, mut b) = setup(&[0x9d, 0x9c, 0x58]);
             c.push(&mut b, input);
             c.step(&mut b).unwrap();
@@ -1303,7 +1352,7 @@ mod compatibility_tests {
     }
     #[test]
     fn interrupt_and_iret_normalize_flags_on_the_stack_and_on_restore() {
-        for (restored, expected) in [(0, 0x7002), (0xffff, 0x7fd7)] {
+        for (restored, expected) in [(0, 0xf002), (0xffff, 0xffd7)] {
             let (mut c, mut b) = setup(&[0xcd, 0x30]);
             c.flags = 0xffff;
             b.ram[0xc0..0xc4].copy_from_slice(&[0, 2, 0x10, 0]);
@@ -1314,8 +1363,8 @@ mod compatibility_tests {
             assert_eq!(c.registers[4], 0x1ffa);
             assert_eq!(word(&b, 0x1ffa), 0x1002);
             assert_eq!(word(&b, 0x1ffc), 0);
-            assert_eq!(word(&b, 0x1ffe), 0x7fd7);
-            assert_eq!(c.flags, 0x7cd7); // IF and TF cleared during the handler
+            assert_eq!(word(&b, 0x1ffe), 0xffd7);
+            assert_eq!(c.flags, 0xfcd7); // IF and TF cleared during the handler
             b.ram[0x1ffe..0x2000].copy_from_slice(&u16::to_le_bytes(restored));
             c.step(&mut b).unwrap();
             assert_eq!(c.ip, 0x1002);
@@ -1383,17 +1432,51 @@ mod compatibility_tests {
             assert_eq!(c.flags & CF != 0, cf);
             assert_eq!(c.flags & OF != 0, of);
         }
-        let mut c = Cpu {
-            flags: 0x8d7,
-            ..Cpu::default()
-        };
-        assert_eq!(c.shift(4, 123, 0, true).unwrap(), 123);
-        assert_eq!(c.flags, 0x8d7);
-        assert_eq!(c.shift(4, 123, 32, true).unwrap(), 123);
+        for op in 0..=3 {
+            let mut c = Cpu {
+                flags: 0x8d7,
+                ..Cpu::default()
+            };
+            for count in [0, 32] {
+                assert_eq!(c.shift(op, 123, count, true).unwrap(), 123);
+                assert_eq!(c.flags, 0x8d7); // Zero-count rotates preserve flags
+            }
+        }
         let (c, _) = run(&[
             0xb8, 1, 0, 0xb9, 4, 0, 0xd3, 0xe0, 0xc1, 0xc8, 1, 0xd1, 0xf8, 0xf4,
         ]);
         assert_eq!(c.registers[0], 4);
+    }
+    #[test]
+    fn zero_count_shifts_update_szp_from_unchanged_byte_and_word_operands() {
+        for op in [4, 5, 7] {
+            // SHL, SHR, SAR
+            for (wide, value, szp) in [
+                (false, 0, ZF | PF),
+                (false, 0x80, SF),
+                (false, 3, PF),
+                (false, 1, 0),
+                (true, 0, ZF | PF),
+                (true, 0x8000, SF | PF),
+                (true, 0x8001, SF),
+                (true, 3, PF),
+                (true, 1, 0),
+            ] {
+                for count in [0, 32, 64, 128, 224] {
+                    for immediate in [false, true] {
+                        let opcode = (if immediate { 0xc0 } else { 0xd2 }) | u8::from(wide);
+                        let (mut c, mut b) = setup(&[opcode, 0xc0 | (op << 3), count]);
+                        c.registers[0] = value;
+                        c.registers[1] = count as u16;
+                        let preserved = FIXED_FLAGS | CF | AF | OF | IF | DF | TF;
+                        c.flags = preserved | ((SF | ZF | PF) ^ szp);
+                        c.step(&mut b).unwrap();
+                        assert_eq!(c.registers[0], value);
+                        assert_eq!(c.flags, preserved | szp);
+                    }
+                }
+            }
+        }
     }
     #[test]
     fn multiply_divide_byte_word_signed_unsigned_and_immediate() {
@@ -1482,7 +1565,7 @@ mod compatibility_tests {
             assert_eq!(c.segments[1], 0);
             assert_eq!(c.registers[4], 0x1ffa);
             assert_eq!(word(&b, 0x1ffa), 0x1000);
-            assert_eq!(word(&b, 0x1ffe), IF | CF | 0x7002);
+            assert_eq!(word(&b, 0x1ffe), IF | CF | 0xf002);
             assert_eq!(c.flags & IF, 0);
         }
     }
@@ -1496,11 +1579,11 @@ mod compatibility_tests {
         c.step(&mut b).unwrap();
         assert_eq!(word(&b, 0x1ffa), 0x1002);
         assert_eq!(word(&b, 0x1ffc), 0);
-        assert_eq!(word(&b, 0x1ffe), IF | OF | DF | CF | 0x7002);
+        assert_eq!(word(&b, 0x1ffe), IF | OF | DF | CF | 0xf002);
         assert_eq!(c.flags & (IF | TF), 0);
         c.step(&mut b).unwrap();
         assert_eq!(c.ip, 0x1002);
-        assert_eq!(c.flags, IF | OF | DF | CF | 0x7002);
+        assert_eq!(c.flags, IF | OF | DF | CF | 0xf002);
         c.step(&mut b).unwrap();
         assert_eq!(c.ip, 0x300);
         c.step(&mut b).unwrap();
@@ -1557,6 +1640,38 @@ mod compatibility_tests {
             let before = c.ip;
             c.step(&mut b).unwrap();
             assert_eq!(c.ip, before + 1);
+        }
+    }
+    #[test]
+    fn hlt_with_if_clear_wakes_on_pending_irq_without_vectoring() {
+        for pending_before_hlt in [false, true] {
+            let (mut c, mut b) = setup(&[0xf4, 0xbb, 0x34, 0x12]);
+            b.output(0xb2, 0x80).unwrap();
+            b.ram[0x1c..0x20].copy_from_slice(&[0, 3, 0, 0]);
+            if pending_before_hlt {
+                b.request(7);
+            }
+            c.step(&mut b).unwrap();
+            assert!(c.halted);
+            assert_eq!(c.ip, 0x1001);
+            if !pending_before_hlt {
+                b.request(6); // Disabled at the controller: no request is latched
+                assert_eq!(c.step(&mut b).unwrap(), 1);
+                assert!(c.halted);
+                assert_eq!(c.ip, 0x1001);
+                b.request(7);
+            }
+            c.step(&mut b).unwrap();
+            assert!(!c.halted);
+            assert_eq!(c.ip, 0x1004);
+            assert_eq!(c.registers[3], 0x1234);
+            assert_eq!(c.registers[4], 0x2000);
+            assert_eq!(c.flags, FIXED_FLAGS);
+            assert_eq!(b.interrupt(), Some(7)); // Wake-up does not acknowledge the IRQ
+            c.flags |= IF;
+            c.step(&mut b).unwrap();
+            assert_eq!(c.ip, 0x300);
+            assert_eq!(word(&b, 0x1ffa), 0x1004);
         }
     }
     #[test]
