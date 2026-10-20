@@ -8,11 +8,13 @@ No existing emulator core is copied, ported, vendored, or used as a dependency.
 runs its game logic as CPU instructions, reads the emulated keypad, and draws
 through tile RAM and video registers. The Rust core produces the 224×144 RGBA
 framebuffer. The browser only provides input/timing and displays those pixels.
-Compatibility remains limited: this is a monochrome hardware subset on all three
-models, not a claim of full hardware accuracy or commercial game compatibility.
-Sound, interrupts, color graphics, save hardware, and most instructions are not
-implemented. Unsupported instructions and I/O stop execution with a visible error.
-See the [implemented hardware and limitations](docs/hardware-subset.md).
+The core now also implements cartridge SRAM/EEPROM, common and Bandai 2003
+banking, a broader 80186 instruction set, interrupts/timers, color backgrounds
+and sprites, and basic four-channel audio. Compatibility and timing remain
+limited; see the exact [support matrix and limitations](docs/hardware-subset.md).
+Unsupported instructions and hardware operations stop with a visible diagnostic.
+[Original CC0 hardware probes](fixtures/README.md) verify these paths separately
+from the unchanged demo. No broad commercial-ROM compatibility is claimed.
 
 ## Play in the browser
 
@@ -46,6 +48,16 @@ validation does not establish that deployment has happened.
    browser memory and are never uploaded. Invalid files report a recoverable
    error without replacing the cartridge. There is no backend or ROM catalog.
 
+Cartridge saves are automatic and **browser-local**, keyed by SHA-256 of the
+ROM contents (renaming a file keeps its save; different contents get separate
+slots). Restart, pause and compatible model changes preserve saves. Reload or
+reopen the page and select the same ROM again to restore them. Storage errors
+show a notice; unreadable saved data is preserved rather than overwritten. No
+ROM or save is uploaded. Browser storage clearing/private-session expiry removes
+these saves. Click **Enable sound** for cartridges using audio; the demo stays
+silent. Pause/background/restart clears scheduled sound, and unavailable audio
+does not prevent gameplay.
+
 The demo source, generated binary, hand-authored lettering, and graphics are
 **CC0-1.0**, allowing play, modification and redistribution. See
 [demo provenance/license](web/public/demo/NOTICE.txt), [full license](demo/LICENSE),
@@ -73,7 +85,8 @@ export PATH="$(dirname "$(rustup which rustc)"):$PATH"
 From the repository root:
 
 ```sh
-python3 demo/build.py --check   # optional for normal builds; verifies reproducibility
+python3 demo/build.py --check
+python3 fixtures/build.py --check  # rebuildable original CC0 hardware probes
 cargo fmt --all -- --check
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -124,6 +137,7 @@ In a second terminal, from `web`:
 ```sh
 npx playwright install chromium
 npm run test:browser
+npm run test:compat
 ```
 
 Use `WS_PREVIEW_URL=http://127.0.0.1:4287/wonderswan-rust/ npm run test:browser`
@@ -144,7 +158,12 @@ failures are synthetic; this does not claim a real device or physical tab test.
 For the win screenshot, set `WS_SMOKE_SCREENSHOT=/tmp/beacon-trail-win.png`.
 Set `WS_SMOKE_ARTIFACTS=/tmp/wonderswan-player` for desktop/mobile screenshots
 including empty, playing, settings, debug, and fullscreen states.
-See [player UI pre-merge results](docs/issue-9-validation.md) and the
+The compatibility suite loads each original SRAM/EEPROM probe through the file
+picker, checks background/sprite colors, SHA-256 save isolation, reload/reopen,
+reset/model/pause preservation, and real Web Audio sample buffers and bounded
+sources. It also checks denied storage, corrupt saves and unavailable audio.
+See [hardware milestone results](docs/issue-11-validation.md),
+[player UI pre-merge results](docs/issue-9-validation.md) and the
 [original cartridge results](docs/issue-7-validation.md).
 
 ## GitHub Pages deployment
@@ -169,16 +188,19 @@ Required **post-merge checks remain pending**:
 2. Open the public URL unauthenticated. Play the bundled demo to completion,
    restart, and load the same downloaded ROM via the file picker. Confirm ROM,
    JS and Wasm load without production-path errors.
-3. Confirm the public model selector, Settings/Help, Debug Mode, compatibility
+3. Load a CC0 compatibility probe locally on the public page; verify color,
+   sound and saves surviving reload, plus Debug Mode/error recovery (Issue #11).
+4. Confirm the public model selector, Settings/Help, Debug Mode, compatibility
    notice, and demo download/source/license links. Report deployment-only problems
    as follow-up work.
 
 ## Layout and contributing
 
-- `crates/ws-core`: dependency-free CPU, cartridge, bus, input and mono tile video.
+- `crates/ws-core`: dependency-free CPU, cartridge/save, bus, input, mono/color video and sound.
 - `crates/ws-web`: thin wasm-bindgen adapter; machine state stays in Rust core.
 - `web`: framework-free TypeScript/HTML/CSS, Vite and browser smoke script.
 - `demo`: original cartridge assembly, graphics, deterministic builder and license.
+- `fixtures`: CC0 compatibility cartridge source, deterministic builder and generated files.
 
 Follow the [development flow and English collaboration policy](docs/development-flow.md),
 [review guidelines](docs/review-guidelines.md), [Issue template](.github/ISSUE_TEMPLATE/issue.md),

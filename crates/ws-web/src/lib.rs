@@ -40,6 +40,32 @@ impl WebMachine {
         Ok(())
     }
 
+    pub fn change_model(&mut self, model: &str) -> Result<(), JsError> {
+        let model = match model {
+            "mono" => Model::Mono,
+            "color" => Model::Color,
+            "crystal" => Model::Crystal,
+            _ => return Err(JsError::new("Unknown console model.")),
+        };
+        self.machine
+            .change_model(model)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+    pub fn save_data(&self) -> Vec<u8> {
+        self.machine.save_data().to_vec()
+    }
+    pub fn load_save(&mut self, data: &[u8]) -> Result<(), JsError> {
+        self.machine
+            .load_save(data)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+    pub fn audio_samples(&mut self) -> Vec<f32> {
+        self.machine.audio_samples()
+    }
+    pub fn sample_rate(&self) -> u32 {
+        ws_core::SAMPLE_RATE
+    }
+
     pub fn load_rom(&mut self, bytes: &[u8]) -> Result<usize, JsError> {
         self.machine
             .load_rom(bytes)
