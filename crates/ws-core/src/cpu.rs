@@ -227,14 +227,17 @@ impl Cpu {
     }
 
     fn interrupt(&mut self, bus: &mut Bus, vector: u8) {
+        // Fetch both vector words before stack writes can overwrite the table.
+        let target_ip = self.read(bus, Operand::Memory(0, vector as u16 * 4), true);
+        let target_cs = self.read(bus, Operand::Memory(0, vector as u16 * 4 + 2), true);
         self.flags = normalize_flags(self.flags);
         self.push(bus, self.flags);
         self.push(bus, self.segments[1]);
         self.push(bus, self.ip);
         self.flags &= !(IF | TF);
         self.halted = false;
-        self.ip = self.read(bus, Operand::Memory(0, vector as u16 * 4), true);
-        self.segments[1] = self.read(bus, Operand::Memory(0, vector as u16 * 4 + 2), true);
+        self.ip = target_ip;
+        self.segments[1] = target_cs;
     }
     fn divide_fault(&mut self, bus: &mut Bus, start: u16) {
         self.ip = start;
@@ -639,8 +642,10 @@ impl Cpu {
             0xf9 => self.flags |= CF,
             0xfa => self.flags &= !IF,
             0xfb => {
+                if self.flags & IF == 0 {
+                    self.interrupt_shadow = 1;
+                }
                 self.flags |= IF;
-                self.interrupt_shadow = 1;
             }
             0xf5 => self.flags ^= CF,
             0xfc => self.flags &= !DF,
@@ -1013,6 +1018,7 @@ impl Cpu {
                             0..=255
                         };
                         if let Some(q) = quotient.filter(|q| range.contains(q)) {
+                            self.flags &= !OF;
                             let rem = numerator % denominator;
                             if wide {
                                 self.registers[0] = q as u16;
@@ -1251,6 +1257,29 @@ mod compatibility_tests {
         u16::from_le_bytes([b.ram[a], b.ram[a + 1]])
     }
     #[test]
+    fn sti_delays_irqs_only_when_enabling_if() {
+        for before in [0, IF] {
+            let (mut c, mut b) = setup(&[0xfb, 0xbb, 0x34, 0x12]); // STI; MOV BX,1234
+            c.flags |= before;
+            b.output(0xb2, 0x80).unwrap();
+            b.ram[0x1c..0x20].copy_from_slice(&[0, 3, 0, 0]);
+            c.step(&mut b).unwrap();
+            assert_ne!(c.flags & IF, 0);
+            b.request(7);
+            c.step(&mut b).unwrap();
+            if before == 0 {
+                assert_eq!(c.ip, 0x1004);
+                assert_eq!(c.registers[3], 0x1234);
+                c.step(&mut b).unwrap();
+                assert_eq!(word(&b, 0x1ffa), 0x1004);
+            } else {
+                assert_eq!(c.registers[3], 0);
+                assert_eq!(word(&b, 0x1ffa), 0x1001);
+            }
+            assert_eq!((c.segments[1], c.ip), (0, 0x300));
+        }
+    }
+    #[test]
     fn popf_enabling_interrupts_delays_pending_irq_until_after_next_instruction() {
         let (mut c, mut b) = setup(&[
             0x9d, // POPF enables IF
@@ -1372,6 +1401,26 @@ mod compatibility_tests {
             assert_eq!(c.registers[4], 0x2000);
             assert_eq!(c.flags, expected);
         }
+    }
+    #[test]
+    fn interrupt_fetches_both_vector_words_before_overlapping_stack_writes() {
+        let (mut c, mut b) = setup(&[0xcd, 7]); // INT 7
+        c.registers[4] = 0x22; // The saved IP and CS overwrite vector 7
+        c.flags |= IF | TF | CF;
+        let original_flags = c.flags;
+        b.ram[0x1c..0x20].copy_from_slice(&[0, 3, 0x10, 0]);
+        b.ram[0x400] = 0xcf; // IRET at 0010:0300
+        c.step(&mut b).unwrap();
+        assert_eq!((c.segments[1], c.ip), (0x10, 0x300));
+        assert_eq!(c.registers[4], 0x1c);
+        assert_eq!(word(&b, 0x1c), 0x1002);
+        assert_eq!(word(&b, 0x1e), 0);
+        assert_eq!(word(&b, 0x20), original_flags);
+        assert_eq!(c.flags, original_flags & !(IF | TF));
+        c.step(&mut b).unwrap();
+        assert_eq!((c.segments[1], c.ip), (0, 0x1002));
+        assert_eq!(c.registers[4], 0x22);
+        assert_eq!(c.flags, original_flags);
     }
     #[test]
     fn adc_sbb_exhaustive_byte_results_and_signed_carry_flags() {
@@ -1543,6 +1592,35 @@ mod compatibility_tests {
             if matches!(code[6], 0xe3 | 0xeb) || code[3] == 0x6b || code[3] == 0x69 {
                 assert_eq!(c.flags & CF != 0, overflow);
                 assert_eq!(c.flags & OF != 0, overflow);
+            }
+        }
+    }
+    #[test]
+    fn successful_division_clears_overflow_for_byte_word_signed_and_unsigned_forms() {
+        for wide in [false, true] {
+            for signed in [false, true] {
+                for initial_of in [0, OF] {
+                    let opcode = if wide { 0xf7 } else { 0xf6 };
+                    let operand = if signed { 0xfb } else { 0xf3 }; // IDIV/DIV BX or BL
+                    let (mut c, mut b) = setup(&[opcode, operand, 0x70, 1, 0xce, 0x90]);
+                    c.registers[0] = 21;
+                    c.registers[3] = 4;
+                    c.flags |= initial_of;
+                    c.step(&mut b).unwrap();
+                    assert_eq!(
+                        c.flags & OF,
+                        0,
+                        "wide={wide}, signed={signed}, OF={initial_of}"
+                    );
+                    assert_eq!(c.registers[0], if wide { 5 } else { 0x0105 });
+                    assert_eq!(c.registers[2], if wide { 1 } else { 0 });
+                    assert_eq!(c.ip, 0x1002);
+                    c.step(&mut b).unwrap(); // JO must fall through
+                    assert_eq!(c.ip, 0x1004);
+                    c.step(&mut b).unwrap(); // INTO must fall through
+                    assert_eq!(c.ip, 0x1005);
+                    assert_eq!(c.registers[4], 0x2000);
+                }
             }
         }
     }
