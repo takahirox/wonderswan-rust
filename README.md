@@ -22,6 +22,51 @@ cartridge mapping or format validation, interrupts, timers, video rendering and
 timing, palettes, audio, keypad input, save states, persistence, compatibility
 detection, and physical LCD differences are outside this prototype.
 
+## Public browser prototype and deployment
+
+Intended public URL: **https://takahirox.github.io/wonderswan-rust/**. Once the
+first deployment succeeds, anyone can open it in a modern browser without
+installing tools or signing in. The hosted app is the same **non-playable
+prototype**: ROMs cannot execute and games cannot play yet. Local file bytes
+stay in the browser; the site is entirely static.
+
+One-time repository administrator prerequisite: open **Settings → Pages → Build
+and deployment → Source: GitHub Actions**. This setting has not been verified or
+changed as part of adding the workflow. If deployment reports that Pages is not
+enabled or lacks permission, an administrator must confirm that source setting
+and check the repository's Actions and `github-pages` environment restrictions.
+No personal access token or custom repository secret is needed.
+
+Every push to `main`, including a merged PR, starts the
+[Pages deployment workflow](.github/workflows/deploy-pages.yml). It installs Rust
+and Node.js 24, uses the committed lockfiles, builds the current Rust core to
+WebAssembly, then builds the frontend and deploys the complete `web/dist`.
+Overlapping runs cancel the older run so stale builds do not publish afterward.
+For a manual retry, open
+[Actions → Deploy browser prototype to Pages](https://github.com/takahirox/wonderswan-rust/actions/workflows/deploy-pages.yml)
+and choose **Run workflow** with branch **main**. Other branches do not deploy.
+
+Inspect that Actions page for build/deployment logs and failures. Inspect
+[Settings → Pages](https://github.com/takahirox/wonderswan-rust/settings/pages)
+and the repository's **Deployments → github-pages** environment for the
+publication status and deployed commit.
+
+Required post-merge verification (pending until performed; a successful public
+deployment is not a pre-merge gate):
+
+1. Confirm the merge/push to `main` triggers the workflow and it succeeds; record
+   the run URL and any failure.
+2. Open the public URL without authentication. In browser developer tools, check
+   that HTML, CSS, JavaScript, and Wasm load under `/wonderswan-rust/` with no
+   404s or startup errors. Check SwanCrystal defaults, all three model selections,
+   and the visible 224 × 144 canvas. Load a small original dummy file and confirm
+   its exact byte count, no upload request, and the visible non-playable disclaimer.
+3. On a subsequent real push to `main`, confirm another successful deployment
+   updates the public site; record the run URL, commit, and result.
+
+Report any Pages setting, permission, or deployment blocker and the needed
+administrator action instead of marking these checks passed.
+
 ## Local development
 
 Prerequisites:
@@ -70,7 +115,10 @@ npm run preview
 `npm run build` runs the TypeScript check and produces static assets (including
 Wasm) in `web/dist`. Serve that directory over HTTP; opening HTML via `file://`
 is insufficient for loading Wasm. `npm run preview` prints its local URL and
-opens the production build. No deployment is required.
+opens the production build at `http://127.0.0.1:4173/wonderswan-rust/` by default.
+Production and preview assets use the `/wonderswan-rust/` base required by GitHub
+Pages; the development server still uses `/`. No deployment is required for this
+local preview.
 
 The equivalent standalone Wasm compilation command, from the repository root, is:
 
