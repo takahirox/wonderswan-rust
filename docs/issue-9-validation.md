@@ -94,6 +94,9 @@ The adapter's existing keypad and frame counter APIs supply input and diagnostic
 
 ## Remaining verification
 
+The following was pending at implementation handoff. Required post-merge checks
+subsequently passed; see [post-merge verification](issue-9-post-merge-verification.md).
+
 Optional additional browsers and a real touch device were not tested.
 
 Required post-merge verification remains **pending**:
