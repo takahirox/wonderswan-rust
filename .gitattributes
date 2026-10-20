@@ -1,0 +1,2 @@
+# Cartridge padding can hide NUL bytes beyond Git's text-detection window.
+*.ws binary

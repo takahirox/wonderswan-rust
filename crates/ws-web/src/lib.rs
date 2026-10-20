@@ -46,6 +46,28 @@ impl WebMachine {
             .map_err(|error| JsError::new(&error.to_string()))
     }
 
+    pub fn restart(&mut self) {
+        self.machine.restart();
+    }
+
+    pub fn set_buttons(&mut self, mask: u16) {
+        self.machine.set_buttons(mask);
+    }
+
+    pub fn run_frame(&mut self) -> Result<(), JsError> {
+        self.machine
+            .run_frame()
+            .map_err(|error| JsError::new(&error.to_string()))
+    }
+
+    pub fn frame_number(&self) -> u32 {
+        self.machine.frame_number() as u32
+    }
+
+    pub fn frame_rate(&self) -> f64 {
+        ws_core::FRAME_RATE
+    }
+
     pub fn rom_len(&self) -> usize {
         self.machine.rom_len()
     }

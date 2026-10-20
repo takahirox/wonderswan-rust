@@ -4,40 +4,50 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <title>WonderSwan Rust prototype</title>
+    <title>WonderSwan Rust · Beacon Trail</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <main>
-      <h1>WonderSwan Rust prototype</h1>
-      <p>
-        This prototype loads raw ROM bytes but does not execute ROMs or play games yet.
-        The display is a blank framebuffer from the Rust core, not game graphics or an LCD simulation.
-      </p>
+      <h1>WonderSwan Rust</h1>
+      <p>Play <strong>Beacon Trail</strong>, an original homebrew cartridge running on a
+        from-scratch Rust/WebAssembly emulator. Move the hollow square to collect three
+        diamond beacons. Find all three to win!</p>
+      <p>Limited compatibility: the silent demo uses monochrome tiles on all three models.
+        Commercial game compatibility, sound, and full hardware accuracy are incomplete.</p>
       <fieldset id="controls" disabled>
-        <legend>Machine</legend>
+        <legend>Play</legend>
+        <button id="demo" type="button">Play demo</button>
+        <button id="pause" type="button" disabled>Resume</button>
+        <button id="reset" type="button" disabled>Restart</button>
         <label for="model">Console model</label>
         <select id="model">
           <option value="mono">WonderSwan (mono)</option>
           <option value="color">WonderSwan Color</option>
           <option value="crystal" selected>SwanCrystal (default)</option>
         </select>
-        <button id="reset" type="button">Reset machine</button>
-        <p>Changing the model or resetting clears the loaded ROM.</p>
-        <label for="rom">Local ROM file</label>
-        <input id="rom" type="file" aria-describedby="privacy" />
-        <p id="privacy">File bytes stay in this browser. No upload or ROM downloads.</p>
+        <p>Changing the model restarts the loaded cartridge and clears held keys.</p>
+        <label for="rom">Local ROM file (.ws / .wsc)</label>
+        <input id="rom" type="file" accept=".ws,.wsc" aria-describedby="privacy" />
+        <p id="privacy">Your selected file stays in this browser; it is never uploaded.</p>
       </fieldset>
       <div aria-live="polite" role="status">
         <p id="active-model">Loading WebAssembly…</p>
         <p id="rom-status">No ROM loaded.</p>
       </div>
       <p id="error" role="alert"></p>
-      <canvas id="screen" width="224" height="144" aria-label="Blank 224 by 144 RGBA framebuffer from Rust">
+      <canvas id="screen" width="224" height="144" tabindex="0"
+        aria-label="Emulated WonderSwan display. Arrow keys or W A S D move; Enter restarts.">
         A browser with canvas support is required.
       </canvas>
-      <p>224 × 144 pixels · blank clear buffer · non-playable</p>
+      <p><strong>Controls:</strong> Arrow keys or W A S D move (X keypad); Enter is Start/restart.
+        Z / X map to A / B. Click the screen to focus controls. Pause/Resume and Restart
+        are above. Switching tabs pauses; click Resume when you return.</p>
+      <p>224 × 144 pixels · graphics generated from emulated tile memory</p>
+      <p><a href="%BASE_URL%demo/beacon-trail.ws" download>Download demo ROM</a> ·
+        <a href="%BASE_URL%demo/NOTICE.txt">Demo license and provenance (CC0-1.0)</a> ·
+        <a href="https://github.com/takahirox/wonderswan-rust/tree/main/demo">Editable game source</a></p>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
