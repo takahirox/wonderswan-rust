@@ -1,84 +1,58 @@
 # wonderswan-rust
 
-A from-scratch Rust WonderSwan emulator project targeting **WonderSwan (mono)**,
-**WonderSwan Color**, and **SwanCrystal**, with **SwanCrystal as the default**.
-No existing emulator implementation is copied, ported, vendored, or used as a dependency.
+A from-scratch Rust WonderSwan emulator with a browser WebAssembly adapter.
+Choose **WonderSwan (mono)**, **WonderSwan Color**, or **SwanCrystal** (default).
+No existing emulator core is copied, ported, vendored, or used as a dependency.
 
-The current application is an **initial, non-playable prototype**. It creates a
-Rust machine for the chosen model, displays its model identity, accepts arbitrary
-nonempty local files as raw cartridge bytes, and reports the filename and stored
-byte count. Empty files are rejected without discarding a previously loaded ROM.
-Switching models or clicking **Reset machine** clears the ROM and resets status.
-Files stay in browser memory; there is no upload endpoint, server-side storage,
-bundled ROM, or external ROM download.
+**Beacon Trail is playable:** an original, silent, freely redistributable cartridge
+runs its game logic as CPU instructions, reads the emulated keypad, and draws
+through tile RAM and video registers. The Rust core produces the 224×144 RGBA
+framebuffer. The browser only provides input/timing and displays those pixels.
+Compatibility remains limited: this is a monochrome hardware subset on all three
+models, not a claim of full hardware accuracy or commercial game compatibility.
+Sound, interrupts, color graphics, save hardware, and most instructions are not
+implemented. Unsupported instructions and I/O stop execution with a visible error.
+See the [implemented hardware and limitations](docs/hardware-subset.md).
 
-A blank, opaque black **224 × 144 RGBA framebuffer** originates in the Rust core,
-passes through WebAssembly, and is copied to a canvas with pixelated CSS scaling.
-It is not fabricated game graphics or simulated LCD output. The three models
-currently differ only in their recorded identity.
+## Play in the browser
 
-**ROMs cannot execute and games cannot play yet.** CPU execution, boot ROMs,
-cartridge mapping or format validation, interrupts, timers, video rendering and
-timing, palettes, audio, keypad input, save states, persistence, compatibility
-detection, and physical LCD differences are outside this prototype.
+Public URL: **https://takahirox.github.io/wonderswan-rust/**. The new version becomes
+public after the existing `main` deployment workflow succeeds; local pre-merge
+validation does not establish that deployment has happened.
 
-## Public browser prototype and deployment
+1. Click **Play demo**. Move the hollow square to collect the diamond beacon.
+   Each collected beacon advances the visible score and places the next target.
+   Find all three to see **ALL FOUND!**.
+2. **Arrow keys or W A S D** move (the X keypad); **Enter** is Start/restart.
+   Z/X map to A/B, although the demo does not use them. Held directions repeat.
+   Click the screen to focus gameplay controls if needed.
+3. Use **Pause/Resume** or **Restart** above the display. Changing models restarts
+   the loaded cartridge and clears keys. Hiding the tab pauses; click Resume
+   when returning. There is no emulation loop while idle or paused.
+4. **Download demo ROM** saves the same `beacon-trail.ws` used by Play demo.
+   Select it with **Local ROM file** to run it manually. Selected files remain
+   in browser memory and are never uploaded. Invalid files report a recoverable
+   error without replacing a running cartridge. There is no backend or ROM catalog.
 
-Intended public URL: **https://takahirox.github.io/wonderswan-rust/**. Once the
-first deployment succeeds, anyone can open it in a modern browser without
-installing tools or signing in. The hosted app is the same **non-playable
-prototype**: ROMs cannot execute and games cannot play yet. Local file bytes
-stay in the browser; the site is entirely static.
+The demo source, generated binary, hand-authored lettering, and graphics are
+**CC0-1.0**, allowing play, modification and redistribution. See
+[demo provenance/license](web/public/demo/NOTICE.txt), [full license](demo/LICENSE),
+and [editable game source and build details](demo/README.md). No commercial ROMs,
+copied assets, unlicensed game binaries, or proprietary BIOS/firmware are bundled.
 
-One-time repository administrator prerequisite: open **Settings → Pages → Build
-and deployment → Source: GitHub Actions**. This setting has not been verified or
-changed as part of adding the workflow. If deployment reports that Pages is not
-enabled or lacks permission, an administrator must confirm that source setting
-and check the repository's Actions and `github-pages` environment restrictions.
-No personal access token or custom repository secret is needed.
-
-Every push to `main`, including a merged PR, starts the
-[Pages deployment workflow](.github/workflows/deploy-pages.yml). It installs Rust
-and Node.js 24, uses the committed lockfiles, builds the current Rust core to
-WebAssembly, then builds the frontend and deploys the complete `web/dist`.
-Overlapping runs cancel the older run so stale builds do not publish afterward.
-For a manual retry, open
-[Actions → Deploy browser prototype to Pages](https://github.com/takahirox/wonderswan-rust/actions/workflows/deploy-pages.yml)
-and choose **Run workflow** with branch **main**. Other branches do not deploy.
-
-Inspect that Actions page for build/deployment logs and failures. Inspect
-[Settings → Pages](https://github.com/takahirox/wonderswan-rust/settings/pages)
-and the repository's **Deployments → github-pages** environment for the
-publication status and deployed commit.
-
-Required post-merge verification (pending until performed; a successful public
-deployment is not a pre-merge gate):
-
-1. Confirm the merge/push to `main` triggers the workflow and it succeeds; record
-   the run URL and any failure.
-2. Open the public URL without authentication. In browser developer tools, check
-   that HTML, CSS, JavaScript, and Wasm load under `/wonderswan-rust/` with no
-   404s or startup errors. Check SwanCrystal defaults, all three model selections,
-   and the visible 224 × 144 canvas. Load a small original dummy file and confirm
-   its exact byte count, no upload request, and the visible non-playable disclaimer.
-3. On a subsequent real push to `main`, confirm another successful deployment
-   updates the public site; record the run URL, commit, and result.
-
-Report any Pages setting, permission, or deployment blocker and the needed
-administrator action instead of marking these checks passed.
-
-## Local development
+## Build and run locally
 
 Prerequisites:
 
-- Stable Rust and Cargo (install through [rustup](https://rustup.rs/)).
-- The `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`.
-- [wasm-pack](https://github.com/wasm-bindgen/wasm-pack):
-  `cargo install wasm-pack --locked` (validated with 0.14.0).
-- Node.js 22.12+ or 24+ and npm, plus a modern browser with WebAssembly and canvas.
+- Stable Rust/Cargo via [rustup](https://rustup.rs/).
+- `rustup target add wasm32-unknown-unknown`.
+- `cargo install wasm-pack --version 0.14.0 --locked`.
+- Node.js 22.12+ or 24+ and npm; a modern browser supporting Wasm and canvas.
+- To rebuild/verify the demo only: Python 3 and [NASM](https://www.nasm.us/)
+  (validated with Python 3.13 and NASM 3.02). The deployable ROM is committed;
+  normal browser builds do not need an assembler.
 
-Ensure `rustc` and `cargo` on `PATH` use the rustup toolchain with the Wasm target.
-If another Rust installation takes precedence, select the rustup binaries first:
+If Homebrew/system Rust takes precedence, select rustup before building Wasm:
 
 ```sh
 export PATH="$(dirname "$(rustup which rustc)"):$PATH"
@@ -87,24 +61,40 @@ export PATH="$(dirname "$(rustup which rustc)"):$PATH"
 From the repository root:
 
 ```sh
-# Browser-independent core tests, plus the thin adapter's native build/tests.
+python3 demo/build.py --check   # optional for normal builds; verifies reproducibility
+cargo fmt --all -- --check
 cargo test --workspace --locked
-
+cargo clippy --workspace --all-targets --locked -- -D warnings
 cd web
 npm ci
-# Compile Rust to Wasm and generate the browser ES module and TypeScript types.
 npm run build:wasm
-# Start the local Vite development server and open the browser.
 npm run dev
 ```
 
-Vite prints the local URL (normally `http://127.0.0.1:5173`). This is a static
-frontend served locally, with no application backend. Stop it with Ctrl+C.
-Rerun `npm run build:wasm` and reload the page after Rust changes; Vite handles
-TypeScript/CSS updates. Generated `web/pkg`, `web/dist`, and dependency/build
-directories are ignored. Both lockfiles are committed for reproducible installs.
+The dev server normally opens `http://127.0.0.1:5173/`. Stop with Ctrl+C. Rebuild
+Wasm and reload after Rust changes; Vite handles TypeScript/CSS updates. Generated
+`web/pkg`, `web/dist`, dependency/build directories and Python caches are ignored.
+Both dependency lockfiles are committed.
 
-To build and preview the production frontend, from `web`:
+To rebuild the game after editing `demo/game.asm` or `demo/graphics.py`, from root:
+
+```sh
+python3 demo/build.py
+python3 demo/build.py --check
+cargo test --workspace --locked
+```
+
+The deterministic builder creates `web/public/demo/beacon-trail.ws`, a valid
+128 KiB cartridge with footer/checksum. Integration tests load that exact asset,
+execute CPU frames, inject keypad input, check changed graphics/score, complete
+the game and restart on all three models. Unit tests cover CPU arithmetic/flags,
+addressing, branches, stack, strings, I/O, ROM errors, bank mapping, video and input.
+There are no emulator dependencies. The only added frontend test tool is
+Playwright for the required end-to-end production-preview check.
+
+## Production preview and browser acceptance
+
+From `web`:
 
 ```sh
 npm run build:wasm
@@ -112,53 +102,60 @@ npm run build
 npm run preview
 ```
 
-`npm run build` runs the TypeScript check and produces static assets (including
-Wasm) in `web/dist`. Serve that directory over HTTP; opening HTML via `file://`
-is insufficient for loading Wasm. `npm run preview` prints its local URL and
-opens the production build at `http://127.0.0.1:4173/wonderswan-rust/` by default.
-Production and preview assets use the `/wonderswan-rust/` base required by GitHub
-Pages; the development server still uses `/`. No deployment is required for this
-local preview.
+The build runs TypeScript checks and produces `web/dist`, including the bundled
+ROM and notice. Preview normally opens **http://127.0.0.1:4173/wonderswan-rust/**.
+Serve over HTTP, not `file://`. Production/preview use the existing
+`/wonderswan-rust/` base; the dev server uses `/`.
 
-The equivalent standalone Wasm compilation command, from the repository root, is:
+In a second terminal, from `web`:
 
 ```sh
-wasm-pack build crates/ws-web --target web --out-dir ../../web/pkg --locked
+npx playwright install chromium
+npm run test:browser
 ```
 
-## Layout and validation
+Use `WS_PREVIEW_URL=http://127.0.0.1:4287/wonderswan-rust/ npm run test:browser`
+if preview is on port 4287. The smoke script opens a fresh Chromium context,
+loads Wasm and the demo, moves with actual keyboard events, checks score 1/2/3
+and the win message from canvas pixels, restarts via Enter, plays on all three
+models, tests UI pause/restart and cleared input on model switches, plays a
+local file to completion, rejects an empty file, reloads the same file, checks
+no upload requests, and verifies production asset paths and the license notice.
+For an optional screenshot, set `WS_SMOKE_SCREENSHOT=/tmp/beacon-trail-win.png`.
+See [recorded pre-merge results](docs/issue-7-validation.md).
 
-- `crates/ws-core`: dependency-free, browser-independent model, machine, raw ROM
-  storage, and framebuffer. Unit tests cover defaults, all model selections,
-  resets, byte ownership/counts, empty input, and framebuffer dimensions/content.
-- `crates/ws-web`: thin `wasm-bindgen` adapter; machine state stays in the core.
-- `web`: framework-free TypeScript, HTML, and CSS, built with Vite.
+## GitHub Pages deployment
 
-Run `cargo fmt --all -- --check`, `cargo test --workspace --locked`, and
-`cargo clippy --workspace --all-targets --locked -- -D warnings` from the root.
-Run both Wasm compilation and the frontend production build above.
+The existing [Pages workflow](.github/workflows/deploy-pages.yml) builds and
+publishes `web/dist` on pushes to `main`, using locked Rust/npm dependencies,
+wasm-pack and Vite. Manual retries use
+[Actions → Deploy browser prototype to Pages](https://github.com/takahirox/wonderswan-rust/actions/workflows/deploy-pages.yml)
+with branch `main`. Other branches do not deploy. Overlapping runs cancel older
+runs. No personal access token or custom repository secret is needed.
 
-Browser smoke check (use an original dummy file; no game ROM is needed):
+One-time administrator prerequisite: **Settings → Pages → Build and deployment →
+Source: GitHub Actions**. This setting was not changed here. If deployment fails,
+check that setting, Actions permissions and `github-pages` environment restrictions.
+Inspect Actions logs and [Settings → Pages](https://github.com/takahirox/wonderswan-rust/settings/pages)
+or **Deployments → github-pages** for publication status and deployed commit.
 
-1. Open the local page. Check SwanCrystal is selected, the active model reported
-   by Rust is SwanCrystal, and the canvas has internal resolution 224 × 144.
-2. Select WonderSwan (mono), WonderSwan Color, then SwanCrystal. Verify the Rust
-   model status follows each selection and there are exactly three options.
-3. Choose a nonempty file. Verify its filename and exact byte count appear, along
-   with the statement that games cannot run yet.
-4. Reset, reload the file, and switch models. Each reset/switch must show no ROM
-   loaded and zero stored bytes. The same file can be selected again.
-5. Choose a zero-byte file. Verify a recoverable empty-data error, then choose the
-   nonempty file again. A file-read failure should also report an error without
-   disabling the UI (it can be simulated with a rejected `File.arrayBuffer()` in
-   browser developer tools).
-6. Resize the page. The internal canvas stays 224 × 144 and its CSS uses pixelated
-   scaling. Optionally inspect the Network panel: file selection sends no requests.
+Required **post-merge checks remain pending**:
 
-## Contributing
+1. Verify the merge-triggered workflow publishes successfully; record its Actions
+   run URL, deployed commit and final deployment result.
+2. Open the public URL unauthenticated. Play the bundled demo to completion,
+   restart, and load the same downloaded ROM via the file picker. Confirm ROM,
+   JS and Wasm load without production-path errors.
+3. Confirm the public compatibility description and demo provenance/license link.
+   Report problems as follow-up work.
 
-- [Development flow and English collaboration policy](docs/development-flow.md)
-- [Review and merge guidelines](docs/review-guidelines.md)
-- [Issue template](.github/ISSUE_TEMPLATE/issue.md)
-- [Pull request template](.github/pull_request_template.md)
-- [AI agent entry point](AGENTS.md)
+## Layout and contributing
+
+- `crates/ws-core`: dependency-free CPU, cartridge, bus, input and mono tile video.
+- `crates/ws-web`: thin wasm-bindgen adapter; machine state stays in Rust core.
+- `web`: framework-free TypeScript/HTML/CSS, Vite and browser smoke script.
+- `demo`: original cartridge assembly, graphics, deterministic builder and license.
+
+Follow the [development flow and English collaboration policy](docs/development-flow.md),
+[review guidelines](docs/review-guidelines.md), [Issue template](.github/ISSUE_TEMPLATE/issue.md),
+[PR template](.github/pull_request_template.md), and [AGENTS.md](AGENTS.md).

@@ -1,0 +1,23 @@
+Beacon Trail — original WonderSwan homebrew
+SPDX-License-Identifier: CC0-1.0
+
+Created for takahirox/wonderswan-rust in 2026 with OpenAI Codex assistance.
+All game code, build scripts, hand-authored lettering, geometric tile graphics,
+and the generated beacon-trail.ws cartridge are original contributions created
+for this repository. There is no audio. No commercial ROM, copied game asset,
+proprietary BIOS/firmware, font file, or third-party game binary is included.
+
+The contributors dedicate these original materials to the public domain under
+CC0 1.0 Universal, including the source and binary and all game graphics. Anyone
+may play, copy, modify, build, and redistribute them, including commercially.
+No permission or attribution is required. Provided without warranty.
+
+License: https://creativecommons.org/publicdomain/zero/1.0/
+Full legal text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+A copy is included at demo/LICENSE in the source repository.
+Source and build instructions:
+https://github.com/takahirox/wonderswan-rust/tree/main/demo
+
+This dedication covers demo/ and web/public/demo/. It does not change the
+licensing of other project code or the NASM assembler used to build the ROM.
+The license legal text itself is supplied by Creative Commons.
