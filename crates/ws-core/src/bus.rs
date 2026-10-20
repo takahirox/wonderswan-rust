@@ -21,6 +21,7 @@ pub(crate) struct Bus {
     rtc_command: u8,
     rtc_wait: u32,
     rtc_ready: bool,
+    gdma_started: bool,
     fault: Option<Error>,
 }
 impl Bus {
@@ -51,6 +52,7 @@ impl Bus {
             rtc_command: 0,
             rtc_wait: 0,
             rtc_ready: false,
+            gdma_started: false,
             fault: None,
         }
     }
@@ -105,6 +107,10 @@ impl Bus {
     pub fn read(&self, address: u32) -> u8 {
         let a = address as usize & 0xfffff;
         self.account(a);
+        self.read_mapped(a)
+    }
+    /// Shared mapping without CPU bus accounting (GDMA has its own transfer cost).
+    fn read_mapped(&self, a: usize) -> u8 {
         if a < 65536 {
             return if a < 0x4000 || self.color_mode() {
                 self.ram[a]
@@ -132,6 +138,55 @@ impl Bus {
             n => ((self.ports[0xc0] as usize & if self.extended() { 63 } else { 15 }) << 4) | n,
         };
         cart.rom(bank, a & 65535)
+    }
+    /// One bounded DMA word, before any CPU instruction or interrupt delivery.
+    /// The caller advances the same clock as for CPU execution.
+    pub fn gdma_step(&mut self) -> Option<u32> {
+        if self.ports[0x48] & 0x80 == 0 {
+            return None;
+        }
+        let mut source =
+            u32::from_le_bytes([self.ports[0x40], self.ports[0x41], self.ports[0x42], 0]);
+        let mut destination = u16::from_le_bytes([self.ports[0x44], self.ports[0x45]]);
+        let mut length = u16::from_le_bytes([self.ports[0x46], self.ports[0x47]]);
+        // SRAM is always an 8-bit region, including the 2003 self-flash window.
+        let valid_source = source < 0x10000
+            || (source >= 0x20000
+                && self
+                    .cartridge
+                    .as_ref()
+                    .is_some_and(|c| c.header.rom_word_bus && !c.header.rom_wait));
+        if !self.color_mode() || length == 0 || !valid_source {
+            self.ports[0x48] &= 0x40;
+            self.gdma_started = false;
+            return None;
+        }
+        // Read the complete word before writing it, preserving directional overlap.
+        let lo = self.read_mapped(source as usize);
+        let hi = self.read_mapped(source as usize + 1);
+        self.ram[destination as usize] = lo;
+        self.ram[destination as usize + 1] = hi;
+        let reverse = self.ports[0x48] & 0x40 != 0;
+        source = if reverse {
+            source.wrapping_sub(2)
+        } else {
+            source + 2
+        } & 0xfffff;
+        destination = if reverse {
+            destination.wrapping_sub(2)
+        } else {
+            destination.wrapping_add(2)
+        };
+        length -= 2;
+        self.ports[0x40..=0x42].copy_from_slice(&source.to_le_bytes()[..3]);
+        self.ports[0x44..=0x45].copy_from_slice(&destination.to_le_bytes());
+        self.ports[0x46..=0x47].copy_from_slice(&length.to_le_bytes());
+        let cycles = if self.gdma_started { 2 } else { 7 };
+        self.gdma_started = length != 0;
+        if length == 0 {
+            self.ports[0x48] &= 0x40;
+        }
+        Some(cycles)
     }
     pub fn write(&mut self, address: u32, value: u8) {
         let a = address as usize & 0xfffff;
@@ -226,6 +281,7 @@ impl Bus {
         self.accesses
             .set(self.accesses.get() + 1 + u32::from(port >= 0xc0 && (self.ports[0x60] & 8 != 0)));
         match port {
+            0x40..=0x42 | 0x44..=0x48 if self.model != Model::Mono => Ok(self.ports[port as usize]),
             2 => Ok(((self.cycles / 256) % 159) as u8),
             0xb0 => Ok(self.interrupt().unwrap_or(self.ports[0xb0] & 0xf8)),
             0xb5 => {
@@ -303,6 +359,19 @@ impl Bus {
         self.accesses
             .set(self.accesses.get() + 1 + u32::from(port >= 0xc0 && (self.ports[0x60] & 8 != 0)));
         match port {
+            0x40..=0x42 | 0x44..=0x48 if self.model != Model::Mono => {
+                let mask = match port {
+                    0x40 | 0x44 | 0x46 => 0xfe,
+                    0x42 => 0x0f,
+                    0x48 => 0xc0,
+                    _ => 0xff,
+                };
+                self.ports[port as usize] = value & mask;
+                if port == 0x48 {
+                    self.gdma_started = false;
+                }
+                return Ok(());
+            }
             0x60 => {
                 if self.model == Model::Mono {
                     return Err(Error::new(

@@ -4,6 +4,8 @@ mod bus;
 mod cartridge;
 mod cpu;
 mod eeprom;
+#[cfg(test)]
+mod gdma_tests;
 mod video;
 
 pub use audio::SAMPLE_RATE;

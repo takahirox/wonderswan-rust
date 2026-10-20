@@ -16,17 +16,17 @@ CASES = [
     ('eeprom2048-packed', 0x20, 1, 10, 0xe0),
 ]
 
-def build(save, mapper, bits, mode):
+def build(save, mapper, bits, mode, source='compat.asm', flags=0):
     with tempfile.TemporaryDirectory(prefix='ws-probe-') as directory:
         output = Path(directory) / 'probe.bin'
         subprocess.run(['nasm', '-f', 'bin', f'-DEEPROM_BITS={bits}',
                         f'-DEXTENDED={mapper}', f'-DVIDEO_MODE={mode}',
-                        str(ROOT / 'compat.asm'), '-o', str(output)], check=True)
+                        str(ROOT / source), '-o', str(output)], check=True)
         code = output.read_bytes()
     assert len(code) < 65520
     rom = bytearray([0x31] * 131072)
     rom[65536:65536+len(code)] = code
-    rom[-16:] = bytes([0xea,0,0,0,0xf0,0,0,0,0,0x80,0,save,0,mapper,0,0])
+    rom[-16:] = bytes([0xea,0,0,0,0xf0,0,0,0,0,0x80,0,save,flags,mapper,0,0])
     rom[-2:] = (sum(rom[:-2]) & 65535).to_bytes(2,'little')
     return rom
 
@@ -34,8 +34,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
-    for name, save, mapper, bits, mode in CASES:
-        rom = build(save, mapper, bits, mode)
+    images = [(name, build(save, mapper, bits, mode))
+              for name, save, mapper, bits, mode in CASES]
+    images.append(('gdma', build(0, 0, 0, 0x80, 'gdma.asm', 4)))
+    for name, rom in images:
         path = ROOT / 'generated' / (name+'.ws')
         if args.check:
             if path.read_bytes() != rom:

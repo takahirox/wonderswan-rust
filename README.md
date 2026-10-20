@@ -10,8 +10,9 @@ through tile RAM and video registers. The Rust core produces the 224×144 RGBA
 framebuffer. The browser only provides input/timing and displays those pixels.
 The core now also implements cartridge SRAM/EEPROM, common and Bandai 2003
 banking, a broader 80186 instruction set, interrupts/timers, color backgrounds
-and sprites, and basic four-channel audio. Compatibility and timing remain
-limited; see the exact [support matrix and limitations](docs/hardware-subset.md).
+and sprites, Color/Crystal General DMA, and basic four-channel audio.
+Compatibility and timing remain limited; see the exact
+[support matrix and limitations](docs/hardware-subset.md).
 Unsupported instructions and hardware operations stop with a visible diagnostic.
 [Original CC0 hardware probes](fixtures/README.md) verify these paths separately
 from the unchanged demo. No broad commercial-ROM compatibility is claimed.
