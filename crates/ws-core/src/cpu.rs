@@ -654,15 +654,16 @@ impl Cpu {
                 let m = self.byte(bus);
                 let op = (m >> 3) & 7;
                 let dest = self.operand(bus, m, segment);
-                let value = self.read(bus, dest, wide);
                 match op {
                     0 | 1 => {
+                        let value = self.read(bus, dest, wide);
                         let carry = self.flags & CF;
                         let v = self.alu(if op == 0 { 0 } else { 5 }, value, 1, wide)?;
                         self.write(bus, dest, wide, v);
                         self.flags = (self.flags & !CF) | carry;
                     }
                     2 | 4 if wide => {
+                        let value = self.read(bus, dest, wide);
                         if op == 2 {
                             self.push(bus, self.ip);
                         }
@@ -673,16 +674,22 @@ impl Cpu {
                         let Operand::Memory(s, o) = dest else {
                             return Err(Error::new("Far control flow requires memory operand."));
                         };
-                        let cs = self.read(bus, Operand::Memory(s, o.wrapping_add(2)), true);
                         if op == 3 {
                             self.push(bus, self.segments[1]);
                             self.push(bus, self.ip);
                         }
+                        // V30MZ reads the far destination after saving CS/IP;
+                        // the pointer may overlap the newly written stack frame.
+                        let value = self.read(bus, dest, true);
+                        let cs = self.read(bus, Operand::Memory(s, o.wrapping_add(2)), true);
                         self.segments[1] = cs;
                         self.ip = value;
                         execution = 6;
                     }
-                    6 if wide => self.push(bus, value),
+                    6 if wide => {
+                        let value = self.read(bus, dest, wide);
+                        self.push(bus, value);
+                    }
                     _ => return Err(Error::new(format!("Unsupported FE/FF extension /{op}."))),
                 }
             }
@@ -1645,6 +1652,43 @@ mod compatibility_tests {
             assert_eq!(word(&b, 0x1ffa), 0x1000);
             assert_eq!(word(&b, 0x1ffe), IF | CF | 0xf002);
             assert_eq!(c.flags & IF, 0);
+        }
+    }
+    #[test]
+    fn indirect_far_call_reads_both_destination_words_after_stack_writes() {
+        // V30MZ hardware manual §1.3: stack writes precede the far pointer reads.
+        for (pointer, expected_cs, expected_ip) in [
+            (0x07fe_u16, 0x0013, 0x0040), // Only the segment overlaps the frame.
+            (0x0800, 0xf000, 0x0013),     // Both words overlap the frame.
+            (0x0802, 0xf000, 0xf000),     // Only the offset overlaps the frame.
+            (0x0804, 0xf000, 0x0040),     // No overlap.
+        ] {
+            let mut rom = crate::cartridge::tests::rom(131072, 0, 0);
+            let [lo, hi] = pointer.to_le_bytes();
+            rom[0x1000f..0x10013].copy_from_slice(&[0xff, 0x1e, lo, hi]); // CALL FAR [pointer]
+            crate::cartridge::tests::checksum(&mut rom);
+            let mut b = Bus::new(Model::Crystal);
+            b.cartridge = Some(crate::cartridge::Cartridge::parse(&rom).unwrap());
+            b.ram[pointer as usize..pointer as usize + 4].copy_from_slice(&[0x40, 0, 0, 0xf0]);
+            let mut c = Cpu {
+                segments: [0, 0xf000, 0, 0],
+                ip: 0x000f,
+                ..Cpu::default()
+            };
+            c.registers[4] = 0x0804;
+            let flags = c.flags;
+
+            c.step(&mut b).unwrap();
+
+            assert_eq!(c.registers[4], 0x0800);
+            assert_eq!(word(&b, 0x0800), 0x0013);
+            assert_eq!(word(&b, 0x0802), 0xf000);
+            assert_eq!(c.flags, flags);
+            assert_eq!(
+                (c.segments[1], c.ip),
+                (expected_cs, expected_ip),
+                "pointer at {pointer:04x}"
+            );
         }
     }
     #[test]
