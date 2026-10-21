@@ -1,4 +1,4 @@
-//! Four-channel sound clocked by the same 3.072 MHz timebase as display/timers.
+//! Legacy and Hyper Voice sound on the shared 3.072 MHz machine timebase.
 use std::collections::VecDeque;
 pub const SAMPLE_RATE: u32 = 24000;
 const MAX_SAMPLES: usize = 4800 * 2;
@@ -10,9 +10,59 @@ pub(crate) struct Audio {
     sweep_clock: u32,
     pub lfsr: u16,
     pub mix: [u16; 2],
+    hyper_right: bool,
+    hyper_clock: u8,
     samples: VecDeque<f32>,
 }
 impl Audio {
+    pub fn hyper_control(&mut self, value: u8) {
+        if value & 0x10 != 0 {
+            self.hyper_right = false;
+        }
+    }
+    pub fn hyper_input(&mut self, value: u8, dma: bool, ports: &mut [u8; 256]) {
+        let layout = if dma { (ports[0x6b] >> 5) & 3 } else { 0 };
+        match layout {
+            0 => {
+                ports[0x68 + usize::from(self.hyper_right)] = value;
+                self.hyper_right = !self.hyper_right;
+            }
+            1 => ports[0x68] = value,
+            2 => ports[0x69] = value,
+            3 => ports[0x68..=0x69].fill(value),
+            _ => unreachable!(),
+        }
+    }
+    fn hyper_sample(&mut self, ports: &mut [u8; 256]) {
+        let control = ports[0x6a];
+        if control & 0x80 == 0 {
+            self.hyper_clock = 0;
+            return;
+        }
+        self.hyper_clock += 1;
+        if self.hyper_clock < [1, 2, 3, 4, 5, 6, 8, 12][((control >> 4) & 7) as usize] {
+            return;
+        }
+        self.hyper_clock = 0;
+        for side in 0..2 {
+            // The extension is performed BEFORE shifting and truncating to 16
+            // bits. In particular unsigned-negated is value - 256, not -value.
+            let value = i32::from(ports[0x68 + side]);
+            let extended = match (control >> 2) & 3 {
+                0 => value << 8,
+                1 => (value - 256) << 8,
+                2 => (value as i8 as i32) << 8,
+                3 => value << 8, // Ignored extension also ignores shift.
+                _ => unreachable!(),
+            };
+            let sample = if control & 12 == 12 {
+                extended
+            } else {
+                extended >> (control & 3)
+            } as i16;
+            ports[0x64 + side * 2..0x66 + side * 2].copy_from_slice(&sample.to_le_bytes());
+        }
+    }
     pub fn write(&mut self, port: u16, value: u8) {
         if port == 0x8d {
             self.sweep_clock = 0;
@@ -53,6 +103,7 @@ impl Audio {
             self.sample_clock += 1;
             if self.sample_clock == 128 {
                 self.sample_clock = 0;
+                self.hyper_sample(ports);
                 self.sample(ram, ports);
             }
         }
@@ -89,7 +140,12 @@ impl Audio {
         }
         self.mix = mix;
         let output = if ports[0x91] & 8 != 0 {
-            [mix[0] as f32 / 1024.0, mix[1] as f32 / 1024.0]
+            std::array::from_fn(|side| {
+                let hyper = i16::from_le_bytes([ports[0x64 + side * 2], ports[0x65 + side * 2]]);
+                // L10/R10 are shifted left five bits, then the headphone
+                // adder wraps at sixteen bits. No arbitrary boost or clamp.
+                (mix[side] << 5).wrapping_add(hyper as u16) as i16 as f32 / 32768.0
+            })
         } else if ports[0x91] & 1 != 0 {
             let mono = (((mix[0] + mix[1]) >> ((ports[0x91] >> 1) & 3)) & 255) as f32 / 256.0
                 * (ports[0x9e] & 3) as f32

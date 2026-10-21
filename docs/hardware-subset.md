@@ -24,13 +24,15 @@ commercial software will run or that timing matches a physical console.
 | Interrupts | IF, vector table and stack entry, INT/INT3/INTO/IRET, divide faults, BOUND fault; hardware priority highest source first; B0 vector/request, B2 enable, B4 status, B6 acknowledgement | Enable gates request latching; changing enable does not clear latched status. Key edges, line match, VBlank and both timer sources generated. UART/cartridge IRQ sources, single-step trap and low-battery NMI not generated. STI and MOV/POP SS inhibit delivery for the next instruction; POPF/IRET do so when IF changes from 0 to 1. HLT wakes for a latched IRQ even with IF=0, resuming without vectoring in that case. |
 | Timers | A2 control, A4–A7 reload, A8–AB counter; HBlank and VBlank count sources, one-shot/repeat, reload-on-write and disabled-count-at-one IRQ quirk | Test modes at A3 unsupported. Word writes to A2 with high byte zero allowed. No programmable LCD line total (16 must remain 158). |
 | Timing | Shared 3.072 MHz clock, 256 clocks/line, 159 lines/frame, 144 visible; deterministic frame progression | Per-instruction execution cost + fetch/data/I/O transfers, ROM/SRAM/cartridge-I/O wait flags, aligned 16-bit ROM transfers, branch/shift/multiply/divide/interrupt costs. Approximate, not cycle-table/prefetch accurate. Instructions and DMA words are atomic; events/raster output use that granularity. |
-| General DMA | Color/Crystal registers 40–42 source, 44–45 destination, 46–47 byte length, 48 control; increment/decrement word copies from RAM or mapped fast 16-bit ROM to internal RAM | Engine requires 60.7 color enable; mono rejects all GDMA register I/O. CPU and IRQ delivery stall for 5 + 2 × copied words on the existing clock. SRAM, byte-wide ROM, wait-state ROM and unmapped ROM stop at the first invalid source word; zero/initially invalid requests cost no DMA clocks. Sound DMA remains unsupported. See semantics below. |
+| General DMA | Color/Crystal registers 40–42 source, 44–45 destination, 46–47 byte length, 48 control; increment/decrement word copies from RAM or mapped fast 16-bit ROM to internal RAM | Engine requires 60.7 color enable; mono rejects all GDMA register I/O. CPU and IRQ delivery stall for 5 + 2 × copied words on the existing clock. SRAM, byte-wide ROM, wait-state ROM and unmapped ROM stop at the first invalid source word; zero/initially invalid requests cost no DMA clocks. SDMA shares the clock and takes priority over the next GDMA word; see semantics below. |
+| Sound DMA | Color/Crystal 4A–4C source, 4E–50 length, 52 control; byte transfers to Channel 2 or Hyper Voice, all four rates, hold/repeat/direction and bytewise repeat shadows | 20-bit counters and current RAM/ROM/SRAM mapper path, including slow/byte-wide sources. Phase 117 mod 128 reserves 6 + source access clocks every enabled tick; CPU/IRQ/GDMA resume at instruction/word boundaries. Reserved 4D/51 read zero, ignore writes. See timing and readback policies below. |
+| Hyper Voice | Color/Crystal signed 16-bit output latches 64–67; alternating CPU 8-bit input at 69; DMA stereo/mono routing; 6A conversion/shift/rate/enable and 6B layout/reset | All eight divisors, signed/unsigned/unsigned-negated/ignored extension. Headphone-only 16-bit wrapping addition. Direct CPU write to internal left latch 68 and unknown 6B low-nibble controls rejected. See semantics below. |
 | Backgrounds | Screen 1 and 2 maps, independent wrapping scroll, flips, palettes, color tile banks; inclusive inside/outside Screen 2 window | Video is rendered scanline-by-scanline from actual RAM/ports. No subpixel effects or one-line LCD pipeline delay. |
 | Sprites | 128-entry VBlank-latched table, first/count, 32 per line including clipped sprites, early-entry priority, behind/in-front Screen 2, palette 8–15, flips, wrapped coordinates, inclusive inside/outside window | Table copies atomically at line 144 rather than word-by-word over that line; mid-copy effects unsupported. Tile bank 0 only as on hardware. |
 | Mono video | 2bpp interleaved planar tiles at 2000–3FFF; palette ports 20–3F and shade LUT 1C–1F; LCD enable 14; grayscale RGBA 224×144 | No LCD ghosting, icons, contrast/panel response or gamma simulation. |
 | Color video | 60=80: 2bpp planar, 1024 tiles at 2000–5FFF; C0: 4bpp planar; E0: 4bpp packed, 1024 tiles at 4000–BFFF; FE00–FFFF 12-bit RGB palettes | Packed nibbles are left/high, right/low. 2bpp palettes 4–7/12–15 make index 0 transparent; 4bpp index 0 always transparent. Mono rejects color register writes; WSC/Crystal extra RAM requires color enable. Invalid mode combinations rejected. |
-| Sound | Four 32×4-bit wavetable channels; channel 2 unsigned PCM/voice volume; channel 3 signed sweep with wrap; channel 4 eight LFSR tap modes/reset | 80–94 register surface, 96–9B mixer readback, 9E speaker volume; 24 kHz stereo clock, bounded 200 ms queue. Speaker volume uses a linear approximation. Sound test port 95, Hyper Voice and Sound DMA (4A–52) unsupported and rejected. Mixing/output filters are approximate. |
-| Browser sound | Opt-in Enable/Mute sound, Web Audio buffers, high-pass DC removal, bounded queue, reused single AudioContext | Pause/restart/hide clears scheduled sources; failures show a notice and keep gameplay usable. No output loop while paused. Headless buffer validation does not certify physical speaker quality. Original demo stays silent. |
+| Sound | Four 32×4-bit wavetable channels; channel 2 unsigned PCM/voice volume; channel 3 signed sweep with wrap; channel 4 eight LFSR tap modes/reset | 80–94 documented bit masks, 96–9B 10/11-bit legacy mixer readbacks, 9E speaker volume; 24 kHz stereo clock, bounded 200 ms queue. Headphone 16-bit and speaker 8-bit adders wrap; speaker main volume uses a linear approximation. Sound test port 95 remains rejected. Analogue filters/volume levels are approximate. |
+| Browser sound | Default-on sound preference, Mute/Unmute and 0–100% volume, gesture activation, Web Audio buffers, high-pass DC removal, bounded queue, reused single AudioContext | Pause/restart/hide clears scheduled sources; failures show a notice and keep gameplay usable. No output loop while paused. Headless buffer validation does not certify physical speaker quality. Original demo stays silent. |
 | Input | B5 active-high keypad matrix (yyyy xxxx bas0); keyboard/touch adapters | No serial/UART, link cable, sound/power buttons or accessories. |
 
 ## General DMA semantics
@@ -47,8 +49,8 @@ DMA work or stored state. Thus word OUT/IN at 42 completes normally; only the
 low nibble written to 42 supplies source address bits 16–19, and the byte at
 43 is discarded/read as zero. This handling also applies with color mode disabled.
 Read-zero is an evidence-based emulation policy; exact electrical readback has
-not been confirmed by physical-device tests. Mono still rejects 43, and port 49
-and Sound DMA ports 4A–52 remain explicitly unsupported on all models.
+not been confirmed by physical-device tests. Mono still rejects 43. Port 49 remains unsupported on all models; Sound DMA
+ports are available only on Color/Crystal as described below.
 
 Each word is read completely before being written, in the selected direction;
 overlaps therefore follow word transfer order. Both addresses advance by two,
@@ -67,6 +69,108 @@ Timing remains approximate within a word: the enabling instruction completes
 atomically, setup is grouped with the first word, and each word's memory changes
 precede its clock advancement. Per-cycle read/write phases, display fetch
 contention and physical-device comparisons are not modeled/verified.
+
+## Sound DMA semantics and shared timing
+
+SDMA is Color/Crystal hardware, selected with the typed console model; it is
+available regardless of the video mode. Mono rejects 4A–52 and 64–6B and retains
+its four legacy channels. Source (4A–4C) and length (4E–50) are little-endian
+20-bit byte counters: high nibbles are masked, odd addresses/lengths are valid.
+Every CPU register-byte write changes that live byte and only the corresponding
+shadow byte. Playback advances only live counters; repeat restores all six
+shadow bytes when length reaches zero. Source wraps at 20 bits in either
+direction. One-shot completion clears enable and leaves the next source and
+zero length visible. Length zero cannot enable and an active zero-length edit
+stops at the next controller tick without underflow. Enable toggles preserve
+counters and the fractional rate-divider state.
+
+52 retains bits DF: enable 80, decrement 40, Hyper Voice target 10, repeat 08,
+hold 04, rate 03. Rates 0/1/2/3 divide the 24 kHz clock by 6/4/2/1 (4/6/12/24
+kHz); the first sample is issued after that many enabled ticks. Hold advances
+the rate timer and sends zero on sample ticks without consuming source/length.
+Channel 2 target writes 89; software must enable voice at 90.5 and choose
+left/right voice volume at 94. Hyper Voice target fills the inputs according to
+6B layout; software must enable/configure the converter at 6A. SDMA itself does
+not implicitly enable either sound generator or headphone output (91.3).
+
+The DMA specification allocates no fields to 4D and 51: they are unused fourth
+bytes adjacent to 20-bit counters. Like reserved GDMA port 43, writes have no
+state or controller effects and reads return zero, including word I/O to 4C/50.
+Read-zero is a deterministic emulation policy; the reference does not specify
+the electrical value of these unused ports and no physical-console readback
+measurement is claimed. Port 49 and unrelated gaps remain unsupported.
+
+While enabled, SDMA reserves **6 + N clocks every 128 clocks**, beginning at
+**117 mod 128**, including hold and ticks between rate-divided samples. N is the
+mapped source byte access time (1 normally; 2 for configured SRAM/slow ROM).
+Byte-wide SRAM, slow ROM, bank crossings, the extended mapper and its read-only
+flash window use the same address map as CPU reads, without GDMA's source
+eligibility restrictions. DMA does not write cartridge memory or add normal
+CPU access-accounting charges. Disabled/zero-length transfers incur no new
+reservation. The global 128-clock phase continues through disable and frames.
+
+Clock advancement splits at every SDMA event, so scanlines, interrupts/timers,
+EEPROM, RTC and audio advance on the same clock. Each event records a CPU stall;
+stalls are serviced before another CPU instruction, IRQ entry or GDMA word.
+Their own elapsed clocks also advance devices. A clock slice cannot recursively
+execute a CPU instruction, and the 7/8-clock reservation leaves CPU time between
+events. Transfers/counters/output writes are atomic at phase 117; memory bus
+subphases and the exact final latch cycle within the reservation are not modeled.
+CPU effects remain instruction-granular: an instruction or GDMA word overlapping
+phase 117 completes atomically, then pays the reservation before the next one.
+This can delay the CPU-visible stall by the remainder of that instruction/word;
+it does not move audio events or charge the transfer twice. Frame boundaries
+preserve counters, divider phase and unpaid stalls. No prefetch/contention or
+physical-device timing accuracy beyond this model is claimed.
+
+## Hyper Voice conversion and output mixing
+
+64/65 and 66/67 hold little-endian signed 16-bit left/right output, initially
+zero. CPU writes update each output byte directly, including with the converter
+disabled. 68/69 are left/right 8-bit input latches. CPU writes to 69 alternate
+left then right regardless of the DMA layout; DMA layout 6B.5–6 is stereo,
+left-only, right-only or both. A one-sided DMA write preserves the other input.
+Writing 6B.4 resets the next alternating input to left; it is a strobe, not an
+output clear. 6B.7 is reserved/masked and the layout bits read back; the unknown
+low nibble is rejected when nonzero, with a diagnostic. The sound diagram shows
+68 as the internal left input; direct CPU writes to 68 have no documented
+semantics and remain explicitly unsupported. Reads expose the input/output
+latches and 6A control; electrical readback/reset-strobe details beyond the
+reference are deterministic policies, not independently measured hardware facts.
+
+6A.7 enables conversion, 6A.4–6 selects divisors 1/2/3/4/5/6/8/12 of the existing
+24 kHz output clock. Each conversion processes both held inputs; between updates
+the outputs persist. Disabling freezes output latches and resets the conversion
+divider on the next output tick; it does not clear the samples or alternating
+input selector. 6A.2–3 selects extension; 6A.0–1 selects arithmetic right shift
+0–3. Extension happens before shifting and retaining the bottom 16 bits:
+
+| Mode | Extended intermediate for byte b | Output |
+| --- | --- | --- |
+| Unsigned | b × 256 | Shift then wrap to signed 16 bits |
+| Unsigned, negated | (b − 256) × 256 | Shift then wrap; this is not arithmetic negation of b |
+| Signed | signed8(b) × 256 | Arithmetic shift then signed 16 bits |
+| Ignored | b × 256 | Shift ignored; retain bottom 16 bits |
+
+For example E0 with shift 1 yields +28672 unsigned, −4096 unsigned-negated or
+signed, and −8192 in ignored mode. Converter/divider startup phase is deterministic
+but has not been checked on a physical device. Direct 16-bit writes bypass
+conversion and are overwritten if the enabled converter subsequently updates.
+Separate CPU writes can straddle a 24 kHz sample boundary; they are not treated
+as an atomic stereo pair.
+
+The four legacy unsigned outputs sum into separate 10-bit left/right readbacks
+(96–99); their sum is 11 bits (9A/9B). The headphone path shifts each legacy sum
+left by five, adds its Hyper Voice signed output, **wraps at 16 bits**, and divides
+by 32768 for the existing bounded float sample contract. No adder clamps and no
+extra gain is applied. 91.3 selects headphone output. The speaker path (91.0
+when headphone output is off) sums only legacy channels, shifts by 91.1–2,
+retains eight bits and applies the existing linear 9E.0–1 main-volume approximation.
+Hyper Voice never feeds this path; 9E never scales headphones. Disabling both
+outputs emits zero. Legacy wavetable, voice priority/volume, sweep and all eight
+noise modes remain supported; test port 95 is still a documented gap. The Rust
+sample rate remains 24000 Hz with a bounded 200 ms stereo queue. The browser
+reuses its existing high-pass filter and gain graph; no JS synthesis was added.
 
 ## CPU instruction coverage
 
@@ -145,11 +249,13 @@ Public hardware descriptions consulted (not emulator source):
 [tiles](https://ws.nesdev.org/wiki/Display/Tile_Data),
 [sprites](https://ws.nesdev.org/wiki/Display/Sprites),
 [palettes](https://ws.nesdev.org/wiki/Display/Palette),
-[sound](https://ws.nesdev.org/wiki/Sound).
+[sound](https://ws.nesdev.org/wiki/Sound),
+[Hyper Voice](https://ws.nesdev.org/wiki/Hyper_Voice).
 
 Native tests exercise hardware vectors and full cartridge paths. Browser smoke
 checks use original licensed files only. See [fixture provenance/builds](../fixtures/README.md)
 and [Issue #11 validation](issue-11-validation.md), plus
-[General DMA validation](issue-13-validation.md). Physical-device comparisons
+[General DMA validation](issue-13-validation.md) and
+[SDMA/Hyper Voice validation](issue-19-validation.md). Physical-device comparisons
 are optional and have not been performed. Public Pages deployment and live-site
 verification belong after merge and remain pending until actually executed.

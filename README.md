@@ -10,7 +10,8 @@ through tile RAM and video registers. The Rust core produces the 224×144 RGBA
 framebuffer. The browser only provides input/timing and displays those pixels.
 The core now also implements cartridge SRAM/EEPROM, common and Bandai 2003
 banking, a broader 80186 instruction set, interrupts/timers, color backgrounds
-and sprites, Color/Crystal General DMA, and basic four-channel audio.
+and sprites, four-channel audio, and Color/Crystal General DMA, Sound DMA and
+Hyper Voice PCM with distinct headphone/speaker mixing.
 Compatibility and timing remain limited; see the exact
 [support matrix and limitations](docs/hardware-subset.md).
 Unsupported instructions and hardware operations stop with a visible diagnostic.
@@ -176,7 +177,10 @@ measures live output gain at 0%, 35% and 100%, and covers mute/volume persistenc
 keyboard/touch controls, denied/malformed preference storage, corrupt saves and
 unavailable audio. Suspended, rejected and pending resumes, creation/playback
 failures, and visibility/pagehide are simulated; sample buffers and analyser
-measurements use real Web Audio nodes. See [audio control validation](docs/issue-17-validation.md).
+measurements use real Web Audio nodes. It also loads the original SDMA/Hyper Voice
+probes on Color/Crystal, checks exact PCM buffers and gain/lifecycle controls,
+and verifies mono silence. See [audio control validation](docs/issue-17-validation.md)
+and [SDMA/Hyper Voice validation](docs/issue-19-validation.md).
 See [hardware milestone results](docs/issue-11-validation.md),
 [player UI pre-merge results](docs/issue-9-validation.md) and the
 [original cartridge results](docs/issue-7-validation.md).
