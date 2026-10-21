@@ -6,6 +6,9 @@ mod cpu;
 mod eeprom;
 #[cfg(test)]
 mod gdma_tests;
+mod sdma;
+#[cfg(test)]
+mod sound_tests;
 mod video;
 
 pub use audio::SAMPLE_RATE;

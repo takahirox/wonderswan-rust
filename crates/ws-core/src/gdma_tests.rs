@@ -64,10 +64,8 @@ fn byte_register_masks_readback_model_and_mode_gates() {
             assert_eq!(b.input(0x43).unwrap(), 0);
             assert_eq!(state(&mut b), (0xffffe, 0xfffe, 0xfffe, 0x40));
         }
-        for p in 0x49..=0x52 {
-            assert!(b.output(p, 255).is_err());
-            assert!(b.input(p).is_err());
-        }
+        assert!(b.output(0x49, 255).is_err());
+        assert!(b.input(0x49).is_err());
         // Register state is model-gated; the engine needs color enable at 60.7.
         b.ram[0x100..0x102].copy_from_slice(&[1, 2]);
         program(&mut b, 0x100, 0x200, 2, 0xff);

@@ -2,6 +2,7 @@ use crate::{
     audio::Audio,
     cartridge::{Cartridge, Mapper, SaveKind},
     eeprom::Eeprom,
+    sdma::SoundDma,
     Error, Model,
 };
 
@@ -22,6 +23,8 @@ pub(crate) struct Bus {
     rtc_wait: u32,
     rtc_ready: bool,
     gdma_started: bool,
+    sdma: SoundDma,
+    sound_stall: u32,
     fault: Option<Error>,
 }
 impl Bus {
@@ -53,6 +56,8 @@ impl Bus {
             rtc_wait: 0,
             rtc_ready: false,
             gdma_started: false,
+            sdma: SoundDma::default(),
+            sound_stall: 0,
             fault: None,
         }
     }
@@ -82,7 +87,7 @@ impl Bus {
                 0
             }
     }
-    fn account(&self, address: usize) {
+    fn access_time(&self, address: usize) -> u32 {
         // Byte bus accesses, including fetches. ROM header wait and SRAM wait add clocks.
         let wait = if address >= 0x20000 {
             self.cartridge.as_ref().is_some_and(|c| c.header.rom_wait) as u32
@@ -91,7 +96,11 @@ impl Bus {
         } else {
             0
         };
-        self.accesses.set(self.accesses.get() + 1 + wait);
+        1 + wait
+    }
+    fn account(&self, address: usize) {
+        self.accesses
+            .set(self.accesses.get() + self.access_time(address));
     }
     pub fn word_transfer(&self, first: u32, second: u32) {
         if first >= 0x20000 && first & 1 == 0 && second == first + 1 {
@@ -109,7 +118,7 @@ impl Bus {
         self.account(a);
         self.read_mapped(a)
     }
-    /// Shared mapping without CPU bus accounting (GDMA has its own transfer cost).
+    /// Shared mapping without CPU bus accounting (both DMAs have their own costs).
     fn read_mapped(&self, a: usize) -> u8 {
         if a < 65536 {
             return if a < 0x4000 || self.color_mode() {
@@ -231,7 +240,36 @@ impl Bus {
         }
         self.buttons = buttons;
     }
-    pub fn tick(&mut self, cycles: u32) {
+    pub fn sound_dma_stall(&mut self) -> Option<u32> {
+        let cycles = std::mem::take(&mut self.sound_stall);
+        (cycles != 0).then_some(cycles)
+    }
+    pub fn tick(&mut self, mut cycles: u32) {
+        // Split at SDMA events so an arbitrarily sized clock advance produces
+        // exactly the same PCM and controller state as single-clock advances.
+        while cycles != 0 {
+            let until = (117 + 128 - self.cycles % 128 - 1) % 128 + 1;
+            let count = cycles.min(until as u32);
+            self.tick_devices(count);
+            cycles -= count;
+            if self.cycles % 128 == 117 && self.model != Model::Mono && self.ports[0x52] & 0x80 != 0
+            {
+                let source = SoundDma::counter(&self.ports, 0x4a) as usize;
+                if SoundDma::counter(&self.ports, 0x4e) != 0 {
+                    self.sound_stall += 6 + self.access_time(source);
+                }
+                let value = self.read_mapped(source);
+                if let Some((value, hyper)) = self.sdma.clock(&mut self.ports, value) {
+                    if hyper {
+                        self.audio.hyper_input(value, true, &mut self.ports);
+                    } else {
+                        self.ports[0x89] = value;
+                    }
+                }
+            }
+        }
+    }
+    fn tick_devices(&mut self, cycles: u32) {
         if self.rtc_wait > 0 {
             self.rtc_wait = self.rtc_wait.saturating_sub(cycles);
             if self.rtc_wait == 0 {
@@ -282,8 +320,11 @@ impl Bus {
             .set(self.accesses.get() + 1 + u32::from(port >= 0xc0 && (self.ports[0x60] & 8 != 0)));
         match port {
             0x40..=0x42 | 0x44..=0x48 if self.model != Model::Mono => Ok(self.ports[port as usize]),
-            // Reserved source-segment high byte: deterministic model readback.
-            0x43 if self.model != Model::Mono => Ok(0),
+            0x4a..=0x4c | 0x4e..=0x50 | 0x52 | 0x64..=0x6b if self.model != Model::Mono => {
+                Ok(self.ports[port as usize])
+            }
+            // Reserved source-segment high bytes: deterministic model readback.
+            0x43 | 0x4d | 0x51 if self.model != Model::Mono => Ok(0),
             2 => Ok(((self.cycles / 256) % 159) as u8),
             0xb0 => Ok(self.interrupt().unwrap_or(self.ports[0xb0] & 0xf8)),
             0xb5 => {
@@ -361,8 +402,28 @@ impl Bus {
         self.accesses
             .set(self.accesses.get() + 1 + u32::from(port >= 0xc0 && (self.ports[0x60] & 8 != 0)));
         match port {
-            // Wide OUT at 0x42 reaches this unused source-segment high byte.
-            0x43 if self.model != Model::Mono => return Ok(()),
+            // Wide OUT at 42/4C/50 reaches an unused fourth counter byte.
+            0x43 | 0x4d | 0x51 if self.model != Model::Mono => return Ok(()),
+            0x4a..=0x4c | 0x4e..=0x50 | 0x52 if self.model != Model::Mono => {
+                self.sdma.write(&mut self.ports, port as usize, value);
+                return Ok(());
+            }
+            0x64..=0x67 if self.model != Model::Mono => {}
+            0x69 if self.model != Model::Mono => {
+                self.audio.hyper_input(value, false, &mut self.ports);
+                return Ok(());
+            }
+            0x6a if self.model != Model::Mono => {}
+            0x6b if self.model != Model::Mono => {
+                if value & 15 != 0 {
+                    return Err(Error::new(format!(
+                        "Unknown Hyper Voice control bits {:#04x} at 0x6b; low nibble must be zero.", value & 15
+                    )));
+                }
+                self.audio.hyper_control(value);
+                self.ports[0x6b] = value & 0x60;
+                return Ok(());
+            }
             0x40..=0x42 | 0x44..=0x48 if self.model != Model::Mono => {
                 let mask = match port {
                     0x40 | 0x44 | 0x46 => 0xfe,
@@ -484,8 +545,22 @@ impl Bus {
             0xc1..=0xc3 => {
                 self.ports[0xd0 + (port as usize - 0xc1) * 2] = value;
             }
-            0x80..=0x8b | 0x8f | 0x90 | 0x91 | 0x94 | 0x9e => {}
-            0x8c..=0x8e => self.audio.write(port, value),
+            0x81 | 0x83 | 0x85 | 0x87 | 0x8d | 0x8e | 0x90 | 0x91 | 0x94 | 0x9e => {
+                let mask = match port {
+                    0x81 | 0x83 | 0x85 | 0x87 => 7,
+                    0x8d => 31,
+                    0x8e => 0x17,
+                    0x90 => 0xef,
+                    0x91 | 0x94 => 15,
+                    0x9e => 3,
+                    _ => unreachable!(),
+                };
+                self.audio.write(port, value);
+                self.ports[port as usize] = value & mask;
+                return Ok(());
+            }
+            0x80 | 0x82 | 0x84 | 0x86 | 0x88..=0x8b | 0x8f => {}
+            0x8c => {}
             0x20..=0x3f => {
                 let mask = if port & 1 == 0 && ((port - 0x20) / 2) & 4 != 0 {
                     0x70

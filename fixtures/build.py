@@ -16,11 +16,12 @@ CASES = [
     ('eeprom2048-packed', 0x20, 1, 10, 0xe0),
 ]
 
-def build(save, mapper, bits, mode, source='compat.asm', flags=0):
+def build(save, mapper, bits, mode, source='compat.asm', flags=0, defines=()):
     with tempfile.TemporaryDirectory(prefix='ws-probe-') as directory:
         output = Path(directory) / 'probe.bin'
         subprocess.run(['nasm', '-f', 'bin', f'-DEEPROM_BITS={bits}',
                         f'-DEXTENDED={mapper}', f'-DVIDEO_MODE={mode}',
+                        *[f'-D{define}' for define in defines],
                         str(ROOT / source), '-o', str(output)], check=True)
         code = output.read_bytes()
     assert len(code) < 65520
@@ -37,6 +38,9 @@ if __name__ == '__main__':
     images = [(name, build(save, mapper, bits, mode))
               for name, save, mapper, bits, mode in CASES]
     images.append(('gdma', build(0, 0, 0, 0x80, 'gdma.asm', 4)))
+    for mode, name in enumerate(['sound-channel2', 'sound-hyper', 'sound-direct']):
+        images.append((name, build(0, 0, 0, 0x80, 'sound.asm',
+                                   defines=(f'SOUND_PATH={mode}',))))
     for name, rom in images:
         path = ROOT / 'generated' / (name+'.ws')
         if args.check:

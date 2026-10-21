@@ -19,7 +19,7 @@ page.on('request', r => requests.push(r.url()));
 // Observe real Web Audio nodes/buffers while letting them play normally.
 const observeAudio = () => {
   window.audioProbe = { buffers:0, nonzero:0, active:0, peak:0, contexts:0, resumes:0, suspends:0,
-    activations:[], fetchResumes:[], chooserResumes:[], readResumes:[] };
+    activations:[], fetchResumes:[], chooserResumes:[], readResumes:[], lastBuffer:null };
   let clicking = false;
   document.addEventListener('click', event => { clicking = event.isTrusted; }, true);
   window.addEventListener('click', () => { clicking = false; });
@@ -84,7 +84,13 @@ const observeAudio = () => {
       source.start = (...args) => {
         window.audioProbe.buffers++;
         const buffer = source.buffer;
-        if (buffer && buffer.getChannelData(0).some(v => v !== 0)) window.audioProbe.nonzero++;
+        if (buffer) {
+          if (buffer.getChannelData(0).some(v => v !== 0)) window.audioProbe.nonzero++;
+          // Keep only the latest real buffer, bounded to 1024 stereo frames.
+          window.audioProbe.lastBuffer = { rate:buffer.sampleRate, length:buffer.length,
+            left:Array.from(buffer.getChannelData(0).slice(0,1024)),
+            right:Array.from(buffer.getChannelData(1).slice(0,1024)) };
+        }
         active = true;
         window.audioProbe.active++;
         window.audioProbe.peak = Math.max(window.audioProbe.peak, window.audioProbe.active);
@@ -396,6 +402,79 @@ try {
     await pause();
   }
   console.log('Original GDMA CPU byte-I/O fixture: forward/reverse transfers and register assertions passed on Color/Crystal');
+  // Actual compiled core PCM passes through the same adapter and Web Audio
+  // graph as cartridge gameplay. Inspect pre-filter buffers, not port acceptance.
+  async function greenSound() {
+    await page.waitForFunction(() => {
+      const p = document.querySelector('#screen').getContext('2d').getImageData(0,0,1,1).data;
+      return document.querySelector('#rom-status').textContent === 'Running'
+        && p[0] === 0 && p[1] === 255 && p[2] === 0;
+    });
+    assert.equal(await page.locator('#error').textContent(),'');
+  }
+  async function soundBuffer(path, before) {
+    await page.waitForFunction(({path,before}) => {
+      const p = window.audioProbe, b = p.lastBuffer;
+      const expected = path === 0 ? [0.03125,0.21875] : path === 1 ? [-0.125,0.125] : [-0.25,0.25,-0.125,0.125];
+      return p.buffers > before+3 && b && expected.every(v => b.left.includes(v));
+    },{path,before});
+    const buffer = await page.evaluate(() => window.audioProbe.lastBuffer);
+    assert.equal(buffer.rate,24000);
+    assert.ok(buffer.length >= 318 && buffer.length <= 640,'bounded frame-sized Wasm PCM');
+    const allowed = path === 0 ? [0.03125,0.21875] : path === 1 ? [-0.125,0.125] : [-0.25,0.25,-0.125,0.125];
+    assert.ok([...buffer.left,...buffer.right].every(v => Number.isFinite(v) && allowed.includes(v)),'exact independently calculated PCM values');
+    if (path < 2) assert.deepEqual(buffer.left,buffer.right);
+    else assert.ok(buffer.left.filter((v,i) => v === -buffer.right[i]).length > buffer.left.length*0.85);
+  }
+  for (const [path,name] of ['sound-channel2','sound-hyper','sound-direct'].entries()) {
+    const bytes = await readFile(new URL(`../../fixtures/generated/${name}.ws`,import.meta.url));
+    for (const model of ['color','crystal']) {
+      await page.evaluate(() => localStorage.setItem('wonderswan:audio:v1','{"muted":false,"volume":70}'));
+      await page.reload();await ready();await page.locator('#model').selectOption(model);
+      const chooser = page.waitForEvent('filechooser');
+      await page.locator('#load-rom').click();
+      await (await chooser).setFiles({name:`${name}.ws`,mimeType:'application/octet-stream',buffer:bytes});
+      await greenSound();await soundBuffer(path,0);
+      assert.equal(await page.evaluate(() => window.audioProbe.activations[0]),true);
+      await page.locator('#volume').fill('35');await page.waitForTimeout(150);
+      assert.ok(Math.abs(await page.evaluate(() => window.outputGain.gain.value)-0.35)<0.001);
+      const ratio = await page.evaluate(() => {
+        const rms = a => {const data=new Float32Array(a.fftSize);a.getFloatTimeDomainData(data);return Math.sqrt(data.reduce((s,v)=>s+v*v,0)/data.length);};
+        return {input:rms(window.inputAnalyser),output:rms(window.outputAnalyser)};
+      });
+      assert.ok(ratio.input > 0.001);
+      assert.ok(Math.abs(ratio.output/ratio.input-0.35)<0.025,'actual sound probe output follows gain');
+      await page.locator('#sound').click();
+      assert.equal(await page.evaluate(() => window.audioProbe.active),0);
+      assert.equal(await page.evaluate(() => window.audioProbe.lastGain),0,'mute schedules zero gain and stops every source');
+      const muted = await page.evaluate(() => window.audioProbe.buffers);
+      await page.waitForTimeout(100);assert.equal(await page.evaluate(() => window.audioProbe.buffers),muted);
+      await page.locator('#sound').click();await soundBuffer(path,muted);
+      await pause();assert.equal(await page.evaluate(() => window.audioProbe.active),0);
+      const paused = await page.evaluate(() => window.audioProbe.buffers);
+      await page.waitForTimeout(100);assert.equal(await page.evaluate(() => window.audioProbe.buffers),paused);
+      await page.locator('#pause').click();await soundBuffer(path,paused);
+      const restarted = await page.evaluate(() => window.audioProbe.buffers);
+      await page.locator('#reset').click();await greenSound();await soundBuffer(path,restarted);
+      await page.evaluate(() => {Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+      assert.equal(await page.evaluate(() => window.audioProbe.active),0);
+      await page.evaluate(() => {delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
+      assert.equal(await page.locator('#pause').textContent(),'Resume');
+      const hidden = await page.evaluate(() => window.audioProbe.buffers);
+      await page.locator('#pause').click();await soundBuffer(path,hidden);
+      const state = await page.evaluate(() => window.audioProbe);
+      assert.equal(state.contexts,1);assert.ok(state.peak<=8);
+      await pause();
+    }
+    // Each cartridge explicitly detects mono and halts without color-only I/O.
+    await page.reload();await ready();await page.locator('#model').selectOption('mono');
+    const chooser = page.waitForEvent('filechooser');await page.locator('#load-rom').click();
+    await (await chooser).setFiles({name:`${name}.ws`,mimeType:'application/octet-stream',buffer:bytes});
+    await page.waitForFunction(() => window.audioProbe.buffers>3);
+    assert.equal(await page.evaluate(() => window.audioProbe.nonzero),0);
+    assert.equal(await page.locator('#error').textContent(),'');await pause();
+  }
+  console.log('Original SDMA Channel 2, SDMA Hyper Voice and direct CPU Hyper Voice: exact real Wasm PCM on Color/Crystal, mono silence, measured gain, mute/pause/restart/visibility and bounded single-context playback passed');
   assert.deepEqual(errors,[]);
   console.log('Unreadable saves preserved; storage/audio unavailable degrade safely without browser exceptions');
 } finally { await browser.close(); }
