@@ -37,9 +37,18 @@ commercial software will run or that timing matches a physical console.
 
 GDMA register bytes are little-endian. Source is 20 bits, destination and byte
 length are 16 bits; their low bit and all reserved bits read back as zero.
-Control retains direction (bit 6) and enable (bit 7). Port 43 is unsupported.
+Control retains direction (bit 6) and enable (bit 7).
 Registers are available on Color/Crystal; enabling without color mode stops
 without copying or charging setup time. Mono continues to report unsupported I/O.
+
+On Color/Crystal, port 43 is the reserved high byte of the source segment:
+writes are ignored and reads return 00, with ordinary I/O access costs and no
+DMA work or stored state. Thus word OUT/IN at 42 completes normally; only the
+low nibble written to 42 supplies source address bits 16–19, and the byte at
+43 is discarded/read as zero. This handling also applies with color mode disabled.
+Read-zero is an evidence-based emulation policy; exact electrical readback has
+not been confirmed by physical-device tests. Mono still rejects 43, and port 49
+and Sound DMA ports 4A–52 remain explicitly unsupported on all models.
 
 Each word is read completely before being written, in the selected direction;
 overlaps therefore follow word transfer order. Both addresses advance by two,
