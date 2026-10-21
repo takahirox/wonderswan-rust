@@ -55,9 +55,18 @@ slots). Restart, pause and compatible model changes preserve saves. Reload or
 reopen the page and select the same ROM again to restore them. Storage errors
 show a notice; unreadable saved data is preserved rather than overwritten. No
 ROM or save is uploaded. Browser storage clearing/private-session expiry removes
-these saves. Click **Enable sound** for cartridges using audio; the demo stays
-silent. Pause/background/restart clears scheduled sound, and unavailable audio
-does not prevent gameplay.
+these saves.
+
+Sound defaults to **on at 70%** after a **Play demo** or **Load ROM** interaction;
+there is no audible autoplay on page load. Browser autoplay restrictions may keep
+audio suspended: use **Enable audio** to retry directly. The status describes the
+actual browser audio state; an audio-ready cartridge can still be silent.
+**Beacon Trail is deliberately silent**. **Mute / Unmute** preserves the slider
+level, and the labeled **Volume** slider adjusts output immediately from 0–100%
+(100% is unity gain). At 0% output is silent; raising the slider restores its level
+unless explicitly muted. Mute and volume are remembered locally, separately from
+ROM saves; clearing storage resets them. Pause/background/restart clears scheduled
+sound, and unavailable audio does not prevent gameplay.
 
 The demo source, generated binary, hand-authored lettering, and graphics are
 **CC0-1.0**, allowing play, modification and redistribution. See
@@ -162,7 +171,12 @@ including empty, playing, settings, debug, and fullscreen states.
 The compatibility suite loads each original SRAM/EEPROM probe through the file
 picker, checks background/sprite colors, SHA-256 save isolation, reload/reopen,
 reset/model/pause preservation, and real Web Audio sample buffers and bounded
-sources. It also checks denied storage, corrupt saves and unavailable audio.
+sources. It checks default-on activation before demo fetch/file chooser/file read,
+measures live output gain at 0%, 35% and 100%, and covers mute/volume persistence,
+keyboard/touch controls, denied/malformed preference storage, corrupt saves and
+unavailable audio. Suspended, rejected and pending resumes, creation/playback
+failures, and visibility/pagehide are simulated; sample buffers and analyser
+measurements use real Web Audio nodes. See [audio control validation](docs/issue-17-validation.md).
 See [hardware milestone results](docs/issue-11-validation.md),
 [player UI pre-merge results](docs/issue-9-validation.md) and the
 [original cartridge results](docs/issue-7-validation.md).
@@ -191,7 +205,11 @@ Required **post-merge checks remain pending**:
    JS and Wasm load without production-path errors.
 3. Load a CC0 compatibility probe locally on the public page; verify color,
    sound and saves surviving reload, plus Debug Mode/error recovery (Issue #11).
-4. Confirm the public model selector, Settings/Help, Debug Mode, compatibility
+4. Start an original licensed sound-producing fixture on the public player with
+   a normal user gesture. Verify default-on audio, mute and live volume changes;
+   reload to check remembered preferences and record actual autoplay restrictions
+   (Issue #17). Beacon Trail cannot verify audible output because it is silent.
+5. Confirm the public model selector, Settings/Help, Debug Mode, compatibility
    notice, and demo download/source/license links. Report deployment-only problems
    as follow-up work.
 

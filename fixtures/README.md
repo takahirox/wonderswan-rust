@@ -60,7 +60,9 @@ RAM observations for native tests/Debug tooling:
 For browser checks, build Wasm/frontend, start Vite preview, then run
 `npm run test:compat` from `web` (set `WS_PREVIEW_URL` if needed). The suite selects
 these files locally; it does not fetch/upload ROM or save data. To try manually,
-choose **Load ROM**, select a generated image, and click **Enable sound**.
+choose **Load ROM** and select a generated image; sound defaults to on after
+this interaction. Use **Enable audio** if browser policy requires a retry, and
+adjust **Volume** or **Mute**.
 Reload and reselect the same cartridge to continue its saved boot count; ROMs
 are deliberately not cached automatically. Native tests check save bytes; the
 browser suite checks the actual localStorage slots and Web Audio buffers.

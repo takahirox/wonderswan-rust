@@ -40,7 +40,16 @@ async function main() {
   const report = (message: string) => { element("notice").textContent = message; };
   const saves = new Saves(report);
   const soundButton = element<HTMLButtonElement>("sound");
-  const sound = new Sound((message) => { report(message); soundButton.textContent = "Enable sound"; });
+  const volume = element<HTMLInputElement>("volume");
+  const enableAudio = element<HTMLButtonElement>("enable-audio");
+  const sound = new Sound(refreshSound);
+  function refreshSound() {
+    soundButton.textContent = sound.muted ? "Unmute" : "Mute";
+    volume.value = String(sound.volume);
+    element("volume-value").textContent = `${sound.volume}%`;
+    element("sound-status").textContent = sound.status;
+    enableAudio.hidden = !sound.needsUnlock;
+  }
   function persist() { if (loaded) saves.store(loaded.key, machine.save_data()); }
   let readRevision = 0;
   let loading = false;
@@ -195,6 +204,7 @@ async function main() {
     }
   }
   function playDemo() {
+    sound.unlock();
     void readROM("Beacon Trail", async () => {
       const response = await fetch(`${import.meta.env.BASE_URL}demo/beacon-trail.ws`);
       if (!response.ok) throw new Error(`Demo request failed (${response.status}). Try again.`);
@@ -203,22 +213,26 @@ async function main() {
   }
 
   soundButton.addEventListener("click", () => {
-    if (sound.enabled) { sound.disable(); soundButton.textContent = "Enable sound"; }
-    else void sound.enable().then(enabled => {
-      soundButton.textContent = enabled ? "Mute sound" : "Enable sound";
-      if (!running) sound.pause();
-    });
+    sound.setMuted(!sound.muted);
+    if (!sound.muted) sound.unlock();
+  });
+  enableAudio.addEventListener("click", () => sound.unlock());
+  volume.addEventListener("input", () => {
+    sound.setVolume(Number(volume.value));
+    // Raising the level does not override an explicit mute preference.
+    if (sound.volume > 0 && sound.needsUnlock) sound.unlock();
   });
   window.setInterval(persist, 1000);
-  window.addEventListener("pagehide", () => { persist(); sound.pause(); });
+  window.addEventListener("pagehide", () => { resumeAfterDialog = false; visibilityRevision++; setRunning(false); });
   modelSelect.addEventListener("change", () => restart(modelSelect.value));
   resetButton.addEventListener("click", () => restart(machine.model()));
   pauseButton.addEventListener("click", () => {
+    if (!running) sound.unlock();
     setRunning(!running);
     if (running) canvas.focus({ preventScroll: true });
   });
   demoButton.addEventListener("click", playDemo);
-  loadButton.addEventListener("click", () => { clearKeys(); romInput.click(); });
+  loadButton.addEventListener("click", () => { sound.unlock(); clearKeys(); romInput.click(); });
   romInput.addEventListener("change", () => {
     const file = romInput.files?.[0];
     if (!file) return;
@@ -246,6 +260,7 @@ async function main() {
     }
   });
   element("demo-again").addEventListener("click", () => {
+    sound.unlock();
     resumeAfterDialog = false;
     demoAfterDialog = true;
     help.close();
@@ -347,7 +362,8 @@ async function main() {
   });
   draw();
   toggleDebug(false);
-  for (const control of [modelSelect, demoButton, loadButton, settingsButton, fullscreenButton, soundButton]) control.disabled = false;
+  for (const control of [modelSelect, demoButton, loadButton, settingsButton, fullscreenButton, soundButton, volume, enableAudio]) control.disabled = false;
+  refreshSound();
   refresh();
 }
 

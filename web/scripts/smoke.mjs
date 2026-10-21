@@ -83,7 +83,7 @@ async function checkLayout() {
   assert.equal(layout.overflow, false, 'no horizontal overflow');
   assert.ok(Math.abs(layout.width / layout.height - 224/144) < 0.01, 'screen aspect ratio');
   assert.equal(layout.pixels, 'pixelated');
-  for (const id of ['model','pause','reset','load-rom','fullscreen','settings']) {
+  for (const id of ['model','pause','reset','load-rom','fullscreen','settings','sound','volume']) {
     const box = await page.locator(`#${id}`).boundingBox();
     const viewport = page.viewportSize();
     assert.ok(box.x >= 0 && box.x + box.width <= viewport.width, `${id} fits viewport`);
@@ -381,6 +381,12 @@ try {
   await checkLayout();
   assert.equal(await page.locator('#touch-controls').isVisible(), true);
   await screenshot('mobile-empty');
+  assert.equal(await page.getByRole('slider',{name:'Volume',exact:true}).inputValue(),'70');
+  await page.locator('#sound').tap();
+  assert.equal(await page.locator('#sound').textContent(),'Unmute');
+  await page.locator('#sound').tap();
+  assert.equal(await page.locator('#sound').textContent(),'Mute');
+  await page.locator('#volume').tap();
   await page.locator('#demo').tap();
   await initial();
   await screenshot('mobile-playing');
