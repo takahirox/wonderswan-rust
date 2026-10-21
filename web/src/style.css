@@ -44,6 +44,12 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 224 / 144; ima
 #empty-state .hint { font-size: 12px; }
 .toolbar, .playback, .tools { display: flex; flex-wrap: wrap; gap: 8px; }
 .toolbar { justify-content: space-between; margin-top: 20px; }
+.sound-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; }
+.sound-controls label, #sound-status { color: var(--muted); }
+#volume { width: 110px; min-width: 60px; min-height: 44px; margin: 0; accent-color: var(--accent); }
+#volume-value { min-width: 4ch; font-variant-numeric: tabular-nums; }
+#sound { min-width: 76px; }
+#sound-status { flex-basis: 100%; font-size: 12px; }
 .feedback { font-size: 13px; }
 #error:not(:empty), #notice:not(:empty), #retry:not([hidden]) { margin-top: 16px; }
 #error { color: #ffb5b5; overflow-wrap: anywhere; }
