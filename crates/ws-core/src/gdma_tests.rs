@@ -59,8 +59,13 @@ fn byte_register_masks_readback_model_and_mode_gates() {
         let mut b = Bus::new(model);
         program(&mut b, 0xffffff, 0xffff, 0xffff, 0x7f);
         assert_eq!(state(&mut b), (0xffffe, 0xfffe, 0xfffe, 0x40));
-        for p in [0x43, 0x49, 0x4a, 0x52] {
-            assert!(b.output(p, 0).is_err());
+        for value in [0x01, 0x80, 0xff] {
+            b.output(0x43, value).unwrap();
+            assert_eq!(b.input(0x43).unwrap(), 0);
+            assert_eq!(state(&mut b), (0xffffe, 0xfffe, 0xfffe, 0x40));
+        }
+        for p in 0x49..=0x52 {
+            assert!(b.output(p, 255).is_err());
             assert!(b.input(p).is_err());
         }
         // Register state is model-gated; the engine needs color enable at 60.7.
@@ -77,11 +82,122 @@ fn byte_register_masks_readback_model_and_mode_gates() {
         assert_eq!(state(&mut b), (0x102, 0x202, 0, 0));
     }
     let mut mono = Bus::new(Model::Mono);
-    for port in REGISTERS {
+    for port in REGISTERS.into_iter().chain([0x43]).chain(0x49..=0x52) {
         assert!(mono.output(port, 255).is_err());
         assert!(mono.input(port).is_err());
     }
     assert_eq!(finish(&mut mono), 0);
+}
+
+#[test]
+fn reserved_byte_preserves_pending_and_active_dma_state_and_io_cost() {
+    for model in [Model::Color, Model::Crystal] {
+        let mut b = Bus::new(model);
+        b.output(0x60, 0x80).unwrap();
+        b.ram[0x100..0x106].copy_from_slice(&[1, 2, 3, 4, 5, 6]);
+        program(&mut b, 0x100, 0x200, 6, 0x80);
+        for cycles in [7, 2, 2] {
+            let ports = b.ports;
+            let ram = b.ram.clone();
+            let clock = b.cycles;
+            b.accesses.set(0);
+            for (index, value) in [0x01, 0x5a, 0x80, 0xff].into_iter().enumerate() {
+                b.output(0x43, value).unwrap();
+                assert_eq!(b.accesses.get(), index as u32 * 2 + 1);
+                assert_eq!(b.input(0x43).unwrap(), 0);
+                assert_eq!(b.accesses.get(), index as u32 * 2 + 2);
+                assert_eq!(b.ports, ports);
+                assert_eq!(b.ram, ram);
+                assert_eq!(b.cycles, clock);
+            }
+            // Reserved I/O must neither start a transfer nor reset its setup cost.
+            assert_eq!(b.gdma_step(), Some(cycles));
+            b.tick(cycles);
+        }
+        assert_eq!(b.gdma_step(), None);
+        assert_eq!(b.cycles, 11);
+        assert_eq!(state(&mut b), (0x106, 0x206, 0, 0));
+        assert_eq!(&b.ram[0x200..0x206], &[1, 2, 3, 4, 5, 6]);
+        b.take_fault().unwrap();
+    }
+}
+
+#[test]
+fn cpu_byte_io_to_reserved_port_preserves_ax_high_byte_and_gdma_registers() {
+    for model in [Model::Color, Model::Crystal] {
+        for value in [0x01, 0x5a, 0x80, 0xff] {
+            let mut b = Bus::new(model);
+            program(&mut b, 0xabcde, 0x1234, 0x5678, 0x40);
+            let ports = b.ports;
+            let mut cpu = Cpu::default();
+            cpu.segments[1] = 0;
+            cpu.ip = 0x300;
+            cpu.registers[0] = 0xa500 | value;
+            cpu.registers[2] = 0x43;
+            // Original code: OUT DX, AL; IN AL, DX; INC BX.
+            b.ram[0x300..0x303].copy_from_slice(&[0xee, 0xec, 0x43]);
+            assert_eq!(cpu.step(&mut b).unwrap(), 3);
+            assert_eq!(cpu.ip, 0x301);
+            assert_eq!(cpu.registers[0], 0xa500 | value);
+            assert_eq!(cpu.step(&mut b).unwrap(), 3);
+            assert_eq!(cpu.ip, 0x302);
+            assert_eq!(cpu.registers[0], 0xa500);
+            assert_eq!(cpu.registers[2], 0x43);
+            assert_eq!(b.ports, ports);
+            assert_eq!(cpu.step(&mut b).unwrap(), 2);
+            assert_eq!(cpu.ip, 0x303);
+            assert_eq!(cpu.registers[3], 1);
+            assert!(!cpu.halted);
+            b.take_fault().unwrap();
+        }
+    }
+}
+
+#[test]
+fn cpu_word_io_masks_source_segment_and_continues_through_real_transfer() {
+    for model in [Model::Color, Model::Crystal] {
+        for (value, byte) in [(0xa5f2, 0x31), (0x5af4, 0x30), (0xff0f, 0x33)] {
+            let mut b = bus();
+            b.model = model;
+            b.output(0xc0, 0).unwrap();
+            b.output(0xc2, 1).unwrap();
+            program(&mut b, 0x1234, 0x1400, 4, 0x40);
+            let mut cpu = Cpu::default();
+            cpu.segments[1] = 0;
+            cpu.ip = 0x300;
+            cpu.registers[0] = value;
+            cpu.registers[2] = 0x42;
+            // Original code: OUT DX, AX; IN AX, DX; INC BX; OUT 48, AL; INC BX.
+            b.ram[0x300..0x306].copy_from_slice(&[0xef, 0xed, 0x43, 0xe6, 0x48, 0x43]);
+            let source = 0x1234 | (u32::from(value & 0xf) << 16);
+            assert_eq!(cpu.step(&mut b).unwrap(), 4);
+            assert_eq!(cpu.ip, 0x301);
+            assert_eq!(cpu.registers[0], value);
+            assert_eq!(state(&mut b), (source, 0x1400, 4, 0x40));
+            assert_eq!(cpu.step(&mut b).unwrap(), 4);
+            assert_eq!(cpu.ip, 0x302);
+            assert_eq!(cpu.registers[0], value & 0xf);
+            assert_eq!(cpu.registers[2], 0x42);
+            assert_eq!(state(&mut b), (source, 0x1400, 4, 0x40));
+            assert_eq!(cpu.step(&mut b).unwrap(), 2);
+            assert_eq!(cpu.ip, 0x303);
+            assert_eq!(cpu.registers[3], 1);
+            cpu.registers[0] = 0x80;
+            assert_eq!(cpu.step(&mut b).unwrap(), 4);
+            for cycles in [7, 2] {
+                assert_eq!(cpu.step(&mut b).unwrap(), cycles);
+                assert_eq!(cpu.ip, 0x305);
+                assert_eq!(cpu.registers[3], 1);
+            }
+            assert_eq!(&b.ram[0x1400..0x1404], &[byte; 4]);
+            assert_eq!(state(&mut b), (source + 4, 0x1404, 0, 0));
+            assert_eq!(cpu.step(&mut b).unwrap(), 2);
+            assert_eq!(cpu.ip, 0x306);
+            assert_eq!(cpu.registers[3], 2);
+            assert!(!cpu.halted);
+            b.take_fault().unwrap();
+        }
+    }
 }
 
 #[test]

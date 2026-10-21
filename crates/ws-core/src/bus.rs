@@ -282,6 +282,8 @@ impl Bus {
             .set(self.accesses.get() + 1 + u32::from(port >= 0xc0 && (self.ports[0x60] & 8 != 0)));
         match port {
             0x40..=0x42 | 0x44..=0x48 if self.model != Model::Mono => Ok(self.ports[port as usize]),
+            // Reserved source-segment high byte: deterministic model readback.
+            0x43 if self.model != Model::Mono => Ok(0),
             2 => Ok(((self.cycles / 256) % 159) as u8),
             0xb0 => Ok(self.interrupt().unwrap_or(self.ports[0xb0] & 0xf8)),
             0xb5 => {
@@ -359,6 +361,8 @@ impl Bus {
         self.accesses
             .set(self.accesses.get() + 1 + u32::from(port >= 0xc0 && (self.ports[0x60] & 8 != 0)));
         match port {
+            // Wide OUT at 0x42 reaches this unused source-segment high byte.
+            0x43 if self.model != Model::Mono => return Ok(()),
             0x40..=0x42 | 0x44..=0x48 if self.model != Model::Mono => {
                 let mask = match port {
                     0x40 | 0x44 | 0x46 => 0xfe,
