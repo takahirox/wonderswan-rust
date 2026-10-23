@@ -416,7 +416,7 @@ impl Bus {
             0x00..=0x17
             | 0x1c..=0x3f
             | 0x80..=0x90
-            | 0x94
+            | 0x94..=0x95
             | 0x9e
             | 0xa2
             | 0xa4..=0xa7
@@ -594,6 +594,14 @@ impl Bus {
                 self.audio.write(port, value);
                 self.ports[port as usize] = value & mask;
                 return Ok(());
+            }
+            0x95 => {
+                if value & !2 != 0 {
+                    return Err(Error::new(format!(
+                        "Unsupported sound test bits {:#04x} at port 0x95: only FAST_SWEEP (0x02) and clearing (0x00) are supported; HOLD_CH and other debug controls are unimplemented.",
+                        value & !2
+                    )));
+                }
             }
             0x80 | 0x82 | 0x84 | 0x86 | 0x88..=0x8b | 0x8f => {}
             0x8c => {}

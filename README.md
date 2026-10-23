@@ -18,6 +18,9 @@ Exact raw 3 MiB and 6 MiB cartridges are supported with top-aligned ROM mapping,
 unchanged raw-content save identities and no external padding.
 LCD total-line programming updates core frame progression and browser cadence; see
 [register/model/edge policies](docs/lcd-timing.md).
+Sound-test port 95 supports clearing and fast sweep on all three models; see
+[evidence and boundary policies](docs/fast-sweep.md). HOLD_CH and other debug
+controls remain unsupported.
 Compatibility and timing remain limited; see the exact
 [support matrix and limitations](docs/hardware-subset.md).
 Unsupported instructions and hardware operations stop with a visible diagnostic.
@@ -212,6 +215,9 @@ measurements use real Web Audio nodes. It also loads the original SDMA/Hyper Voi
 probes on Color/Crystal, checks exact PCM buffers and gain/lifecycle controls,
 and verifies mono silence. The A0 CPU probe checks live ROM controls on all
 three models, matching-width ROM data and Color/Crystal DMA paths after restart.
+The port-95 CPU probe checks clearing, fast frequency progression, restored
+ordinary sweep and control reset on every model, with CPU-written SRAM markers,
+measurable real Wasm PCM and empty-after-drain assertions.
 Internal EEPROM CPU probes additionally check settings,
 status, write locking/protection, three-model console isolation, cross-cartridge
 retention, lifecycle flushes, reload/reopen and corrupt/denied/full console storage

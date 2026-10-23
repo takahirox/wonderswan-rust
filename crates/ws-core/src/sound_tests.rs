@@ -81,7 +81,7 @@ fn sound_ports_masks_reserved_bytes_unknown_bits_and_model_scope() {
             .contains("Unknown Hyper Voice"));
         assert_eq!(b.input(0x6b).unwrap(), 0x60);
         assert!(b.output(0x68, 1).is_err()); // No documented direct CPU input at 68.
-        for p in [0x49, 0x53, 0x63, 0x6c, 0x95] {
+        for p in [0x49, 0x53, 0x63, 0x6c] {
             assert!(b.input(p).is_err());
             assert!(b.output(p, 0).is_err());
         }

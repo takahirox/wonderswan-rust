@@ -47,6 +47,7 @@ if __name__ == '__main__':
                            build(2, mapper, 0, 0, 'raw-rom.asm', 4,
                                  defines=(f'FIRST_BANK={first}',), size=mib*1024*1024)))
     images.append(('lcd', build(2, 0, 0, 0, 'lcd.asm')))
+    images.append(('sweep', build(2, 0, 0, 0, 'sweep.asm')))
     for vertical in [False, True]:
         images.append(('keypad-vertical' if vertical else 'keypad-horizontal',
                        build(2, 0, 0, 0, 'keypad.asm', int(vertical))))

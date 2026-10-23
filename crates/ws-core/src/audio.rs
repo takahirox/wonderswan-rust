@@ -8,6 +8,7 @@ pub(crate) struct Audio {
     clocks: [u32; 4],
     sample_clock: u32,
     sweep_clock: u32,
+    sweep_ticks: u8,
     pub lfsr: u16,
     pub mix: [u16; 2],
     hyper_right: bool,
@@ -66,6 +67,7 @@ impl Audio {
     pub fn write(&mut self, port: u16, value: u8) {
         if port == 0x8d {
             self.sweep_clock = 0;
+            self.sweep_ticks = 0;
         }
         if port == 0x8e && value & 8 != 0 {
             self.lfsr = 0;
@@ -91,13 +93,29 @@ impl Audio {
                 }
             }
             if control & 0x44 == 0x44 {
-                self.sweep_clock += 1;
-                if self.sweep_clock >= 8192 * (u32::from(ports[0x8d] & 31) + 1) {
-                    self.sweep_clock = 0;
-                    let frequency = u16::from_le_bytes([ports[0x84], ports[0x85]])
-                        .wrapping_add(ports[0x8c] as i8 as u16)
-                        & 2047;
-                    [ports[0x84], ports[0x85]] = frequency.to_le_bytes();
+                // FAST_SWEEP bypasses only the fixed divider. Preserve the
+                // programmable count and pause the prescaler while bypassed.
+                // Unmeasured transition phases are policies: docs/fast-sweep.md.
+                let sweep_tick = if ports[0x95] & 2 != 0 {
+                    true
+                } else {
+                    self.sweep_clock += 1;
+                    if self.sweep_clock == 8192 {
+                        self.sweep_clock = 0;
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if sweep_tick {
+                    self.sweep_ticks += 1;
+                    if self.sweep_ticks > ports[0x8d] & 31 {
+                        self.sweep_ticks = 0;
+                        let frequency = u16::from_le_bytes([ports[0x84], ports[0x85]])
+                            .wrapping_add(ports[0x8c] as i8 as u16)
+                            & 2047;
+                        [ports[0x84], ports[0x85]] = frequency.to_le_bytes();
+                    }
                 }
             }
             self.sample_clock += 1;

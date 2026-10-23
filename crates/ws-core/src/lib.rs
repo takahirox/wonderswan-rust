@@ -18,6 +18,8 @@ mod raw_rom_tests;
 mod sdma;
 #[cfg(test)]
 mod sound_tests;
+#[cfg(test)]
+mod sweep_tests;
 mod video;
 
 pub use audio::SAMPLE_RATE;
