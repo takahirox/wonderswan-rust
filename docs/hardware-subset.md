@@ -330,10 +330,10 @@ initialization sufficed was incorrect. The pinned
 report these values for all boot ROMs/modes, mapping ASWAN to WonderSwan and
 SPHINX/SPHINX2 to Color/Crystal. Its
 [startup assembly](https://github.com/FluBBaOfWard/WSHWTest/blob/34e33d5bfaaabb8b09fa5a557e409efe9fbfd979/WSHWTest.asm#L49-L74)
-stores incoming SP before replacing it and DS before initializing it. It overwrites
-SS first (and later stores the new SP over the initial capture), so it does not
-establish incoming SS or independently preserve SP for later inspection. The
-SP requirement rests on the author's reported observation. The author qualifies
+captures incoming SP at line 52 before replacing it. The later store at line 63
+is commented out, and line 619 reads the preserved capture. DS is captured before
+initialization. SS is overwritten first, so this evidence does not establish
+incoming SS. The author qualifies
 interpretations; these sources were inspected, not executed on physical hardware
 here. This bounded correction does not adopt the uncertain startup I/O tables.
 

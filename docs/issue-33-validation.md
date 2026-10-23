@@ -15,9 +15,9 @@ values: SP=2000 on all models, DS=FF00 on WonderSwan and FE00 on Color/Crystal,
 including mono-compatible cartridges on those physical color models.
 The [startup policy](hardware-subset.md#firmware-free-startup-and-reset) links the
 pinned primary experiment documentation and assembly and records applicability.
-The experiment stores SP before replacing it, but later overwrites that stored
-value with its new SP; the SP requirement therefore rests on the author's reported
-observation. DS is captured before initialization. SS is overwritten first and
+The experiment captures incoming SP at line 52 before replacing it. The later
+store at line 63 is commented out, and line 619 reads the preserved capture.
+DS is captured before initialization. SS is overwritten first and
 cannot be established from that capture. No Issue requirement was weakened or
 changed, and no uncertain startup I/O tables were adopted.
 
