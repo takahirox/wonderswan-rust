@@ -30,6 +30,7 @@ at `46783132a59e576c11456f5997620594eca1c390` (community console documentation):
 
 | Source | Even low ports | Directions / lane qualifications |
 | --- | --- | --- |
+| [Display](https://github.com/WonderfulToolchain/hardware-definitions/blob/46783132a59e576c11456f5997620594eca1c390/target/wswan/display.xml) | 20, 22, 24, 26, 28, 2A, 2C, 2E, 30, 32, 34, 36, 38, 3A, 3C, 3E | Palette words IN/OUT on all models and modes. Preserve each byte's 77 mask, with 70 on the low byte of palettes 4–7 and 12–15 (transparent entry zero). |
 | [Timers](https://github.com/WonderfulToolchain/hardware-definitions/blob/46783132a59e576c11456f5997620594eca1c390/target/wswan/timers.xml) | A4, A6; A8, AA | Reload IN/OUT; counters IN only. Each reload byte keeps its existing reload-on-write effect. |
 | [Internal EEPROM](https://github.com/WonderfulToolchain/hardware-definitions/blob/46783132a59e576c11456f5997620594eca1c390/target/wswan/eeprom.xml) | BA, BC | Data and command IN/OUT, separate data input/output buffers. BE is byte control, BF reserved: no inferred word register. |
 | [DMA](https://github.com/WonderfulToolchain/hardware-definitions/blob/46783132a59e576c11456f5997620594eca1c390/target/wswan/dma.xml) | 40, 44, 46, 4A, 4E | Color/Crystal only, IN/OUT even in mono mode. Preserve alignment masks and bytewise SDMA shadows. 42/43, 4C/4D, 50/51 are not word registers; high lanes remain reserved. |

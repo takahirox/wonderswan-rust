@@ -178,6 +178,22 @@ fn literal_io_costs_immediate_dx_strings_and_byte_lanes() {
         }
         // Every documented implemented pair, plus deliberately ineligible pairs.
         for (port, readable, writable, value) in [
+            (0x20, true, true, 0x1234),
+            (0x22, true, true, 0x1234),
+            (0x24, true, true, 0x1234),
+            (0x26, true, true, 0x1234),
+            (0x28, true, true, 0x1230),
+            (0x2a, true, true, 0x1230),
+            (0x2c, true, true, 0x1230),
+            (0x2e, true, true, 0x1230),
+            (0x30, true, true, 0x1234),
+            (0x32, true, true, 0x1234),
+            (0x34, true, true, 0x1234),
+            (0x36, true, true, 0x1234),
+            (0x38, true, true, 0x1230),
+            (0x3a, true, true, 0x1230),
+            (0x3c, true, true, 0x1230),
+            (0x3e, true, true, 0x1230),
             (0xa4, true, true, 0x1234),
             (0xa6, true, true, 0x1234),
             (0xa8, true, false, 0),
@@ -325,6 +341,108 @@ fn literal_io_costs_immediate_dx_strings_and_byte_lanes() {
                         3,
                         "failed word keeps both attempted lane charges and opcode"
                     );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn literal_palette_bus_costs_masks_and_rep_word_io() {
+    for (model, color) in modes() {
+        // Independent data/bus vectors: transparent palette entry zero masks
+        // the low nibble of even ports 28..2E and 38..3E. Odd words stay split.
+        for (port, value, cost) in [
+            (0x20, 0x7777, 1),
+            (0x22, 0x7777, 1),
+            (0x24, 0x7777, 1),
+            (0x26, 0x7777, 1),
+            (0x28, 0x7770, 1),
+            (0x2a, 0x7770, 1),
+            (0x2c, 0x7770, 1),
+            (0x2e, 0x7770, 1),
+            (0x30, 0x7777, 1),
+            (0x32, 0x7777, 1),
+            (0x34, 0x7777, 1),
+            (0x36, 0x7777, 1),
+            (0x38, 0x7770, 1),
+            (0x3a, 0x7770, 1),
+            (0x3c, 0x7770, 1),
+            (0x3e, 0x7770, 1),
+            (0x21, 0x7777, 2),
+            (0x27, 0x7077, 2),
+            (0x37, 0x7077, 2),
+            (0x3d, 0x7077, 2),
+            (0x1f, 0x77ff, 2), // LUT/palette boundary is not a word register.
+        ] {
+            let (_, mut b) = setup(model, color, &[]);
+            b.accesses.set(0);
+            b.output_word(port, 0xffff).unwrap();
+            assert_eq!(b.accesses.get(), cost, "OUT {model:?}/{color}/{port:x}");
+            b.accesses.set(0);
+            assert_eq!(b.input_word(port).unwrap(), value);
+            assert_eq!(b.accesses.get(), cost, "IN {model:?}/{color}/{port:x}");
+            // The same two lanes as separate byte instructions cost two clocks.
+            b.accesses.set(0);
+            b.output(port, 0xff).unwrap();
+            b.output(port + 1, 0xff).unwrap();
+            assert_eq!(b.accesses.get(), 2);
+            b.accesses.set(0);
+            let lo = b.input(port).unwrap();
+            let hi = b.input(port + 1).unwrap();
+            assert_eq!(u16::from_le_bytes([lo, hi]), value);
+            assert_eq!(b.accesses.get(), 2);
+        }
+        // The last odd palette lane cannot consolidate with the DMA region.
+        let (_, mut b) = setup(model, color, &[]);
+        b.accesses.set(0);
+        let result = b.output_word(0x3f, 0xffff);
+        assert_eq!(result.is_ok(), model != Model::Mono);
+        assert_eq!(b.ports[0x3f], 0x77, "low lane keeps its masked write");
+        assert_eq!(b.accesses.get(), 2);
+        b.accesses.set(0);
+        let result = b.input_word(0x3f);
+        if model == Model::Mono {
+            assert!(result.is_err());
+        } else {
+            assert_eq!(result.unwrap(), 0xfe77);
+        }
+        assert_eq!(b.accesses.get(), 2);
+        // Approximate instruction totals are separate from the bus-only vectors.
+        // Aligned memory plus palette IN/OUT: REP/prefix/opcode/execution + 1+1.
+        for (port, value, total) in [
+            (0x20, 0x7777u16, 7),
+            (0x28, 0x7770, 7),
+            (0x3e, 0x7770, 7),
+            (0x21, 0x7777, 8),
+            (0x27, 0x7077, 8),
+            (0x3d, 0x7077, 8),
+        ] {
+            for opcode in [0x6d, 0x6f] {
+                for reverse in [false, true] {
+                    let (mut c, mut b) = setup(model, color, &[0xf3, opcode]);
+                    c.registers[1] = 2;
+                    c.registers[2] = port;
+                    c.registers[6] = 0x800;
+                    c.registers[7] = 0x900;
+                    b.ram[0x7fe..0x804].fill(0xff);
+                    b.output_word(port, 0xffff).unwrap();
+                    if reverse {
+                        c.flags |= DF;
+                    }
+                    for _ in 0..2 {
+                        assert_eq!(c.step(&mut b).unwrap(), total);
+                    }
+                    assert_eq!((c.registers[1], c.ip), (0, 0x1002));
+                    if opcode == 0x6d {
+                        for dest in [0x900, if reverse { 0x8fe } else { 0x902 }] {
+                            assert_eq!(&b.ram[dest..dest + 2], &value.to_le_bytes());
+                        }
+                        assert_eq!(c.registers[7], if reverse { 0x8fc } else { 0x904 });
+                    } else {
+                        assert_eq!(b.input_word(port).unwrap(), value);
+                        assert_eq!(c.registers[6], if reverse { 0x7fc } else { 0x804 });
+                    }
                 }
             }
         }

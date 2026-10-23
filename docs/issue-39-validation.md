@@ -181,3 +181,39 @@ used or claimed. Full prefetch, absolute instruction accuracy, electrical aliase
 ROM-width mismatch data and speculative external wait corrections remain outside
 the agreed scope. No usage reset, allowance purchase or model/provider switch was
 performed.
+
+## Palette eligibility review fix (2026-10-24)
+
+Review found that the original eligibility list omitted the implemented palette
+word registers. The pinned Wonderful `display.xml` declares `SCR_PAL` at 20 with
+width 2 and count 16, and overlapping `SPR_PAL` at 30 with width 2 and count 8.
+The [transfer table](internal-word-timing.md) now includes every even pair from
+20/21 through 3E/3F. These use the existing internal 1/1/2 byte/even/odd bus rule
+on every model and mode. The correction replaces the accidental two-clock
+aligned palette charge; the existing byte masks and dispatch remain unchanged.
+
+Before changing production code, executed
+`cargo test -p ws-core --locked literal_palette_bus_costs_masks_and_rep_word_io`.
+It failed with exit 101: Mono aligned OUT at 20 cost 2 versus required 1.
+The new independent literal vectors cover all sixteen aligned pairs, odd words,
+transparent-entry masks, independent byte accesses, LUT/palette and palette/DMA
+boundaries, and REP INS/OUTS with both DF directions across all five model/mode
+combinations. Existing immediate/DX IN/OUT vectors now cover all palette pairs.
+
+The first full workspace run exposed four existing BUSLOCK vectors retaining
+the old palette word costs. Their bus expectations were reduced by one clock:
+prefix/opcode/immediate plus aligned I/O is 4; prefix/opcode plus aligned I/O is
+3. Their complete data, registers, flags, ports and following-instruction checks
+remain intact. After that correction, the full workspace run passed: 116 core
+tests, 17 integration tests, one adapter test and doc tests. Format and Clippy
+checks passed, including all workspace targets with warnings denied. Both Python
+fixture/demo checks passed; generated cartridges and demo remain unchanged.
+Production Wasm and Vite builds passed using the installed Rustup stable
+toolchain. The complete Chromium smoke suite passed against this worktree's
+production preview at `http://127.0.0.1:4193/wonderswan-rust/`.
+The complete Chromium compatibility suite then passed sequentially, including
+BUSLOCK palette word I/O, the original relative word-timing cartridge and fresh
+restart on every model, LCD, PCM/audio, both DMA engines, input, ROM banking and
+independent cartridge/console persistence. `git diff --check` passed on the final
+files. The review fix changes no fixture bytes or browser code; no push or merge
+was performed.

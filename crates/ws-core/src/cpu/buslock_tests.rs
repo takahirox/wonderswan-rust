@@ -178,7 +178,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            5,
+            4,
         ),
         (
             &[0xf0, 0xe6, 0x20],
@@ -198,7 +198,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x34, 0x12],
             0xf003,
-            5,
+            4,
         ),
         (
             &[0xf0, 0xec],
@@ -218,7 +218,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            4,
+            3,
         ),
         (
             &[0xf0, 0xee],
@@ -238,7 +238,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x34, 0x12],
             0xf003,
-            4,
+            3,
         ),
         (
             &[0xf0, 0x90],

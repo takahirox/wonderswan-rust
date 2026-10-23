@@ -143,6 +143,7 @@ impl Bus {
     /// This list describes documented word registers, not arbitrary adjacent I/O.
     fn word_port(&self, port: u16, output: bool) -> bool {
         match port {
+            0x20..=0x3e if port & 1 == 0 => true,
             0x80 | 0x82 | 0x84 | 0x86 | 0xa4 | 0xa6 | 0xba | 0xbc => true,
             0x92 | 0x96 | 0x98 | 0x9a | 0xa8 | 0xaa => !output,
             0x40 | 0x44 | 0x46 | 0x4a | 0x4e | 0x64 | 0x66 | 0x6a => self.model != Model::Mono,
