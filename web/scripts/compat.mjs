@@ -9,6 +9,7 @@ import { sweepChecks } from './sweep.mjs';
 import { startupChecks } from './startup.mjs';
 import { shiftRotateChecks } from './shift-rotate.mjs';
 import { divisionChecks } from './divide.mjs';
+import { pushSpChecks } from './push-sp.mjs';
 import { multiplicationChecks } from './multiply.mjs';
 import { fpo1PollChecks } from './fpo1-poll.mjs';
 import { buslockChecks } from './buslock.mjs';
@@ -519,6 +520,7 @@ try {
   await sweepChecks(browser,base,errors,observeAudio);
   await startupChecks(browser,base,errors);
   await buslockChecks(browser,base,errors);
+  await pushSpChecks(browser,base,errors);
   await fpo1PollChecks(browser,base,errors);
   await multiplicationChecks(browser,base,errors);
   await divisionChecks(browser,base,errors);

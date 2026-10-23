@@ -310,7 +310,10 @@ Implemented with generic operands, not ROM-specific dispatch:
   and [byte-IDIV correction and limits](byte-idiv-flags.md).
 - DAA/DAS, AAA/AAS, AAM/AAD; CF/PF/AF/ZF/SF/OF arithmetic; logical AF cleared.
 - PUSH/POP registers, segments, immediates and memory, PUSHA/POPA, PUSHF/POPF,
-  LAHF/SAHF, ENTER/LEAVE.
+  LAHF/SAHF, ENTER/LEAVE. Both PUSH SP register encodings (54 and FF F4)
+  store SP after the wrapping two-byte decrement, independently of model and
+  graphics mode. Memory sources retain their pre-write sampling and PUSHA
+  saves entry SP. See [assumption correction and evidence limits](push-sp.md).
 - Near relative/indirect CALL/JMP and near RET with optional stack adjustment;
   far immediate/indirect CALL/JMP, RETF with optional adjustment; conditional
   branches, LOOP/LOOPE/LOOPNE/JCXZ, INT/INT3/INTO/IRET, BOUND, HLT.
