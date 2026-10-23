@@ -10,6 +10,9 @@ mod fpo1_poll_tests;
 mod word_transfer_tests;
 
 #[cfg(test)]
+mod push_sp_tests;
+
+#[cfg(test)]
 mod divide_tests;
 
 #[cfg(test)]
@@ -181,6 +184,15 @@ impl Cpu {
             true,
             value,
         );
+    }
+    fn push_operand(&mut self, bus: &mut Bus, source: Operand) {
+        // V30MZ PUSH SP stores the decremented SP in both register encodings.
+        // Memory operands still sample before the stack write, even on aliasing.
+        let value = match source {
+            Operand::Register(4) => self.registers[4].wrapping_sub(2),
+            _ => self.read(bus, source, true),
+        };
+        self.push(bus, value);
     }
     fn pop(&mut self, bus: &Bus) -> u16 {
         let v = self.read(
@@ -418,7 +430,7 @@ impl Cpu {
                 self.registers[r] = result;
                 self.flags = (self.flags & !CF) | carry;
             }
-            0x50..=0x57 => self.push(bus, self.registers[(opcode & 7) as usize]),
+            0x50..=0x57 => self.push_operand(bus, Operand::Register((opcode & 7) as usize)),
             0x58..=0x5f => self.registers[(opcode & 7) as usize] = self.pop(bus),
             0x70..=0x7f => {
                 let displacement = self.byte(bus) as i8 as u16;
@@ -703,8 +715,7 @@ impl Cpu {
                         execution = 6;
                     }
                     6 if wide => {
-                        let value = self.read(bus, dest, wide);
-                        self.push(bus, value);
+                        self.push_operand(bus, dest);
                     }
                     _ => return Err(Error::new(format!("Unsupported FE/FF extension /{op}."))),
                 }
