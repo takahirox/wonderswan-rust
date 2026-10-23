@@ -77,21 +77,25 @@ async function main() {
   let elapsed = 0;
   const pressed = new Set<string>();
   const pointers = new Map<number, HTMLButtonElement>();
+  const activated = new Map<string, HTMLButtonElement>();
   const bindings: Record<string, number> = {
     ArrowUp: 16, KeyW: 16, ArrowRight: 32, KeyD: 32,
     ArrowDown: 64, KeyS: 64, ArrowLeft: 128, KeyA: 128,
+    KeyI: 256, KeyL: 512, KeyK: 1024, KeyJ: 2048,
     Enter: 2, KeyZ: 4, KeyX: 8,
   };
 
   function updateButtons() {
     let mask = [...pressed].reduce((mask, code) => mask | bindings[code], 0);
     for (const button of pointers.values()) mask |= Number(button.dataset.button);
+    for (const button of activated.values()) mask |= Number(button.dataset.button);
     machine.set_buttons(mask);
-    for (const button of touchButtons) button.classList.toggle("is-pressed", [...pointers.values()].includes(button));
+    for (const button of touchButtons) button.classList.toggle("is-pressed", (mask & Number(button.dataset.button)) !== 0);
   }
   function clearKeys() {
     pressed.clear();
     pointers.clear();
+    activated.clear();
     updateButtons();
   }
   function draw() {
@@ -111,6 +115,7 @@ async function main() {
     element("debug-error").textContent = errorStatus.textContent || element("notice").textContent || "None";
   }
   function refresh() {
+    element("display").dataset.orientation = machine.orientation();
     modelSelect.value = machine.model();
     element("rom-title").textContent = loaded?.name ?? "Your next game";
     romStatus.textContent = state();
@@ -123,6 +128,7 @@ async function main() {
     pauseButton.textContent = running ? "Pause" : "Resume";
     for (const button of touchButtons) button.disabled = !running;
     updateDiagnostics();
+    sizeScreen();
   }
   function setRunning(value: boolean) {
     running = value && loaded !== null && !faulted && !document.hidden && !help.open;
@@ -317,9 +323,25 @@ async function main() {
   // Integer scaling where space allows; fractional nearest-neighbor scaling on narrow screens.
   function sizeScreen() {
     const display = element("display");
-    const available = Math.min(display.clientWidth, document.fullscreenElement ? display.clientHeight * 224 / 144 : 896);
-    const width = available >= 448 ? Math.floor(available / 224) * 224 : available;
-    canvas.style.width = `${width}px`;
+    const vertical = machine.orientation() === "vertical";
+    const width = vertical ? 144 : 224;
+    const height = vertical ? 224 : 144;
+    const bounds = display.getBoundingClientRect();
+    const left = Math.ceil(bounds.left);
+    const top = Math.ceil(bounds.top);
+    const spaceWidth = Math.max(0, Math.floor(bounds.right) - left);
+    const spaceHeight = Math.max(0, Math.floor(bounds.bottom) - top);
+    const available = Math.min(spaceWidth / width, spaceHeight / height, 4);
+    // 224 and 144 share a factor of 16. Fractional steps of 1/16 keep both
+    // edges on whole CSS pixels, avoiding composited blur at rotated boundaries.
+    const scale = available >= 2 ? Math.floor(available) : Math.floor(available * 16) / 16;
+    const presentation = element("screen-presentation");
+    presentation.style.width = `${width * scale}px`;
+    presentation.style.height = `${height * scale}px`;
+    presentation.style.left = `${left - bounds.left + Math.floor((spaceWidth - width * scale) / 2)}px`;
+    presentation.style.top = `${top - bounds.top + Math.floor((spaceHeight - height * scale) / 2)}px`;
+    canvas.style.width = `${224 * scale}px`;
+    canvas.style.height = `${144 * scale}px`;
   }
   new ResizeObserver(sizeScreen).observe(element("display"));
 
@@ -340,6 +362,7 @@ async function main() {
     button.addEventListener("pointerdown", (event) => {
       if (!running || help.open || (event.pointerType === "mouse" && event.button !== 0)) return;
       event.preventDefault();
+      canvas.focus({ preventScroll: true });
       button.setPointerCapture(event.pointerId);
       pointers.set(event.pointerId, button);
       updateButtons();
@@ -352,16 +375,16 @@ async function main() {
     button.addEventListener("lostpointercapture", release);
     // Also make the on-screen controls usable with keyboard activation.
     button.addEventListener("keydown", (event) => {
-      if (running && (event.code === "Space" || event.code === "Enter")) {
+      if (running && !help.open && (event.code === "Space" || event.code === "Enter")) {
         event.preventDefault();
-        pointers.set(-1, button);
+        activated.set(event.code, button);
         updateButtons();
       }
     });
     button.addEventListener("keyup", (event) => {
       if (event.code === "Space" || event.code === "Enter") {
         event.preventDefault();
-        pointers.delete(-1);
+        activated.delete(event.code);
         updateButtons();
       }
     });

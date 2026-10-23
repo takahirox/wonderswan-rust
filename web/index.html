@@ -31,10 +31,12 @@
             </div>
           </div>
           <div id="display" class="screen-frame">
-            <canvas id="screen" width="224" height="144" tabindex="0"
-              aria-label="Game screen. Arrow keys or W A S D move; Z and X are A and B; Enter is Start.">
-              A browser with canvas support is required.
-            </canvas>
+            <div id="screen-presentation">
+              <canvas id="screen" width="224" height="144" tabindex="0"
+                aria-label="Game screen. X1–X4: arrows or W D S A. Y1–Y4: I L K J. A/B: Z/X. Start: Enter. Buttons keep their hardware identities in portrait.">
+                A browser with canvas support is required.
+              </canvas>
+            </div>
             <div id="empty-state">
               <p class="eyebrow">BEACON TRAIL</p>
               <p>Three beacons. One trail.</p>
@@ -69,16 +71,24 @@
             <p id="notice" role="status"></p>
           </div>
           <div id="touch-controls" role="group" aria-label="Touch controller">
-            <div class="dpad">
-              <button type="button" data-button="16" aria-label="Up" disabled>↑</button>
-              <button type="button" data-button="128" aria-label="Left" disabled>←</button>
-              <button type="button" data-button="64" aria-label="Down" disabled>↓</button>
-              <button type="button" data-button="32" aria-label="Right" disabled>→</button>
+            <div class="dpad" role="group" aria-label="X keypad (arrows or W D S A)">
+              <button type="button" data-button="16" aria-label="X1 (Up / W)" disabled>X1 ↑</button>
+              <button type="button" data-button="128" aria-label="X4 (Left / A)" disabled>X4 ←</button>
+              <button type="button" data-button="64" aria-label="X3 (Down / S)" disabled>X3 ↓</button>
+              <button type="button" data-button="32" aria-label="X2 (Right / D)" disabled>X2 →</button>
             </div>
-            <button class="start" type="button" data-button="2" disabled>Start</button>
-            <div class="action-buttons">
-              <button type="button" data-button="8" disabled>B</button>
-              <button type="button" data-button="4" disabled>A</button>
+            <div class="dpad" role="group" aria-label="Y keypad (I L K J)">
+              <button type="button" data-button="256" aria-label="Y1 (I)" disabled>Y1</button>
+              <button type="button" data-button="2048" aria-label="Y4 (J)" disabled>Y4</button>
+              <button type="button" data-button="1024" aria-label="Y3 (K)" disabled>Y3</button>
+              <button type="button" data-button="512" aria-label="Y2 (L)" disabled>Y2</button>
+            </div>
+            <div class="action-row">
+              <button class="start" type="button" data-button="2" disabled>Start</button>
+              <div class="action-buttons">
+                <button type="button" data-button="8" disabled>B</button>
+                <button type="button" data-button="4" disabled>A</button>
+              </div>
             </div>
           </div>
         </section>
@@ -101,10 +111,12 @@
         <div class="dialog-heading"><h2 id="help-title">Settings / Help</h2><button id="help-close" type="button" autofocus>Close</button></div>
         <h3>Make your way</h3><p>Move the hollow square to collect all three diamond beacons in Beacon Trail. Press Start to play again.</p>
         <dl class="key-guide">
-          <dt>Move</dt><dd>Arrow keys / W A S D</dd>
+          <dt>X1 / X2 / X3 / X4</dt><dd>↑ / → / ↓ / ← or W / D / S / A</dd>
+          <dt>Y1 / Y2 / Y3 / Y4</dt><dd>I / L / K / J</dd>
           <dt>A / B</dt><dd>Z / X</dd>
           <dt>Start / restart demo</dt><dd>Enter</dd>
         </dl>
+        <p>X and Y are independent hardware groups; both can be held with A/B/Start. Portrait cartridges rotate the screen counterclockwise. Key and touch labels always select the same raw buttons; they do not rotate with the image. Beacon Trail uses the X group.</p>
         <p>Click the screen to use the keyboard. Touch controls appear on small or touch screens. Hiding the tab pauses; choose Resume when you return.</p>
         <p>Changing the console restarts the current cartridge. Local ROM files stay in your browser and are never uploaded.</p>
         <h3>Compatibility</h3><p>The original demo is silent and uses monochrome tiles on all three models. The core also supports color layers/sprites, cartridge saves, interrupts/timers, four-channel sound, and Sound DMA/Hyper Voice PCM on Color and Crystal. Compatibility is limited; unsupported instructions or hardware operations stop execution. Saves stay in this browser, keyed by ROM content.</p>

@@ -2,6 +2,7 @@
 // Production-preview checks using only this repository's original CC0 probes.
 import assert from 'node:assert/strict';
 import { lcdChecks } from './lcd.mjs';
+import { keypadChecks } from './keypad.mjs';
 import { consoleChecks } from './console.mjs';
 import { rawRomChecks } from './raw-rom.mjs';
 import { chromium } from 'playwright';
@@ -500,6 +501,7 @@ try {
   }
   console.log('Original SDMA Channel 2, SDMA Hyper Voice and direct CPU Hyper Voice: exact real Wasm PCM on Color/Crystal, mono silence, measured gain, mute/pause/restart/visibility and bounded single-context playback passed');
   await lcdChecks(browser,base,errors);
+  await keypadChecks(browser,base,errors);
   await rawRomChecks(browser,base,errors);
   await consoleChecks(browser,base,errors);
   assert.deepEqual(errors,[]);

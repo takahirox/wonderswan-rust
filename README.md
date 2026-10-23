@@ -41,11 +41,12 @@ validation does not establish that deployment has happened.
    Find all three to see **ALL FOUND!**.
 2. **Arrow keys or W A S D** move (the X keypad); **Enter** is Start/restart.
    Z/X map to A/B, although the demo does not use them. Held directions repeat.
+   **I / L / K / J** independently select Y1 / Y2 / Y3 / Y4.
    Click the screen to focus gameplay controls if needed.
 3. Use **Pause/Resume**, **Restart**, or **Fullscreen** below the display. Changing
    the visible console selector restarts the loaded cartridge and clears keys.
    Hiding the tab pauses; click Resume when returning. There is no emulation loop
-   while idle or paused. Small/touch screens show direction, A, B, and Start
+   while idle or paused. Small/touch screens show both X and Y groups, A, B, and Start
    buttons; hold directions to repeat and release to stop.
 4. **Settings / Help** contains controls, compatibility information, and the
    original demo's download/source/CC0 links. Opening it pauses gameplay and
@@ -61,6 +62,15 @@ validation does not establish that deployment has happened.
    Play demo. Choose **Load ROM** to run it manually. Selected files remain in
    browser memory and are never uploaded. Invalid files report a recoverable
    error without replacing the cartridge. There is no backend or ROM catalog.
+
+Vertical cartridges use their header orientation: the player rotates the native
+image counterclockwise into a 144:224 portrait footprint. The core framebuffer
+and canvas backing stay 224×144. Pixelated scaling keeps square pixels; controls
+keep their raw hardware identities in either orientation. X1/X2/X3/X4 remain
+Up/Right/Down/Left (or W/D/S/A); Y1/Y2/Y3/Y4 remain I/L/K/J. Keyboard and multiple
+touch presses combine, including two sources holding the same button. Releasing
+one source retains the others. Focus changes, blur and player lifecycle changes
+clear held inputs. Orientation is header metadata, without runtime rotation signaling.
 
 Cartridge saves are automatic and **browser-local**, keyed by SHA-256 of the
 ROM contents (renaming a file keeps its save; different contents get separate
@@ -207,6 +217,10 @@ status, write locking/protection, three-model console isolation, cross-cartridge
 retention, lifecycle flushes, reload/reopen and corrupt/denied/full console storage
 through actual Wasm execution. See [audio control validation](docs/issue-17-validation.md)
 and [SDMA/Hyper Voice validation](docs/issue-19-validation.md).
+It also runs the original X/Y keypad cartridges on all models in both orientations,
+checking each button, mixed B5 rows, simultaneous keyboard/touch sources, release,
+lifecycle clearing, and composited asymmetric portrait pixels at desktop, 375px
+and fullscreen sizes. See [Issue #29 validation](docs/issue-29-validation.md).
 See [hardware milestone results](docs/issue-11-validation.md),
 [player UI pre-merge results](docs/issue-9-validation.md) and the
 [original cartridge results](docs/issue-7-validation.md).
