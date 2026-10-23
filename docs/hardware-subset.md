@@ -35,7 +35,33 @@ commercial software will run or that timing matches a physical console.
 | Color video | 60=80: 2bpp planar, 1024 tiles at 2000–5FFF; C0: 4bpp planar; E0: 4bpp packed, 1024 tiles at 4000–BFFF; FE00–FFFF 12-bit RGB palettes | Packed nibbles are left/high, right/low. 2bpp palettes 4–7/12–15 make index 0 transparent; 4bpp index 0 always transparent. Mono rejects color register writes; WSC/Crystal extra RAM requires color enable. Invalid mode combinations rejected. |
 | Sound | Four 32×4-bit wavetable channels; channel 2 unsigned PCM/voice volume; channel 3 signed sweep with wrap; channel 4 eight LFSR tap modes/reset | 80–94 documented bit masks, 96–9B 10/11-bit legacy mixer readbacks, 9E speaker volume; 24 kHz stereo clock, bounded 200 ms queue. Headphone 16-bit and speaker 8-bit adders wrap; speaker main volume uses a linear approximation. Sound test port 95 remains rejected. Analogue filters/volume levels are approximate. |
 | Browser sound | Default-on sound preference, Mute/Unmute and 0–100% volume, gesture activation, Web Audio buffers, high-pass DC removal, bounded queue, reused single AudioContext | Pause/restart/hide clears scheduled sources; failures show a notice and keep gameplay usable. No output loop while paused. Headless buffer validation does not certify physical speaker quality. Original demo stays silent. |
-| Input | B5 active-high keypad matrix (yyyy xxxx bas0); keyboard/touch adapters | No serial/UART, link cable, sound/power buttons or accessories. |
+| Input | B5 active-high keypad matrix (yyyy xxxx bas0); independent X/Y/action keyboard and touch controls, union of simultaneous sources | Exact keypad IRQ timing remains approximate. No serial/UART, link cable, sound/power buttons or accessories. |
+| Orientation | Wasm `orientation()` returns `horizontal` by default or `vertical` from parsed header bit 0; browser portrait presentation rotates counterclockwise | Core framebuffer and canvas backing remain 224×144; portrait footprint 144:224, unchanged raw button identities and ROM/save bytes. Header selection only; runtime orientation signaling is unsupported. |
+
+## Keypad controls and portrait presentation
+
+The existing B5 selections are Y=10, X=20 and actions=40 (hex). Selecting several
+rows returns their bitwise union. The browser maps X1/X2/X3/X4 to arrows
+Up/Right/Down/Left or W/D/S/A, Y1/Y2/Y3/Y4 to I/L/K/J, A/B to Z/X and Start to
+Enter. Small/touch screens expose all eleven labeled buttons. Keyboard aliases,
+keyboard/touch overlap and separate pointers combine as a union; lifecycle and
+focus changes clear input. Help explains that rotation never changes raw identities.
+
+Header flag bit 0 selects vertical presentation on every model. The browser
+rotates counterclockwise, mapping native `(x,y)` to `(y,223-x)`, around a wrapper
+that reserves the rotated footprint. It keeps native RGBA pixels and 224×144
+canvas backing, nearest-neighbor scaling and square-pixel geometry. No cartridge
+bytes or content-based save identity change. Restart and compatible model
+changes retain orientation; rejected replacements retain the previous display.
+
+The source Issue cites [Wonderful's pinned B5 definitions](https://github.com/WonderfulToolchain/hardware-definitions/blob/46783132a59e576c11456f5997620594eca1c390/target/wswan/keypad.xml),
+[pinned ares header handling](https://github.com/ares-emulator/ares/blob/c76aaffa6e69778baf9a66d1da04298ac2ed7d1d/mia/medium/wonderswan.cpp),
+and [pinned Beetle presentation handling](https://github.com/libretro/beetle-wswan-libretro/blob/0db0832183ad264bbe67bcd7e651365e7dac5389/libretro.c)
+as corroboration. These are not physical-console measurements; no upstream
+implementation code is incorporated. Original source-included CC0 CPU probes
+check emulator behavior, without establishing commercial-title compatibility.
+See [probe provenance](../fixtures/README.md#independent-keypad-and-orientation-probes-issue-29)
+and [actual validation](issue-29-validation.md).
 
 ## Raw ROM length and mapped capacity
 

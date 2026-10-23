@@ -1,7 +1,7 @@
 //! Thin WebAssembly adapter; all machine state lives in ws-core.
 
 use wasm_bindgen::prelude::*;
-use ws_core::{Machine, Model, FRAME_HEIGHT, FRAME_WIDTH};
+use ws_core::{Machine, Model, Orientation, FRAME_HEIGHT, FRAME_WIDTH};
 
 #[wasm_bindgen]
 #[derive(Default)]
@@ -27,6 +27,15 @@ impl WebMachine {
 
     pub fn model_name(&self) -> String {
         self.machine.model().name().into()
+    }
+
+    /// Cartridge presentation only; native pixels and button identities are unchanged.
+    pub fn orientation(&self) -> String {
+        match self.machine.cartridge_header().map(|h| h.orientation) {
+            Some(Orientation::Vertical) => "vertical",
+            _ => "horizontal",
+        }
+        .into()
     }
 
     pub fn reset(&mut self, model: &str) -> Result<(), JsError> {
@@ -117,5 +126,38 @@ impl WebMachine {
     /// Copy the core-owned RGBA buffer across the boundary for canvas display.
     pub fn framebuffer(&self) -> Vec<u8> {
         self.machine.framebuffer().to_vec()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn orientation_is_header_metadata_through_load_restart_model_change_and_reset() {
+        let mut m = WebMachine::new();
+        assert_eq!(m.orientation(), "horizontal");
+        for (bytes, orientation) in [
+            (
+                include_bytes!("../../../fixtures/generated/keypad-vertical.ws"),
+                "vertical",
+            ),
+            (
+                include_bytes!("../../../fixtures/generated/keypad-horizontal.ws"),
+                "horizontal",
+            ),
+        ] {
+            m.load_rom(bytes).unwrap();
+            for model in ["mono", "color", "crystal"] {
+                m.change_model(model).unwrap();
+                m.restart();
+                assert_eq!(m.orientation(), orientation);
+                assert_eq!(m.frame_width(), 224);
+                assert_eq!(m.frame_height(), 144);
+                assert_eq!(m.rom_len(), bytes.len());
+            }
+        }
+        m.reset("mono").unwrap();
+        assert_eq!(m.orientation(), "horizontal");
     }
 }
