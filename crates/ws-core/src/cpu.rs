@@ -9,6 +9,9 @@ mod fpo1_poll_tests;
 #[cfg(test)]
 mod word_transfer_tests;
 
+#[cfg(test)]
+mod multiply_tests;
+
 const CF: u16 = 1;
 const PF: u16 = 4;
 const AF: u16 = 16;
@@ -796,6 +799,10 @@ impl Cpu {
                 let overflow = result != result as i16 as i32;
                 self.flag(CF, overflow);
                 self.flag(OF, overflow);
+                // Console experiments define these otherwise undefined flags.
+                // See docs/multiplication-flags.md, including immediate forms.
+                self.flags &= !(AF | PF | SF);
+                self.flag(ZF, true);
                 execution = 12;
             }
             0x86 | 0x87 => {
@@ -995,6 +1002,9 @@ impl Cpu {
                         }
                         self.flag(CF, overflow);
                         self.flag(OF, overflow);
+                        self.flags &= !(AF | PF | SF);
+                        // Unsigned ZF follows the physical SOC, not video mode.
+                        self.flag(ZF, signed || bus.model != Model::Mono);
                         execution = if wide { 20 } else { 12 };
                     }
                     6 | 7 => {

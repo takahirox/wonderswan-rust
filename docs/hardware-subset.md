@@ -294,6 +294,10 @@ Implemented with generic operands, not ROM-specific dispatch:
   not hardware guarantees.
 - Unsigned/signed MUL/IMUL, immediate IMUL, DIV/IDIV with zero/quotient-overflow
   vector 0; AAM zero-base fault. Fault return points at the instruction start.
+  Multiplication clears AF/PF/SF; signed forms (including 69/6B) set ZF on all
+  models. Unsigned ZF clears on physical WonderSwan and sets on Color/Crystal,
+  independently of graphics mode. Products, CF/OF and control flags retain their
+  ordinary rules. See [source reconciliation and experimental limits](multiplication-flags.md).
 - DAA/DAS, AAA/AAS, AAM/AAD; CF/PF/AF/ZF/SF/OF arithmetic; logical AF cleared.
 - PUSH/POP registers, segments, immediates and memory, PUSHA/POPA, PUSHF/POPF,
   LAHF/SAHF, ENTER/LEAVE.
@@ -314,7 +318,7 @@ Implemented with generic operands, not ROM-specific dispatch:
   non-string instructions still fail. See the source reconciliation below.
 
 Remaining gaps include electrical POLLB pin behavior, undocumented aliases
-(82, shift /6, SALC), single-step traps/NMI generation, exact NEC undefined-flag behavior,
+(82, shift /6, SALC), single-step traps/NMI generation, other NEC undefined-flag behavior,
 prefetch and exact instruction/bus cycle tables. Unknown instructions still fail.
 
 ### BUSLOCK source reconciliation (Issue #35)
