@@ -21,6 +21,25 @@ and count encodings are distinguished in the record. No physical execution or
 per-model measurement log was independently inspected. No external code was
 copied, and no game-specific dispatch or fallback is introduced.
 
+## Acceptance correction — 2026-10-24
+
+The earlier acceptance review interpreted “Exercise physical Mono plus
+Color/Crystal” as a mandatory physical-console measurement and human-confirmation
+gate. [Issue #45's acceptance correction](https://github.com/takahirox/wonderswan-rust/issues/45)
+supersedes that interpretation and the associated request for device identities
+and physical pass/fail records. The required coverage is the emulator's Mono,
+Color and SwanCrystal model configurations, including mono/color modes and runtime
+transitions, through automated native and production Chromium/Wasm checks.
+
+The correction follows the project owner's autonomous campaign policy and the
+repository's [AI-executable acceptance guidance](development-flow.md#1-start-with-an-issue).
+It changes no expected flag semantics, operation, width, count, state-preservation
+check, baseline-failure requirement or regression coverage. The NEC manual and
+pinned WSCPUTest sources remain the technical basis. The checklist below is
+reassessed against the corrected acceptance using the recorded automated evidence;
+physical-console measurements are optional and remain unperformed. Emulator
+results are not physical-device evidence or commercial-title compatibility.
+
 ## Baseline failures actually executed
 
 Before changing `Cpu::shift`, ran each command below against the original
@@ -59,9 +78,10 @@ Six CPU tests add:
   F002/FFD7 incoming flags. These contrast every arithmetic flag and TF/IF/DF.
   Expectations were authored with whole integer and carry-ring arithmetic,
   independently of the CPU's per-bit loop; no expectation calls the core helper.
-  The decoder matrix makes 23,100 executions across physical Mono, Color/Crystal
-  in mono and color modes, all three count sources and five locations: register,
-  aligned/odd RAM, aligned/odd byte-wide mapped SRAM. ES overrides a distinct DS.
+  The decoder matrix makes 23,100 executions across the emulator's Mono model
+  and Color/Crystal models in mono and color modes, all three count sources and
+  five locations: register, aligned/odd RAM, aligned/odd byte-wide mapped SRAM.
+  ES overrides a distinct DS.
   Byte results preserve AH. All registers, segments, RAM, SRAM, ports, HALT,
   interrupt shadow, exact IP, fetch/read/write charges, execution cost and the
   following MOV's decode/flags are checked; `Cpu::step` must not advance devices.
@@ -73,10 +93,10 @@ Six CPU tests add:
   the corrected left/right OF rules.
 - Four explicit CL/CX destination alias and CH/AH decoding cases. CL is sampled
   before writing its destination; unrelated byte lanes retain their values.
-- Repeated live mono/color/mono/packed-color transitions on all three physical
+- Repeated live mono/color/mono/packed-color transitions on all three emulator
   model configurations. Exact costs, IP, access charges, results and full FLAGS
   are checked; each returned cost advances shared time exactly once, crossing
-  scanlines. Physical Mono does not receive color-only port writes.
+  scanlines. The Mono model does not receive color-only port writes.
 
 These are emulator regression assertions, not physical timing measurements.
 The complete suite retains prefix, interrupt-shadow, HALT, bounded REP, BUSLOCK,
@@ -140,26 +160,33 @@ The implementation coordinator reviewed the production helper/decoder diff,
 independent literals, original source/generated cartridge, native/browser
 assertions, hardware documentation and provenance against every Issue checkbox.
 No unrelated assertion or fixture/demo byte was changed. Both complete
-production Chromium suites passed, including the new probe. Mandatory physical-console
-acceptance remains pending and blocks pre-merge completion of Issue #45. The
-emulator results below do not satisfy that requirement.
+production Chromium suites passed, including the new probe. Reassessing every
+checkbox against the corrected automated acceptance finds all eight criteria
+satisfied by the recorded evidence below. Physical-console measurements are
+optional; their absence does not block this acceptance. Normal Coordinator
+review of the final diff remains part of the workflow.
 
 | Issue acceptance | Reviewed evidence |
 | --- | --- |
 | Source reconciliation and all forms | Old AF/OF assumptions, corrected zero/multi-bit semantics, pinned sources, direct/inferred applicability and evidence limits recorded before production edits; all seven operations and six count/width encodings use the same helper. |
 | Independent result/full FLAGS vectors | 224 literal tuples, 23,100 decoded executions, opposing arithmetic/control flags, masked-zero and nonzero full rotations, sign/width/carry-ring boundaries, untouched state and explicit CL/CX/CH/AH cases. |
-| Physical-console models, mode transitions and baseline discrimination — pending | Three actual pre-fix flag failures and original native probe failure were observed in the emulator; corrected tests cover all three emulated model configurations, five static combinations and repeated runtime video-mode transitions. Physical Mono execution and physical Color/SwanCrystal execution in mono/color modes with runtime transitions remain unperformed, including baseline failures and corrected passes. |
+| Emulator models, mode transitions and baseline discrimination | Three actual pre-fix flag failures and original native probe failure were observed in the emulator; corrected tests cover all three emulated model configurations, five static combinations and repeated runtime video-mode transitions. Corrected native and production Chromium/Wasm probe checks pass on every model and fresh restart. Baseline failures were native; optional baseline Chromium comparison was not run. |
 | Destinations, accounting and scheduling | Register and aligned/odd writable RAM/SRAM, ES overrides, exact continuation, fetch/read/write charges, unchanged execution components and exactly one shared-device advance; prior prefix/shadow/HALT/REP/BUSLOCK/FPO1/POLL/multiplication tests retained. |
 | Original CC0 probe and fresh execution | All operations/widths/count sources, actual destination/full FLAGS/Jcc records, poisoned stale saves, fresh boot/completion, all 2,020 observations and restart on every model; native RAM/SRAM and actual production-browser SRAM comparisons. |
 | Prior hardware/browser acceptance | Complete workspace and both complete production Chromium suites pass; compatibility checks retain firmware-free startup, physical-model gates, LCD, PCM/audio, GDMA/SDMA/Hyper Voice, SRAM, both EEPROM controllers, save integrity and input/frame continuity. All 29 earlier cartridges and demo files verified byte-identical. |
 | Required commands | Both Python reproducibility checks, format, full workspace tests, Clippy, whitespace and both production builds pass; complete smoke passed before complete compatibility began, and complete compatibility passed. |
 | Documentation, provenance and review | Hardware support, source reconciliation, original CC0 ownership/hash and actual validation/limits recorded; relative links and JavaScript syntax pass. No new fallback, proprietary dependency or unrelated production change. |
 
-Physical-console acceptance requires device identities, the probe hash, observed
-results/full FLAGS and baseline/corrected pass/fail records tied to the reviewed
-implementation. That evidence remains outstanding; this reporting correction
-does not supply it. Issue #45 must remain open until its mandatory acceptance is
-satisfied.
+The upstream review node also reports passing required native/build checks and
+both complete Chromium suites on this implementation. Its smoke suite required
+three attempts after two assertion failures; the eventual pass does not erase
+those failures. These are upstream reported results, not checks rerun during
+this documentation correction.
+
+For this documentation correction, relative links/anchors, Markdown table
+structure, all eight acceptance rows and consistency with the corrected Issue
+were checked, and `git diff --check` passed. Runtime suites were not rerun because
+production code, tests and fixtures are unchanged.
 
 Commercial gameplay was not performed. The
 source evidence remains an independent experiment report, not a measurement log
