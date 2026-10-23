@@ -19,6 +19,8 @@ mod sdma;
 #[cfg(test)]
 mod sound_tests;
 #[cfg(test)]
+mod startup_tests;
+#[cfg(test)]
 mod sweep_tests;
 mod video;
 
@@ -122,6 +124,7 @@ impl Machine {
         self.bus.console_data = console_data;
     }
     /// Validate before replacing the running machine. Failed loads preserve it.
+    /// Successful cartridge entry uses FFFF:0000, SP=2000 and physical-model DS.
     pub fn load_rom(&mut self, bytes: &[u8]) -> Result<usize, Error> {
         let cartridge = cartridge::Cartridge::parse(bytes)?;
         if cartridge.header.model == HardwareModel::Color && self.model() == Model::Mono {
@@ -129,19 +132,21 @@ impl Machine {
         }
         let len = cartridge.bytes.len();
         self.reset(self.model());
-        self.bus.insert_cartridge(cartridge);
+        self.cartridge_handoff(cartridge);
         Ok(len)
     }
-    /// Firmware-free entry at FFFF:0000, with all other state initialized by ROM.
+    /// Restart a loaded cartridge at FFFF:0000 with SP=2000 and DS=FF00 (Mono)
+    /// or FE00 (Color/Crystal). Without a cartridge, retain unloaded defaults.
     pub fn restart(&mut self) {
         let cartridge = self.bus.cartridge.take();
         self.reset(self.model());
         if let Some(c) = cartridge {
-            self.bus.insert_cartridge(c);
+            self.cartridge_handoff(c);
         }
     }
     /// Switch the console and restart its volatile state, preserving the cartridge
     /// save and the independent console EEPROM record for every model.
+    /// Loaded cartridges receive fresh physical-model SP/DS handoff values.
     /// Reject incompatible models before replacing any state.
     pub fn change_model(&mut self, model: Model) -> Result<(), Error> {
         if model == Model::Mono
@@ -156,9 +161,13 @@ impl Machine {
         let cartridge = self.bus.cartridge.take();
         self.reset(model);
         if let Some(c) = cartridge {
-            self.bus.insert_cartridge(c);
+            self.cartridge_handoff(c);
         }
         Ok(())
+    }
+    fn cartridge_handoff(&mut self, cartridge: cartridge::Cartridge) {
+        self.bus.insert_cartridge(cartridge);
+        self.cpu = Cpu::cartridge_handoff(self.model());
     }
     pub fn cartridge_header(&self) -> Option<&Header> {
         self.bus.cartridge.as_ref().map(|c| &c.header)

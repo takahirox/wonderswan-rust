@@ -1,4 +1,4 @@
-use crate::{bus::Bus, Error};
+use crate::{bus::Bus, Error, Model};
 
 const CF: u16 = 1;
 const PF: u16 = 4;
@@ -36,6 +36,7 @@ enum Operand {
 }
 
 impl Default for Cpu {
+    /// Deterministic unloaded state; cartridge entry is a separate handoff.
     fn default() -> Self {
         Self {
             registers: [0; 8],
@@ -49,6 +50,18 @@ impl Default for Cpu {
 }
 
 impl Cpu {
+    /// Bounded firmware-free cartridge entry, selected by physical console.
+    /// Other defaults remain synthetic; no boot firmware is executed.
+    pub(crate) fn cartridge_handoff(model: Model) -> Self {
+        let mut cpu = Self::default();
+        cpu.registers[4] = 0x2000;
+        cpu.segments[3] = match model {
+            Model::Mono => 0xff00,
+            Model::Color | Model::Crystal => 0xfe00,
+        };
+        cpu
+    }
+
     pub fn physical(segment: u16, offset: u16) -> u32 {
         ((segment as u32 * 16) + offset as u32) & 0xfffff
     }

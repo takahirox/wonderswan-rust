@@ -256,6 +256,8 @@ fn failed_raw_replacements_and_model_changes_preserve_live_machine_and_all_recor
             m.bus.output(0xa0, 12).unwrap();
             m.bus.ram[0x123] = 0x99;
             m.bus.tick(77);
+            m.cpu.registers[4] = 0x3456;
+            m.cpu.segments[3] = 0x1234;
             let ports = m.bus.ports;
             let ram = m.bus.ram.clone();
             let records = m.bus.console_data.clone();
@@ -287,9 +289,13 @@ fn failed_raw_replacements_and_model_changes_preserve_live_machine_and_all_recor
             mono.load_rom(&running).unwrap();
             mono.load_save(&vec![0x88; 32768]).unwrap();
             mono.bus.output(0xa0, 12).unwrap();
+            mono.cpu.registers[4] = 0x5678;
+            mono.cpu.segments[3] = 0x2345;
+            let cpu = format!("{:?}", mono.cpu);
             let ports = mono.bus.ports;
             let records = mono.bus.console_data.clone();
             assert!(mono.load_rom(&bytes).is_err());
+            assert_eq!(format!("{:?}", mono.cpu), cpu);
             assert_eq!(mono.bus.ports, ports);
             assert_eq!(mono.bus.console_data, records);
             assert_eq!(mono.bus.cartridge.as_ref().unwrap().bytes, running);
