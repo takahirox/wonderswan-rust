@@ -18,7 +18,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            5,
+            4,
         ),
         (
             &[0xf0, 0xa1, 0, 8],
@@ -28,7 +28,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            6,
+            4,
         ),
         (
             &[0xf0, 0xa2, 0, 8],
@@ -38,7 +38,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            5,
+            4,
         ),
         (
             &[0xf0, 0xa3, 0, 8],
@@ -48,7 +48,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            6,
+            4,
         ),
         (
             &[0xf0, 0x8a, 0x47, 2],
@@ -68,7 +68,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            7,
+            6,
         ),
         (
             &[0xf0, 0x88, 0x47, 2],
@@ -88,7 +88,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            7,
+            6,
         ),
         (
             &[0xf0, 0xc6, 0x47, 2, 0xa5],
@@ -108,7 +108,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            9,
+            8,
         ),
         (
             &[0xf0, 0x81, 0x3e, 0, 8, 0x78, 0x56],
@@ -118,7 +118,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf046,
-            9,
+            8,
         ),
         (
             &[0xf0, 0x83, 0x06, 0, 8, 1],
@@ -128,7 +128,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf002,
-            10,
+            8,
         ),
         (
             &[0xf0, 0x87, 0x06, 0, 8],
@@ -138,7 +138,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            9,
+            7,
         ),
         (
             &[0xf0, 0x50],
@@ -148,7 +148,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0x1234,
             [0x10, 0x32],
             0xf003,
-            4,
+            3,
         ),
         (
             &[0xf0, 0x58],
@@ -158,7 +158,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            4,
+            3,
         ),
         (
             &[0xf0, 0xe4, 0x20],
@@ -268,7 +268,7 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             0xbeef,
             [0x10, 0x32],
             0xf003,
-            4,
+            3,
         ),
     ];
     for model in MODELS {
@@ -305,7 +305,11 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             assert!(!c.halted);
             assert!(b.ram == expected_ram, "RAM {model:?}: {code:02x?}");
             assert_eq!(b.ports, expected_ports);
-            assert_eq!(c.step(&mut b).unwrap(), 4);
+            // The following MOV has an aligned immediate after odd-length code.
+            assert_eq!(
+                c.step(&mut b).unwrap(),
+                if code.len() % 2 == 0 { 4 } else { 3 }
+            );
             assert_eq!(c.ip, 0x1003 + code.len() as u16);
             assert_eq!(
                 c.registers,
@@ -341,8 +345,12 @@ fn buslock_redundant_prefixes_last_segment_and_defensive_bound() {
                     ip: 0x1000,
                     ..Cpu::default()
                 };
-                assert_eq!(c.step(&mut b).unwrap(), prefixes as u32 + 6);
-                assert_eq!(b.accesses.get(), prefixes as u32 + 5);
+                let operand_clocks = if prefixes % 2 == 1 { 1 } else { 2 };
+                assert_eq!(
+                    c.step(&mut b).unwrap(),
+                    prefixes as u32 + 3 + operand_clocks
+                );
+                assert_eq!(b.accesses.get(), prefixes as u32 + 2 + operand_clocks);
                 assert_eq!(
                     c.registers[0],
                     if mixed && prefixes >= 2 {
@@ -393,7 +401,7 @@ fn buslock_keeps_seven_prefixes_with_instruction_under_interrupt_shadow() {
         };
         c.step(&mut b).unwrap(); // STI protects the entire following instruction.
         b.request(7);
-        assert_eq!(c.step(&mut b).unwrap(), 13);
+        assert_eq!(c.step(&mut b).unwrap(), 12); // 7 prefixes + opcode + odd operand (2) + aligned data (1) + execution
         assert_eq!(c.ip, 0x100b);
         assert_eq!(c.registers[0], 0x1234);
         assert_eq!(c.flags, 0xf202);
@@ -420,8 +428,8 @@ fn buslock_rep_stays_bounded_and_restarts_at_all_prefixes_after_irq() {
             flags: 0xf202,
             ..Cpu::default()
         };
-        assert_eq!(c.step(&mut b).unwrap(), 15); // eight fetches + four data bytes + execution 3
-        assert_eq!(b.accesses.get(), 12);
+        assert_eq!(c.step(&mut b).unwrap(), 13); // eight fetches + two aligned word transfers + execution 3
+        assert_eq!(b.accesses.get(), 10);
         assert_eq!(c.ip, 0x1000);
         assert_eq!(c.registers, [0, 1, 0, 0, 0x2000, 0, 0x82, 0x92]);
         assert_eq!(&b.ram[0x1090..0x1094], &[0x34, 0x12, 0, 0]);
@@ -433,7 +441,7 @@ fn buslock_rep_stays_bounded_and_restarts_at_all_prefixes_after_irq() {
             c.step(&mut b).unwrap();
         } // acknowledge and IRET
         assert_eq!(c.ip, 0x1000);
-        assert_eq!(c.step(&mut b).unwrap(), 15);
+        assert_eq!(c.step(&mut b).unwrap(), 13);
         assert_eq!(c.ip, 0x1008);
         assert_eq!(c.registers, [0x80, 0, 0, 0, 0x2000, 0, 0x84, 0x94]);
         assert_eq!(c.flags, 0xf202);

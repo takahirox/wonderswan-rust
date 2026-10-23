@@ -126,17 +126,47 @@ impl Bus {
             .set(self.accesses.get() + self.access_time(address));
     }
     pub fn word_transfer(&self, first: u32, second: u32) {
-        if (0x20000..0xfffff).contains(&first)
-            && first & 1 == 0
-            && second == first + 1
-            && self.ports[0xa0] & 4 != 0
-        {
+        // Only an explicitly requested word may consolidate two byte charges.
+        // Both lanes must belong to the same accessible, word-wide region.
+        let ram = second < if self.color_mode() { 0x10000 } else { 0x4000 };
+        let rom = (0x20000..0xfffff).contains(&first) && self.ports[0xa0] & 4 != 0;
+        if first & 1 == 0 && second == first + 1 && (ram || rom) {
             self.accesses.set(
                 self.accesses
                     .get()
                     .saturating_sub(self.access_time(first as usize)),
             );
         }
+    }
+
+    /// Eligibility is determined before either lane can change device state.
+    /// This list describes documented word registers, not arbitrary adjacent I/O.
+    fn word_port(&self, port: u16, output: bool) -> bool {
+        match port {
+            0x80 | 0x82 | 0x84 | 0x86 | 0xa4 | 0xa6 | 0xba | 0xbc => true,
+            0x92 | 0x96 | 0x98 | 0x9a | 0xa8 | 0xaa => !output,
+            0x40 | 0x44 | 0x46 | 0x4a | 0x4e | 0x64 | 0x66 | 0x6a => self.model != Model::Mono,
+            _ => false,
+        }
+    }
+    pub fn input_word(&mut self, port: u16) -> Result<u16, Error> {
+        let consolidate = self.word_port(port, false);
+        let lo = self.input(port)?;
+        let hi = self.input(port.wrapping_add(1))?;
+        if consolidate {
+            self.accesses.set(self.accesses.get() - 1);
+        }
+        Ok(u16::from_le_bytes([lo, hi]))
+    }
+    pub fn output_word(&mut self, port: u16, value: u16) -> Result<(), Error> {
+        let consolidate = self.word_port(port, true);
+        let [lo, hi] = value.to_le_bytes();
+        self.output(port, lo)?;
+        self.output(port.wrapping_add(1), hi)?;
+        if consolidate {
+            self.accesses.set(self.accesses.get() - 1);
+        }
+        Ok(())
     }
 
     pub fn read(&self, address: u32) -> u8 {

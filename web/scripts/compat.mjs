@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { lcdChecks } from './lcd.mjs';
 import { lcdOutputChecks } from './lcd-output.mjs';
+import { wordTimingChecks } from './word-timing.mjs';
 import { keypadChecks } from './keypad.mjs';
 import { sweepChecks } from './sweep.mjs';
 import { startupChecks } from './startup.mjs';
@@ -73,13 +74,20 @@ const observeAudio = () => {
         return set(value,time);
       };
       window.outputAnalyser = this.createAnalyser();
-      gain.connect(window.outputAnalyser);
+      // AnalyserNode downmixes stereo to mono, cancelling the direct Hyper
+      // Voice probe's opposite channels. Measure the same isolated left channel
+      // before/after gain; the real stereo playback graph remains untouched.
+      const splitter = this.createChannelSplitter(2);
+      gain.connect(splitter);
+      splitter.connect(window.outputAnalyser,0);
       return gain;
     }
     createBiquadFilter() {
       const filter = super.createBiquadFilter();
       window.inputAnalyser = this.createAnalyser();
-      filter.connect(window.inputAnalyser);
+      const splitter = this.createChannelSplitter(2);
+      filter.connect(splitter);
+      splitter.connect(window.inputAnalyser,0);
       return filter;
     }
     suspend() { window.audioProbe.suspends++; return super.suspend(); }
@@ -471,7 +479,7 @@ try {
         const rms = a => {const data=new Float32Array(a.fftSize);a.getFloatTimeDomainData(data);return Math.sqrt(data.reduce((s,v)=>s+v*v,0)/data.length);};
         return {input:rms(window.inputAnalyser),output:rms(window.outputAnalyser)};
       });
-      assert.ok(ratio.input > 0.001);
+      assert.ok(ratio.input > 0.001,`${name}/${model}: live analyser input ${ratio.input}, output ${ratio.output}`);
       assert.ok(Math.abs(ratio.output/ratio.input-0.35)<0.025,'actual sound probe output follows gain');
       await page.locator('#sound').click();
       assert.equal(await page.evaluate(() => window.audioProbe.active),0);
@@ -509,6 +517,7 @@ try {
   await buslockChecks(browser,base,errors);
   await lcdChecks(browser,base,errors);
   await lcdOutputChecks(browser,base,errors);
+  await wordTimingChecks(browser,base,errors);
   await keypadChecks(browser,base,errors);
   await rawRomChecks(browser,base,errors);
   await consoleChecks(browser,base,errors);

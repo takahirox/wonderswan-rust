@@ -47,6 +47,7 @@ if __name__ == '__main__':
                            build(2, mapper, 0, 0, 'raw-rom.asm', 4,
                                  defines=(f'FIRST_BANK={first}',), size=mib*1024*1024)))
     images.append(('lcd-output', build(2, 0, 0, 0, 'lcd-output.asm')))
+    images.append(('word-timing', build(2, 0, 0, 0, 'word-timing.asm', 4)))
     images.append(('lcd', build(2, 0, 0, 0, 'lcd.asm')))
     images.append(('sweep', build(2, 0, 0, 0, 'sweep.asm')))
     images.append(('buslock', build(2, 0, 0, 0, 'buslock.asm')))
