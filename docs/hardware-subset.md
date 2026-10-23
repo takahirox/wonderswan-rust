@@ -22,7 +22,7 @@ commercial software will run or that timing matches a physical console.
 | Bandai 2003 | CA/CB RTC transport with no attached RTC; CC/CD four GPO directions/data; CE read-only ROM mapping into save area; CF alias of C0; D0/D2/D4 low banks alias C1/C2/C3; D1/D3/D5 high two bits | RTC commands 10–1B transfer documented payload lengths, busy/ready handshake at byte granularity (64 clocks), and FF from absent RTC pull-up. No S-3511A date/time emulation, alarms, attached GPO peripherals, flash programming or lockout handshake. Invalid commands/control values and self-flash writes fail explicitly. |
 | Nonvolatile browser saves | localStorage per SHA-256 of complete ROM bytes, automatic once/second, on pause/hide/pagehide, before replacing a ROM | Reset/model changes preserve in-memory saves. Reload/reopen requires reselecting local ROM. No ROM/save upload or server storage. Corrupt/size-mismatched slots are preserved and not overwritten; denied/full storage shows a notice. Browser profile clearing/private-session expiry removes browser data. No import/export UI. |
 | Console browser records | Separate `wonderswan:console:v1:mono`, `:color`, `:crystal` localStorage keys, base64 complete physical EEPROM bytes | Restored once per model before execution, independent of cartridge SHA-256 saves. Same periodic/lifecycle flushes as cartridge saves, including before model replacement. Corrupt/denied reads block overwriting that slot; quota failures report separately and leave emulation/cartridge saves usable. Browser-local only; no settings editor. |
-| CPU | Generic 8/16-bit register, ModR/M, segment, stack and string operations below | Unsupported opcodes/group extensions/ports/prefix combinations stop execution visibly, with CS:IP for unknown opcodes. No silent NOP fallback. |
+| CPU | Generic 8/16-bit register, ModR/M, segment, stack and string operations below; two-byte FPO1 NOP and nonblocking console POLL | Unsupported opcodes/group extensions/ports/prefix combinations stop execution visibly, with CS:IP for unknown opcodes. No silent NOP fallback. |
 | Interrupts | IF, vector table and stack entry, INT/INT3/INTO/IRET, divide faults, BOUND fault; hardware priority highest source first; B0 vector/request, B2 enable, B4 status, B6 acknowledgement | Enable gates request latching; changing enable does not clear latched status. Key edges, line match, VBlank and both timer sources generated. UART/cartridge IRQ sources, single-step trap and low-battery NMI not generated. STI and MOV/POP SS inhibit delivery for the next instruction; POPF/IRET do so when IF changes from 0 to 1. HLT wakes for a latched IRQ even with IF=0, resuming without vectoring in that case. |
 | Timers | A2 control, A4–A7 reload, A8–AB counter; HBlank and VBlank count sources, one-shot/repeat, reload-on-write and disabled-count-at-one IRQ quirk | Test modes at A3 unsupported. Word writes to A2 with high byte zero allowed. Programmable final line at 16; independent STN synchronization at 17. See [LCD policies](lcd-timing.md). |
 | Timing | Shared 3.072 MHz clock, 256 clocks/line, programmable T+1 lines/frame (159 by default), 144 visible; actual raster-wrap frame progression | Per-instruction execution cost + fetch/data/I/O transfers, live A0 ROM waits, SRAM/cartridge-I/O waits, aligned internal RAM/documented I/O word pairs and 16-bit ROM reads, branch/shift/multiply/divide/interrupt costs. Internal byte/even-word/odd-word costs are 1/1/2; see [eligibility and evidence](internal-word-timing.md). Approximate, not cycle-table/prefetch accurate. Instructions and DMA words are atomic; events/raster output use that granularity. |
@@ -304,13 +304,16 @@ Implemented with generic operands, not ROM-specific dispatch:
   REP/REPE/REPNE execute one element per bounded step and compare repeats stop
   on the appropriate ZF condition. IN/OUT via immediate port or DX.
 - CLC/STC/CMC, CLI/STI, CLD/STD, NOP; segment override and repeat prefixes.
+  D8–DF FPO1 consumes exactly one following byte as a no-op; 9B POLL is
+  nonblocking under the effective POLLB-low console profile on all three models.
+  See [source reconciliation, fetch costs and limits](fpo1-poll.md).
   F0 BUSLOCK uses ordinary decoding for supported memory and I/O instructions;
   it is ineffective on supported register-only instructions and NOP. Repeated
   BUSLOCK and segment overrides are accepted, with the last segment taking effect.
   Unsupported underlying instructions/ports, excessive prefixes and REP on
   non-string instructions still fail. See the source reconciliation below.
 
-Remaining gaps include POLL/WAIT pin behavior, FPO1 decoding, undocumented aliases
+Remaining gaps include electrical POLLB pin behavior, undocumented aliases
 (82, shift /6, SALC), single-step traps/NMI generation, exact NEC undefined-flag behavior,
 prefetch and exact instruction/bus cycle tables. Unknown instructions still fail.
 
@@ -340,11 +343,12 @@ literals exercise all three models and restart; commercial-title impact is unmea
 
 The adjacent gap list also previously misclassified excluded older NEC operations
 and REPC/REPNC as required V30MZ features. §§1.3/3.6.1 exclude them, while retaining
-carry/direction operations (CLC/STC/CMC, CLD/STD here). FPO1 remains separate:
-the manual calls it a NOP but Appendix A includes displacement-bearing forms;
-the reported ares one-following-byte decode is inspected-source context, not a
-resolution of that discrepancy. No FPO1 implementation or copied emulator code
-is introduced. See [actual validation and review](issue-35-validation.md).
+carry/direction operations (CLC/STC/CMC, CLD/STD here). The original Issue #35
+assessment left FPO1 byte consumption unresolved because Appendix A depicts
+displacement-bearing forms. Issue #41 supersedes that prerequisite using the
+reported console two-byte NOP rule and nonblocking POLL behavior; see the
+[correction record and remaining uncertainties](fpo1-poll.md). The earlier
+[BUSLOCK validation and review](issue-35-validation.md) remains historical evidence.
 
 ## Firmware-free startup and reset
 
