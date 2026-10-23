@@ -16,7 +16,7 @@ CASES = [
     ('eeprom2048-packed', 0x20, 1, 10, 0xe0),
 ]
 
-def build(save, mapper, bits, mode, source='compat.asm', flags=0, defines=(), protection=0x80):
+def build(save, mapper, bits, mode, source='compat.asm', flags=0, defines=(), protection=0x80, size=131072):
     with tempfile.TemporaryDirectory(prefix='ws-probe-') as directory:
         output = Path(directory) / 'probe.bin'
         subprocess.run(['nasm', '-f', 'bin', f'-DEEPROM_BITS={bits}',
@@ -25,9 +25,13 @@ def build(save, mapper, bits, mode, source='compat.asm', flags=0, defines=(), pr
                         str(ROOT / source), '-o', str(output)], check=True)
         code = output.read_bytes()
     assert len(code) < 65520
-    rom = bytearray([0x31] * 131072)
-    rom[65536:65536+len(code)] = code
-    rom[-16:] = bytes([0xea,0,0,0,0xf0,0,0,0,0,protection,0,save,flags,mapper,0,0])
+    if source == 'raw-rom.asm':
+        rom = bytearray().join(bytes([bank ^ 0x5a, bank ^ 0xa5]) * 32768
+                               for bank in range(size // 65536))
+    else:
+        rom = bytearray([0x31] * size)
+    rom[size-65536:size-65536+len(code)] = code
+    rom[-16:] = bytes([0xea,0,0,0,0xf0,0,0,0,0,protection,{131072:0, 3145728:5, 6291456:7}[size],save,flags,mapper,0,0])
     rom[-2:] = (sum(rom[:-2]) & 65535).to_bytes(2,'little')
     return rom
 
@@ -37,6 +41,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
     images = [(name, build(save, mapper, bits, mode))
               for name, save, mapper, bits, mode in CASES]
+    for mib, first in [(3, 0xd0), (6, 0xa0)]:
+        for mapper, interface in [(0, 'common'), (1, '2003')]:
+            images.append((f'raw{mib}-{interface}',
+                           build(2, mapper, 0, 0, 'raw-rom.asm', 4,
+                                 defines=(f'FIRST_BANK={first}',), size=mib*1024*1024)))
     images.append(('a0', build(0, 0, 0, 0, 'a0.asm', 4)))
     images.append(('gdma', build(0, 0, 0, 0x80, 'gdma.asm', 4)))
     for mode, name in enumerate(['sound-channel2', 'sound-hyper', 'sound-direct']):

@@ -2,6 +2,7 @@
 // Production-preview checks using only this repository's original CC0 probes.
 import assert from 'node:assert/strict';
 import { consoleChecks } from './console.mjs';
+import { rawRomChecks } from './raw-rom.mjs';
 import { chromium } from 'playwright';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -497,6 +498,7 @@ try {
     assert.equal(await page.locator('#error').textContent(),'');await pause();
   }
   console.log('Original SDMA Channel 2, SDMA Hyper Voice and direct CPU Hyper Voice: exact real Wasm PCM on Color/Crystal, mono silence, measured gain, mute/pause/restart/visibility and bounded single-context playback passed');
+  await rawRomChecks(browser,base,errors);
   await consoleChecks(browser,base,errors);
   assert.deepEqual(errors,[]);
   console.log('Unreadable saves preserved; storage/audio unavailable degrade safely without browser exceptions');

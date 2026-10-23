@@ -11,6 +11,8 @@ mod gdma_tests;
 mod internal_eeprom;
 #[cfg(test)]
 mod internal_eeprom_tests;
+#[cfg(test)]
+mod raw_rom_tests;
 mod sdma;
 #[cfg(test)]
 mod sound_tests;
