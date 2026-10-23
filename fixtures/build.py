@@ -16,7 +16,7 @@ CASES = [
     ('eeprom2048-packed', 0x20, 1, 10, 0xe0),
 ]
 
-def build(save, mapper, bits, mode, source='compat.asm', flags=0, defines=()):
+def build(save, mapper, bits, mode, source='compat.asm', flags=0, defines=(), protection=0x80):
     with tempfile.TemporaryDirectory(prefix='ws-probe-') as directory:
         output = Path(directory) / 'probe.bin'
         subprocess.run(['nasm', '-f', 'bin', f'-DEEPROM_BITS={bits}',
@@ -27,7 +27,7 @@ def build(save, mapper, bits, mode, source='compat.asm', flags=0, defines=()):
     assert len(code) < 65520
     rom = bytearray([0x31] * 131072)
     rom[65536:65536+len(code)] = code
-    rom[-16:] = bytes([0xea,0,0,0,0xf0,0,0,0,0,0x80,0,save,flags,mapper,0,0])
+    rom[-16:] = bytes([0xea,0,0,0,0xf0,0,0,0,0,protection,0,save,flags,mapper,0,0])
     rom[-2:] = (sum(rom[:-2]) & 65535).to_bytes(2,'little')
     return rom
 
@@ -41,6 +41,11 @@ if __name__ == '__main__':
     for mode, name in enumerate(['sound-channel2', 'sound-hyper', 'sound-direct']):
         images.append((name, build(0, 0, 0, 0x80, 'sound.asm',
                                    defines=(f'SOUND_PATH={mode}',))))
+    for protected in [False, True]:
+        images.append(('internal-eeprom' + ('-protected' if protected else ''),
+                       build(2, 0, 0, 0, 'internal-eeprom.asm',
+                             defines=(f'PROTECTED={int(protected)}',),
+                             protection=0 if protected else 0x80)))
     for name, rom in images:
         path = ROOT / 'generated' / (name+'.ws')
         if args.check:

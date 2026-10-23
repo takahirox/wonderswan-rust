@@ -51,6 +51,14 @@ impl WebMachine {
             .change_model(model)
             .map_err(|e| JsError::new(&e.to_string()))
     }
+    pub fn console_data(&self) -> Vec<u8> {
+        self.machine.console_data().to_vec()
+    }
+    pub fn load_console_data(&mut self, data: &[u8]) -> Result<(), JsError> {
+        self.machine
+            .load_console_data(data)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
     pub fn save_data(&self) -> Vec<u8> {
         self.machine.save_data().to_vec()
     }

@@ -2,6 +2,7 @@ use crate::{
     audio::Audio,
     cartridge::{Cartridge, Mapper, SaveKind},
     eeprom::Eeprom,
+    internal_eeprom::{initial_data, InternalEeprom},
     sdma::SoundDma,
     Error, Model,
 };
@@ -17,6 +18,8 @@ pub(crate) struct Bus {
     pub sprites: [u8; 512],
     pub accesses: std::cell::Cell<u32>,
     eeprom: Eeprom,
+    pub console_data: [Vec<u8>; 3],
+    internal_eeprom: InternalEeprom,
     timer: [u16; 2],
     rtc_remaining: u8,
     rtc_command: u8,
@@ -50,6 +53,8 @@ impl Bus {
             sprites: [0; 512],
             accesses: std::cell::Cell::new(0),
             eeprom: Eeprom::default(),
+            console_data: [Model::Mono, Model::Color, Model::Crystal].map(initial_data),
+            internal_eeprom: InternalEeprom::default(),
             timer: [0; 2],
             rtc_remaining: 0,
             rtc_command: 0,
@@ -70,6 +75,14 @@ impl Bus {
             self.ports[0xd5] = 3;
         }
         self.cartridge = Some(cartridge);
+        self.reset_internal_eeprom();
+    }
+    pub fn reset_internal_eeprom(&mut self) {
+        self.internal_eeprom = InternalEeprom::default();
+        if let Some(c) = &self.cartridge {
+            self.internal_eeprom
+                .handoff(c.header.internal_eeprom_write_protected);
+        }
     }
     pub fn color_mode(&self) -> bool {
         self.model != Model::Mono && self.ports[0x60] & 0x80 != 0
@@ -279,6 +292,8 @@ impl Bus {
         let before = self.cycles / 256;
         self.cycles += cycles as u64;
         self.audio.tick(cycles, &self.ram, &mut self.ports);
+        self.internal_eeprom
+            .tick(cycles, &mut self.console_data[self.model.index()]);
         if let Some(cart) = &mut self.cartridge {
             self.eeprom.tick(cycles, cart);
         }
@@ -353,6 +368,7 @@ impl Bus {
                 let i = (port - 0xa8) as usize;
                 Ok((self.timer[i / 2] >> ((i & 1) * 8)) as u8)
             }
+            0xba..=0xbf => Ok(self.internal_eeprom.read(port)),
             0xc4..=0xc9 => Ok(self.eeprom.read(port)),
             0xca..=0xd5 if self.extended() => match port {
                 0xca => Ok((if self.rtc_ready { 128 } else { 0 })
@@ -473,6 +489,10 @@ impl Bus {
                 self.timer[i] =
                     u16::from_le_bytes([self.ports[0xa4 + i * 2], self.ports[0xa5 + i * 2]]);
                 return Ok(());
+            }
+            0xba..=0xbf => {
+                let color = self.color_mode();
+                return self.internal_eeprom.write(port, value, color);
             }
             0xc4..=0xc9 => {
                 let c = self

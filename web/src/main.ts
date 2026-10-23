@@ -1,4 +1,4 @@
-import { Saves, romIdentity } from "./saves";
+import { Saves, romIdentity, consoleKey } from "./saves";
 import { Sound } from "./audio";
 import init, { WebMachine } from "../pkg/ws_web.js";
 
@@ -39,6 +39,16 @@ async function main() {
   let loaded: { name: string; key: string } | null = null;
   const report = (message: string) => { element("notice").textContent = message; };
   const saves = new Saves(report);
+  const consoles = new Saves(message => { element("console-notice").textContent = `${machine.model_name()}: ${message}`; }, true);
+  const restoredConsoles = new Set<string>();
+  function restoreConsole() {
+    const model = machine.model();
+    if (restoredConsoles.has(model)) return;
+    const restored = consoles.restore(consoleKey(model), machine.console_data().length);
+    if (restored) machine.load_console_data(restored);
+    restoredConsoles.add(model);
+  }
+  restoreConsole();
   const soundButton = element<HTMLButtonElement>("sound");
   const volume = element<HTMLInputElement>("volume");
   const enableAudio = element<HTMLButtonElement>("enable-audio");
@@ -50,7 +60,10 @@ async function main() {
     element("sound-status").textContent = sound.status;
     enableAudio.hidden = !sound.needsUnlock;
   }
-  function persist() { if (loaded) saves.store(loaded.key, machine.save_data()); }
+  function persist() {
+    if (loaded) saves.store(loaded.key, machine.save_data());
+    consoles.store(consoleKey(machine.model()), machine.console_data());
+  }
   let readRevision = 0;
   let loading = false;
   let running = false;
@@ -169,6 +182,7 @@ async function main() {
     errorStatus.textContent = "";
     try {
       machine.change_model(model);
+      restoreConsole();
       faulted = false;
       setRunning(loaded !== null);
       if (running && !help.open) canvas.focus({ preventScroll: true });

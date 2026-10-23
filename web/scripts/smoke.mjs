@@ -186,6 +186,8 @@ try {
   assert.equal(requests.length, countBeforeFile, 'local ROM selection must not send requests');
   assert.match(await page.locator('#rom-title').textContent(), /beacon-trail.ws/);
   await page.locator('#rom').setInputFiles({name:'empty.ws',mimeType:'application/octet-stream',buffer:Buffer.alloc(0)});
+  // File reading and ROM identity hashing finish after the change event.
+  await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Expected a 128 KiB'));
   assert.match(await page.locator('#error').textContent(), /Expected a 128 KiB/);
   await page.locator('#rom').setInputFiles(rom);
   await initial();

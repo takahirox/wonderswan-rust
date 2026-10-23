@@ -6,7 +6,7 @@ export async function romIdentity(bytes: Uint8Array): Promise<string> {
 export class Saves {
   private blocked = new Set<string>();
   private previous = new Map<string, string>();
-  constructor(private report: (message: string) => void) {}
+  constructor(private report: (message: string) => void, private console = false) {}
   restore(key: string, expected: number): Uint8Array | null {
     if (!expected) return null;
     try {
@@ -18,7 +18,9 @@ export class Saves {
       return decoded;
     } catch {
       this.blocked.add(key); // Keep an unreadable existing save intact.
-      this.report("This cartridge's local save could not be read. Its stored data will be preserved; changes this session cannot be saved.");
+      this.report(this.console
+        ? "This console model’s local data could not be read. Its stored record will be preserved; console changes this session cannot be saved."
+        : "This cartridge's local save could not be read. Its stored data will be preserved; changes this session cannot be saved.");
       return null;
     }
   }
@@ -33,7 +35,12 @@ export class Saves {
       localStorage.setItem(key, encoded);
       this.previous.set(key, encoded);
     } catch {
-      this.report("Local save storage is unavailable or full. Keep this page open to retain the current save.");
+      this.report(this.console
+        ? "Local console storage is unavailable or full. Keep this page open to retain console data."
+        : "Local save storage is unavailable or full. Keep this page open to retain the current save.");
     }
   }
 }
+
+// Version and physical model select the console slot, never a ROM identity.
+export const consoleKey = (model: string) => `wonderswan:console:v1:${model}`;
