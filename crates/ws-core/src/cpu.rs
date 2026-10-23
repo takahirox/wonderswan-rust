@@ -4,6 +4,9 @@ use crate::{bus::Bus, Error, Model};
 mod buslock_tests;
 
 #[cfg(test)]
+mod fpo1_poll_tests;
+
+#[cfg(test)]
 mod word_transfer_tests;
 
 const CF: u16 = 1;
@@ -562,6 +565,14 @@ impl Cpu {
                     self.byte(bus) as u16
                 };
                 self.set_reg((opcode & 7) as usize, wide, value);
+            }
+            // WonderSwan's effective POLLB-low profile never waits for a device.
+            // See docs/fpo1-poll.md for console evidence and timing limits.
+            0x9b => execution = 9,
+            0xd8..=0xdf => {
+                // FPO1 is exactly two bytes, regardless of the second byte.
+                // Fetch it normally; never interpret it as ModR/M or a prefix.
+                self.byte(bus);
             }
             0xc2 | 0xc3 | 0xca | 0xcb => {
                 let adjust = if opcode & 1 == 0 { self.word(bus) } else { 0 };

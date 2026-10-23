@@ -7,6 +7,7 @@ import { wordTimingChecks } from './word-timing.mjs';
 import { keypadChecks } from './keypad.mjs';
 import { sweepChecks } from './sweep.mjs';
 import { startupChecks } from './startup.mjs';
+import { fpo1PollChecks } from './fpo1-poll.mjs';
 import { buslockChecks } from './buslock.mjs';
 import { consoleChecks } from './console.mjs';
 import { rawRomChecks } from './raw-rom.mjs';
@@ -515,6 +516,7 @@ try {
   await sweepChecks(browser,base,errors,observeAudio);
   await startupChecks(browser,base,errors);
   await buslockChecks(browser,base,errors);
+  await fpo1PollChecks(browser,base,errors);
   await lcdChecks(browser,base,errors);
   await lcdOutputChecks(browser,base,errors);
   await wordTimingChecks(browser,base,errors);
