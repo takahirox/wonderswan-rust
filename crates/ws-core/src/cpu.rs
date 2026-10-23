@@ -3,6 +3,9 @@ use crate::{bus::Bus, Error, Model};
 #[cfg(test)]
 mod buslock_tests;
 
+#[cfg(test)]
+mod word_transfer_tests;
+
 const CF: u16 = 1;
 const PF: u16 = 4;
 const AF: u16 = 16;
@@ -119,7 +122,14 @@ impl Cpu {
             Operand::Memory(s, o) => {
                 bus.write(Self::physical(s, o), value as u8);
                 if wide {
-                    bus.write(Self::physical(s, o.wrapping_add(1)), (value >> 8) as u8);
+                    let first = Self::physical(s, o);
+                    let second = Self::physical(s, o.wrapping_add(1));
+                    bus.write(second, (value >> 8) as u8);
+                    // ROM writes remain read-only byte attempts; only internal
+                    // RAM writes share the word-read consolidation rule.
+                    if first < 0x10000 {
+                        bus.word_transfer(first, second);
+                    }
                 }
             }
         }
@@ -492,20 +502,20 @@ impl Cpu {
                         }
                         0x6c | 0x6d => {
                             let port = self.registers[2];
-                            let lo = bus.input(port)? as u16;
                             let v = if wide {
-                                lo | ((bus.input(port.wrapping_add(1))? as u16) << 8)
+                                bus.input_word(port)?
                             } else {
-                                lo
+                                bus.input(port)? as u16
                             };
                             self.write(bus, dest, wide, v);
                         }
                         0x6e | 0x6f => {
                             let v = self.read(bus, source, wide);
                             let port = self.registers[2];
-                            bus.output(port, v as u8)?;
                             if wide {
-                                bus.output(port.wrapping_add(1), (v >> 8) as u8)?;
+                                bus.output_word(port, v)?;
+                            } else {
+                                bus.output(port, v as u8)?;
                             }
                         }
                         _ => unreachable!(),
@@ -600,17 +610,17 @@ impl Cpu {
                     self.registers[2]
                 };
                 if opcode & 2 == 0 {
-                    let low = bus.input(port)? as u16;
                     let value = if wide {
-                        low | ((bus.input(port.wrapping_add(1))? as u16) << 8)
+                        bus.input_word(port)?
                     } else {
-                        low
+                        bus.input(port)? as u16
                     };
                     self.set_reg(0, wide, value);
                 } else {
-                    bus.output(port, self.reg(0, false) as u8)?;
                     if wide {
-                        bus.output(port.wrapping_add(1), (self.registers[0] >> 8) as u8)?;
+                        bus.output_word(port, self.registers[0])?;
+                    } else {
+                        bus.output(port, self.reg(0, false) as u8)?;
                     }
                 }
             }
