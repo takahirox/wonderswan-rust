@@ -5,6 +5,7 @@ import { lcdChecks } from './lcd.mjs';
 import { keypadChecks } from './keypad.mjs';
 import { sweepChecks } from './sweep.mjs';
 import { startupChecks } from './startup.mjs';
+import { buslockChecks } from './buslock.mjs';
 import { consoleChecks } from './console.mjs';
 import { rawRomChecks } from './raw-rom.mjs';
 import { chromium } from 'playwright';
@@ -504,6 +505,7 @@ try {
   console.log('Original SDMA Channel 2, SDMA Hyper Voice and direct CPU Hyper Voice: exact real Wasm PCM on Color/Crystal, mono silence, measured gain, mute/pause/restart/visibility and bounded single-context playback passed');
   await sweepChecks(browser,base,errors,observeAudio);
   await startupChecks(browser,base,errors);
+  await buslockChecks(browser,base,errors);
   await lcdChecks(browser,base,errors);
   await keypadChecks(browser,base,errors);
   await rawRomChecks(browser,base,errors);

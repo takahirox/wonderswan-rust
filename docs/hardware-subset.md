@@ -303,14 +303,47 @@ Implemented with generic operands, not ROM-specific dispatch:
   REP/REPE/REPNE execute one element per bounded step and compare repeats stop
   on the appropriate ZF condition. IN/OUT via immediate port or DX.
 - CLC/STC/CMC, CLI/STI, CLD/STD, NOP; segment override and repeat prefixes.
-  LOCK is accepted only for supported memory read/modify/write operations;
-  instructions are atomic on this single-CPU bus; GDMA stalls between them.
-  Invalid lock targets, excessive prefixes and REP on non-string instructions fail.
+  F0 BUSLOCK uses ordinary decoding for supported memory and I/O instructions;
+  it is ineffective on supported register-only instructions and NOP. Repeated
+  BUSLOCK and segment overrides are accepted, with the last segment taking effect.
+  Unsupported underlying instructions/ports, excessive prefixes and REP on
+  non-string instructions still fail. See the source reconciliation below.
 
-Remaining gaps include NEC extended opcodes/bit and BCD-string operations,
-REPC/REPNC, WAIT/ESC coprocessor forms, undocumented aliases (82, shift /6,
-SALC), single-step traps/NMI generation, exact NEC undefined-flag behavior,
+Remaining gaps include POLL/WAIT pin behavior, FPO1 decoding, undocumented aliases
+(82, shift /6, SALC), single-step traps/NMI generation, exact NEC undefined-flag behavior,
 prefetch and exact instruction/bus cycle tables. Unknown instructions still fail.
+
+### BUSLOCK source reconciliation (Issue #35)
+
+The old AI-authored policy required x86-style memory read/modify/write targets.
+The [NEC V30MZ preliminary hardware manual](https://www.renesas.com/en/document/lbr/v30mztm-hardware-preliminary),
+§1.3, printed pp. 14–16, instead describes locking for memory or I/O access.
+Without those accesses the lock output stays inactive and bus hold is possible;
+executing the supported underlying instruction with an ineffective prefix is our
+inference. It guarantees redundant prefixes through seven total. §5.3 excludes
+interrupt acknowledgement between prefixes and their instruction.
+
+The decoder consumes F0 without operand lookahead or a separate target validator.
+All operands and errors use the existing instruction paths. The existing defensive
+limit accepts eight prefixes and rejects the ninth; behavior beyond seven is
+emulator policy, with no hardware fidelity claim. IRQ delivery occurs before a
+step, never inside prefix decoding. Bounded REP still performs one element per
+step and restarts at the first prefix, including after interrupt return.
+
+CPU effects remain instruction-granular; GDMA words and SDMA stalls are serviced
+at the existing boundaries. This does not model BUSLOCKB transitions, fetch
+suppression, prefetch/pipeline timing or exact bus arbitration. The preliminary
+core manual does not establish console DMA wiring, POLL wiring or single-step
+delivery. The original CC0 BUSLOCK cartridge and independent native/browser
+literals exercise all three models and restart; commercial-title impact is unmeasured.
+
+The adjacent gap list also previously misclassified excluded older NEC operations
+and REPC/REPNC as required V30MZ features. §§1.3/3.6.1 exclude them, while retaining
+carry/direction operations (CLC/STC/CMC, CLD/STD here). FPO1 remains separate:
+the manual calls it a NOP but Appendix A includes displacement-bearing forms;
+the reported ares one-following-byte decode is inspected-source context, not a
+resolution of that discrepancy. No FPO1 implementation or copied emulator code
+is introduced. See [actual validation and review](issue-35-validation.md).
 
 ## Firmware-free startup and reset
 
@@ -437,7 +470,8 @@ Public hardware descriptions consulted (not emulator source):
 [EEPROM](https://ws.nesdev.org/wiki/EEPROM),
 [V30MZ](https://ws.nesdev.org/wiki/NEC_V30MZ),
 [NEC V30MZ hardware manual](https://www.renesas.com/en/document/lbr/v30mztm-hardware-preliminary)
-(§1.3 zero-count shifts, §5.3 interrupt delay, §6.3.1 HALT release, Table 7-2 reset FLAGS),
+(§1.3 BUSLOCK, prefix guarantees, excluded instructions and zero-count shifts;
+§5.3 interrupt delay, §6.3.1 HALT release, Table 7-2 reset FLAGS),
 [interrupts](https://ws.nesdev.org/wiki/Interrupts),
 [timers](https://ws.nesdev.org/wiki/Timers),
 [General DMA](https://ws.nesdev.org/wiki/DMA),

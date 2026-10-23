@@ -48,6 +48,7 @@ if __name__ == '__main__':
                                  defines=(f'FIRST_BANK={first}',), size=mib*1024*1024)))
     images.append(('lcd', build(2, 0, 0, 0, 'lcd.asm')))
     images.append(('sweep', build(2, 0, 0, 0, 'sweep.asm')))
+    images.append(('buslock', build(2, 0, 0, 0, 'buslock.asm')))
     for model, name in [(0, 'mono'), (1, 'color')]:
         for mapper, interface in [(0, 'common'), (1, '2003')]:
             images.append((f'startup-{name}-{interface}',

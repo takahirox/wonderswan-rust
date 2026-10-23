@@ -1,5 +1,8 @@
 use crate::{bus::Bus, Error, Model};
 
+#[cfg(test)]
+mod buslock_tests;
+
 const CF: u16 = 1;
 const PF: u16 = 4;
 const AF: u16 = 16;
@@ -328,11 +331,11 @@ impl Cpu {
         let start = self.ip;
         let mut segment = None;
         let mut repeat = 0u8;
-        let mut lock = false;
         let mut opcode = self.byte(bus);
         let mut prefixes = 0;
         while matches!(opcode, 0x26 | 0x2e | 0x36 | 0x3e | 0xf0 | 0xf2 | 0xf3) {
             prefixes += 1;
+            // Defensive bound, not a hardware limit: the manual guarantees seven.
             if prefixes > 8 {
                 return Err(Error::new("Excessive instruction prefixes."));
             }
@@ -341,43 +344,17 @@ impl Cpu {
                 0x2e => segment = Some(1),
                 0x36 => segment = Some(2),
                 0x3e => segment = Some(3),
-                0xf0 => lock = true,
+                // BUSLOCK applies to memory/I/O, and is ineffective otherwise.
+                // Decode only through the ordinary instruction path. CPU effects
+                // already finish before DMA/IRQ service at the next boundary;
+                // BUSLOCKB/prefetch timing and console arbitration are not modeled.
+                0xf0 => {}
                 _ => repeat = opcode,
             }
             opcode = self.byte(bus);
         }
         if repeat != 0 && !matches!(opcode, 0xa4..=0xa7 | 0xaa..=0xaf | 0x6c..=0x6f) {
             return Err(Error::new("Unsupported REP instruction."));
-        }
-        if lock {
-            let m = bus.read(Self::physical(self.segments[1], self.ip));
-            let op = (m >> 3) & 7;
-            let valid = matches!(
-                opcode,
-                0x00 | 0x01
-                    | 0x08
-                    | 0x09
-                    | 0x10
-                    | 0x11
-                    | 0x18
-                    | 0x19
-                    | 0x20
-                    | 0x21
-                    | 0x28
-                    | 0x29
-                    | 0x30
-                    | 0x31
-                    | 0x86
-                    | 0x87
-            ) || matches!(opcode, 0x80 | 0x81 | 0x83) && op != 7
-                || matches!(opcode, 0xf6 | 0xf7) && matches!(op, 2 | 3)
-                || matches!(opcode, 0xfe | 0xff) && op <= 1;
-            if !valid || m >> 6 == 3 {
-                return Err(Error::new(
-                    "LOCK requires a supported memory read/modify/write instruction.",
-                ));
-            }
-            // Instructions are already atomic on this single-CPU bus (DMA absent).
         }
         let wide = opcode & 1 != 0;
         match opcode {
@@ -1972,7 +1949,7 @@ mod additional_tests {
     use super::*;
     use crate::Model;
     #[test]
-    fn lock_only_accepts_atomic_memory_targets_and_push_all_enter_leave_restore_registers() {
+    fn push_all_enter_leave_restore_registers() {
         let mut b = Bus::new(Model::Mono);
         let code = [
             0xf0, 0x83, 0x06, 0, 8, 1, 0x60, 0x31, 0xc0, 0x61, 0xc8, 4, 0, 0, 0xc9, 0xf4,
@@ -1993,12 +1970,6 @@ mod additional_tests {
         assert!(c.halted);
         assert_eq!(b.ram[0x800], 1);
         assert_eq!(c.registers, [1, 2, 3, 4, 0x2000, 5, 6, 7]);
-        for code in [&[0xf0, 0x90][..], &[0xf0, 0x01, 0xc0][..]] {
-            b.ram[..code.len()].copy_from_slice(code);
-            c.ip = 0;
-            c.halted = false;
-            assert!(c.step(&mut b).is_err());
-        }
     }
     #[test]
     fn pointer_loads_lea_lods_and_string_io_use_segments_and_registers() {
