@@ -12,6 +12,8 @@ mod internal_eeprom;
 #[cfg(test)]
 mod internal_eeprom_tests;
 #[cfg(test)]
+mod lcd_tests;
+#[cfg(test)]
 mod raw_rom_tests;
 mod sdma;
 #[cfg(test)]
@@ -26,6 +28,7 @@ use std::fmt;
 pub const FRAME_WIDTH: usize = 224;
 pub const FRAME_HEIGHT: usize = 144;
 pub const FRAME_BYTES: usize = FRAME_WIDTH * FRAME_HEIGHT * 4;
+/// Default cadence only; runtime frame completion follows the raster.
 pub const CYCLES_PER_FRAME: u64 = 256 * 159;
 pub const FRAME_RATE: f64 = 3_072_000.0 / CYCLES_PER_FRAME as f64;
 
@@ -220,7 +223,10 @@ impl Machine {
         &self.framebuffer
     }
     pub fn frame_number(&self) -> u64 {
-        self.bus.cycles / CYCLES_PER_FRAME
+        self.bus.completed_frames
+    }
+    pub fn frame_rate(&self) -> f64 {
+        3_072_000.0 / (256.0 * (f64::from(self.bus.ports[0x16]) + 1.0))
     }
     pub fn run_frame(&mut self) -> Result<(), Error> {
         if self.rom_len() == 0 {
@@ -229,14 +235,14 @@ impl Machine {
         if let Some(error) = &self.fault {
             return Err(error.clone());
         }
-        let end = (self.frame_number() + 1) * CYCLES_PER_FRAME;
-        while self.bus.cycles < end {
+        let end = self.frame_number() + 1;
+        while self.frame_number() < end {
             match self.cpu.step(&mut self.bus) {
                 Ok(cycles) => {
                     // Advance at line boundaries so rendering and event delivery share time.
                     let mut remaining = cycles;
                     while remaining > 0 {
-                        let line = ((self.bus.cycles / 256) % 159) as usize;
+                        let line = self.bus.raster_line as usize;
                         let count = remaining.min(256 - (self.bus.cycles % 256) as u32);
                         if self.bus.cycles % 256 + count as u64 == 256 && line < FRAME_HEIGHT {
                             video::render_line(&self.bus, &mut self.framebuffer, line);

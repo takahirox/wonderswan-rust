@@ -46,6 +46,7 @@ if __name__ == '__main__':
             images.append((f'raw{mib}-{interface}',
                            build(2, mapper, 0, 0, 'raw-rom.asm', 4,
                                  defines=(f'FIRST_BANK={first}',), size=mib*1024*1024)))
+    images.append(('lcd', build(2, 0, 0, 0, 'lcd.asm')))
     images.append(('a0', build(0, 0, 0, 0, 'a0.asm', 4)))
     images.append(('gdma', build(0, 0, 0, 0x80, 'gdma.asm', 4)))
     for mode, name in enumerate(['sound-channel2', 'sound-hyper', 'sound-direct']):
