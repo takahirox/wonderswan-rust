@@ -218,6 +218,11 @@ three models, matching-width ROM data and Color/Crystal DMA paths after restart.
 The port-95 CPU probe checks clearing, fast frequency progression, restored
 ordinary sweep and control reset on every model, with CPU-written SRAM markers,
 measurable real Wasm PCM and empty-after-drain assertions.
+The incoming-register CPU probes check SP=2000 and physical-model DS=FF00/FE00
+through normal footer/banking paths, with both header types and mapper interfaces,
+load, restart, cartridge replacement and compatible model changes. CPU-written
+SRAM captures are checked through player persistence and the production Wasm
+adapter; see the [bounded startup policy](docs/hardware-subset.md#firmware-free-startup-and-reset).
 Internal EEPROM CPU probes additionally check settings,
 status, write locking/protection, three-model console isolation, cross-cartridge
 retention, lifecycle flushes, reload/reopen and corrupt/denied/full console storage

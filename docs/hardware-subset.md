@@ -317,16 +317,40 @@ prefetch and exact instruction/bus cycle tables. Unknown instructions still fail
 Entry is FFFF:0000, physical FFFF0; no boot ROM is loaded. FLAGS=F002
 (including MD=1; 8080 emulation is unavailable). PUSHF, interrupt entry and
 POPF/IRET keep bits 1 and 12–15 set and reserved bits 3 and 5 clear.
-Other CPU registers/segments and internal RAM are zero, display/channels are
-disabled, and C0=0F and C2=C3=FF for the common interface. Bandai 2003 uses C0/CF=3F
+Successful cartridge handoff supplies SP=2000 on all three physical models and
+DS=FF00 on WonderSwan or FE00 on WonderSwan Color/SwanCrystal, including when a
+color console runs a mono-compatible cartridge. These values apply before the
+first footer instruction on load, restart, same-model restart and compatible model
+changes. Unloaded `Cpu::default()`/`Machine::new`/`reset`, and restart/model changes
+without a cartridge, keep SP and DS zero.
+
+The previous AI-authored assumption that zero SP/DS plus mandatory cartridge
+initialization sufficed was incorrect. The pinned
+[WSHWTest startup observations](https://github.com/FluBBaOfWard/WSHWTest/blob/34e33d5bfaaabb8b09fa5a557e409efe9fbfd979/README.md#start-registers)
+report these values for all boot ROMs/modes, mapping ASWAN to WonderSwan and
+SPHINX/SPHINX2 to Color/Crystal. Its
+[startup assembly](https://github.com/FluBBaOfWard/WSHWTest/blob/34e33d5bfaaabb8b09fa5a557e409efe9fbfd979/WSHWTest.asm#L49-L74)
+stores incoming SP before replacing it and DS before initializing it. It overwrites
+SS first (and later stores the new SP over the initial capture), so it does not
+establish incoming SS or independently preserve SP for later inspection. The
+SP requirement rests on the author's reported observation. The author qualifies
+interpretations; these sources were inspected, not executed on physical hardware
+here. This bounded correction does not adopt the uncertain startup I/O tables.
+
+Other CPU registers/segments (including SS) and internal RAM are synthetic zeros,
+display/channels are disabled, and C0=0F and C2=C3=FF for the common interface.
+Bandai 2003 uses C0/CF=3F
 and ROM bank high bits=3 so even a 64 MiB ROM starts at its final bank;
 RAM bank high bits remain zero. Cartridge save bytes start FF
-unless restored by the adapter. ROM code must initialize stack, segments,
+unless restored by the adapter. ROM code must initialize its working stack, segments,
 palettes, sound, timers and interrupts. Cartridge EEPROM programming starts disabled.
 
 A0 width/wait is seeded from header flags under the runtime-control policy above.
-This is a reproducible firmware-free handoff, not the real console's post-BIOS
-state. Internal EEPROM uses the minimal handoff described below. Authentication,
+This is a reproducible firmware-free handoff with the bounded SP/DS observations
+above; all other deterministic defaults remain synthetic unless separately
+documented. DS points at the reported boot-ROM base, but no firmware bytes or
+services exist there. Full authentic post-BIOS state is not implemented.
+Internal EEPROM uses the minimal handoff described below. Authentication,
 RTC and broader boot-firmware services are unavailable. `restart`/`change_model`
 reset volatile hardware while preserving the cartridge and completed nonvolatile
 writes; a model incompatibility fails before replacing state. `reset` unloads the cartridge and clears volatile
