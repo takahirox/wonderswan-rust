@@ -56,8 +56,10 @@ guards its retained behavior. The existing divide-fault regression gained
 signed-byte zero and positive/negative overflow cases and unchanged-register
 assertions; its fault-frame checks remain.
 
-Runtime mono/planar-color/mono/packed-color/mono transitions run on Color and
-Crystal; Mono remains in its supported mode. A normal `Machine::run_frame`
+Runtime mono/planar-2bpp (80)/mono/planar-4bpp (C0)/mono/packed-4bpp (E0)/mono
+transitions run on Color and Crystal; Mono remains in its supported mode.
+The packed-mode coverage was added in the review revision recorded below.
+A normal `Machine::run_frame`
 with one byte IDIV remaining advances exactly its returned 26 clocks (24
 execution plus two fetches), wraps one frame, produces one stereo audio sample,
 and stops at the next instruction. Mapped byte forms retain five fetch charges
@@ -85,7 +87,7 @@ frames permits a complete frame after the final palette write. All literal
 CPU observations, markers and pixel requirements remain intact, and the
 corrected native probe passes on all models and both boots.
 
-## Required commands
+## Original implementation checks
 
 | Command | Actual result |
 | --- | --- |
@@ -117,6 +119,37 @@ occurred. Relative documentation links resolve. A literal comparison confirmed
 all 52 original word assembly cases and all 208 original observation literals
 in each native/browser expectation table remain intact; all 30 other generated
 fixtures are byte-identical.
+
+## Review revision: packed graphics mode
+
+Review found that the original runtime sequence selected 80 and C0, both
+planar modes; the earlier description incorrectly called C0 packed. On
+2026-10-24, the revision added E0 (packed 4bpp) and a return to mono while
+retaining every existing mode and scheduler assertion. Color and Crystal
+read back each selected mode and execute three literal AX/full-FLAGS cases
+(positive quotient, negative quotient, and zero AL with nonzero AH) in every
+mode. Each case still checks exact continuation, unchanged 26-clock cost,
+one frame wrap and one stereo sample. Mono never writes the color register.
+The static matrix and cartridge retain their mono/planar-2bpp coverage.
+
+Actual revision checks:
+
+| Command | Actual result |
+| --- | --- |
+| `cargo test -p ws-core --lib --locked cpu::divide_tests::byte_idiv_runtime_modes_and_normal_machine_scheduler_advance_once -- --exact` | Pass, including E0 and subsequent mono assertions on Color/Crystal. |
+| `python3 fixtures/build.py --check` | Pass: all 31 images unchanged. |
+| `python3 demo/build.py --check` | Pass: demo unchanged. |
+| `cargo fmt --all -- --check` | Pass. |
+| `cargo test --workspace --locked` | Pass: 139 core tests, 21 integration tests, one adapter test and doc tests. |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | Pass. |
+| `git diff --check` | Pass, including final revision documentation. |
+
+No revision check failed. Wasm/production builds and browser suites were not
+repeated for this native-test/documentation revision; the original successful
+results above and the upstream review's successful reruns remain prior evidence.
+No production code, cartridge bytes or browser assertions changed. The new
+packed-mode result is native emulator evidence, without a physical-console or
+production-browser packed-mode claim.
 
 ## Acceptance review
 

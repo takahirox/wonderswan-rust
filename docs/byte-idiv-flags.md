@@ -56,8 +56,10 @@ Separate successful AL/AH aliases check sampling before writeback. Native
 TF assertions cover bit preservation; single-step interrupt delivery remains
 outside this change.
 
-Live mono → planar color → mono → packed color → mono transitions run on
-Color/Crystal, with Mono remaining in its supported mode. A normal
+Live mono → planar 2bpp (80) → mono → planar 4bpp (C0) → mono → packed 4bpp
+(E0) → mono transitions run on Color/Crystal, with Mono remaining in its
+supported mode. The runtime test reads back each selected mode; the static
+matrix and cartridge retain their mono/planar-2bpp coverage. A normal
 `Machine::run_frame` positioned one byte IDIV before frame end advances shared
 devices by the returned 26 clocks exactly once (24 execution plus two fetches),
 wraps one frame, produces one stereo audio sample, and stops at the next opcode.

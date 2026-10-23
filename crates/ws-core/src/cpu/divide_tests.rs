@@ -632,9 +632,12 @@ fn byte_idiv_runtime_modes_and_normal_machine_scheduler_advance_once() {
         let mut m = crate::Machine::new(model);
         m.cpu = c;
         m.bus = b;
-        for mode in [0, 0x80, 0, 0xc0, 0] {
+        // Mono, planar 2bpp, planar 4bpp and packed 4bpp, returning to
+        // mono after each color mode. Mono never writes the color register.
+        for mode in [0, 0x80, 0, 0xc0, 0, 0xe0, 0] {
             if model != Model::Mono {
                 m.bus.output(0x60, mode).unwrap();
+                assert_eq!(m.bus.input(0x60).unwrap(), mode);
             }
             for (ax, result, flags) in [
                 (0x0006, 0x0003, 0xf706),
