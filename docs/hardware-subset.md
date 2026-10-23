@@ -288,10 +288,12 @@ Implemented with generic operands, not ROM-specific dispatch:
 - ADD/ADC, SUB/SBB, CMP, AND/OR/XOR, TEST; immediate/accumulator/register/memory
   forms including sign-extended imm8; INC/DEC preserve carry, NEG/NOT.
 - ROL/ROR/RCL/RCR, SHL/SHR/SAR, byte/word, one/CL/immediate counts; counts
-  masked to five bits. Zero-count shifts update SZP from the unchanged operand;
-  zero-count rotates preserve flags. Defined one-bit OF, CF/SZP updates as
-  appropriate. Shift /6 is rejected. Undefined flag values are deterministic,
-  not hardware guarantees.
+  masked to five bits. Shifts clear AF and update SZP even for masked-zero
+  counts; rotates preserve AF/SZP. Masked-zero counts preserve CF; nonzero
+  counts produce the last shifted bit. All counts set left OF to final CF XOR
+  result MSB, and right OF to the XOR of the two highest result bits, on all
+  three physical models independently of graphics mode. Shift /6 is rejected.
+  See [source reconciliation and experimental limits](shift-rotate-flags.md).
 - Unsigned/signed MUL/IMUL, immediate IMUL, DIV/IDIV with zero/quotient-overflow
   vector 0; AAM zero-base fault. Fault return points at the instruction start.
   Multiplication clears AF/PF/SF; signed forms (including 69/6B) set ZF on all

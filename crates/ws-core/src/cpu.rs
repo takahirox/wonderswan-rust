@@ -12,6 +12,9 @@ mod word_transfer_tests;
 #[cfg(test)]
 mod multiply_tests;
 
+#[cfg(test)]
+mod shift_tests;
+
 const CF: u16 = 1;
 const PF: u16 = 4;
 const AF: u16 = 16;
@@ -282,13 +285,6 @@ impl Cpu {
         let mask = if wide { 65535 } else { 255 };
         let sign = if wide { 32768 } else { 128 };
         let count = count & 31;
-        if count == 0 {
-            if op >= 4 {
-                self.szp(value, wide);
-            }
-            return Ok(value);
-        }
-        let old = value;
         for _ in 0..count {
             let carry = self.flags & CF != 0;
             let new_carry = if matches!(op, 0 | 2 | 4) {
@@ -308,20 +304,20 @@ impl Cpu {
             } & mask;
             self.flag(CF, new_carry);
         }
+        // WSCPUTest reports deterministic AF/OF even for masked-zero counts.
+        // See docs/shift-rotate-flags.md for sources and applicability limits.
         if op >= 4 {
+            self.flag(AF, false);
             self.szp(value, wide);
         }
-        if count == 1 {
-            self.flag(
-                OF,
-                match op {
-                    0 | 2 | 4 => (value & sign != 0) ^ (self.flags & CF != 0),
-                    1 | 3 => (value & sign != 0) ^ (value & (sign >> 1) != 0),
-                    5 => old & sign != 0,
-                    _ => false,
-                },
-            );
-        }
+        self.flag(
+            OF,
+            if matches!(op, 0 | 2 | 4) {
+                (value & sign != 0) ^ (self.flags & CF != 0)
+            } else {
+                (value & sign != 0) ^ (value & (sign >> 1) != 0)
+            },
+        );
         Ok(value)
     }
 
@@ -1519,7 +1515,8 @@ mod compatibility_tests {
             };
             for count in [0, 32] {
                 assert_eq!(c.shift(op, 123, count, true).unwrap(), 123);
-                assert_eq!(c.flags, 0x8d7); // Zero-count rotates preserve flags
+                // Left OF = CF XOR MSB; right OF = top-two-bit XOR.
+                assert_eq!(c.flags, if op == 0 || op == 2 { 0x8d7 } else { 0xd7 });
             }
         }
         let (c, _) = run(&[
@@ -1552,7 +1549,16 @@ mod compatibility_tests {
                         c.flags = preserved | ((SF | ZF | PF) ^ szp);
                         c.step(&mut b).unwrap();
                         assert_eq!(c.registers[0], value);
-                        assert_eq!(c.flags, preserved | szp);
+                        let sign = if wide { 0x8000 } else { 0x80 };
+                        let overflow = if op == 4 {
+                            value & sign == 0 // preserved CF is one
+                        } else {
+                            (value & sign != 0) ^ (value & (sign >> 1) != 0)
+                        };
+                        assert_eq!(
+                            c.flags,
+                            (preserved & !(AF | OF)) | szp | if overflow { OF } else { 0 }
+                        );
                     }
                 }
             }
