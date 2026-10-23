@@ -140,21 +140,28 @@ The implementation coordinator reviewed the production helper/decoder diff,
 independent literals, original source/generated cartridge, native/browser
 assertions, hardware documentation and provenance against every Issue checkbox.
 No unrelated assertion or fixture/demo byte was changed. Both complete
-production Chromium suites passed, including the new probe. Every mandatory
-pre-merge criterion has supporting evidence; no blocking findings remain.
+production Chromium suites passed, including the new probe. Mandatory physical-console
+acceptance remains pending and blocks pre-merge completion of Issue #45. The
+emulator results below do not satisfy that requirement.
 
 | Issue acceptance | Reviewed evidence |
 | --- | --- |
 | Source reconciliation and all forms | Old AF/OF assumptions, corrected zero/multi-bit semantics, pinned sources, direct/inferred applicability and evidence limits recorded before production edits; all seven operations and six count/width encodings use the same helper. |
 | Independent result/full FLAGS vectors | 224 literal tuples, 23,100 decoded executions, opposing arithmetic/control flags, masked-zero and nonzero full rotations, sign/width/carry-ring boundaries, untouched state and explicit CL/CX/CH/AH cases. |
-| Models, mode transitions and baseline discrimination | Three actual pre-fix flag failures and original native probe failure; corrected tests cover all three physical model configurations, five static combinations and repeated runtime video-mode transitions. These are emulated configurations, not physical-console runs. |
+| Physical-console models, mode transitions and baseline discrimination — pending | Three actual pre-fix flag failures and original native probe failure were observed in the emulator; corrected tests cover all three emulated model configurations, five static combinations and repeated runtime video-mode transitions. Physical Mono execution and physical Color/SwanCrystal execution in mono/color modes with runtime transitions remain unperformed, including baseline failures and corrected passes. |
 | Destinations, accounting and scheduling | Register and aligned/odd writable RAM/SRAM, ES overrides, exact continuation, fetch/read/write charges, unchanged execution components and exactly one shared-device advance; prior prefix/shadow/HALT/REP/BUSLOCK/FPO1/POLL/multiplication tests retained. |
 | Original CC0 probe and fresh execution | All operations/widths/count sources, actual destination/full FLAGS/Jcc records, poisoned stale saves, fresh boot/completion, all 2,020 observations and restart on every model; native RAM/SRAM and actual production-browser SRAM comparisons. |
 | Prior hardware/browser acceptance | Complete workspace and both complete production Chromium suites pass; compatibility checks retain firmware-free startup, physical-model gates, LCD, PCM/audio, GDMA/SDMA/Hyper Voice, SRAM, both EEPROM controllers, save integrity and input/frame continuity. All 29 earlier cartridges and demo files verified byte-identical. |
 | Required commands | Both Python reproducibility checks, format, full workspace tests, Clippy, whitespace and both production builds pass; complete smoke passed before complete compatibility began, and complete compatibility passed. |
 | Documentation, provenance and review | Hardware support, source reconciliation, original CC0 ownership/hash and actual validation/limits recorded; relative links and JavaScript syntax pass. No new fallback, proprietary dependency or unrelated production change. |
 
-Physical-console comparison and commercial gameplay were not performed. The
+Physical-console acceptance requires device identities, the probe hash, observed
+results/full FLAGS and baseline/corrected pass/fail records tied to the reviewed
+implementation. That evidence remains outstanding; this reporting correction
+does not supply it. Issue #45 must remain open until its mandatory acceptance is
+satisfied.
+
+Commercial gameplay was not performed. The
 source evidence remains an independent experiment report, not a measurement log
 inspected here. The probe establishes bounded behavior, not commercial-catalog
 compatibility. No proprietary ROM/firmware or additional browser engine was used.
