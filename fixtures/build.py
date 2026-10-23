@@ -37,6 +37,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     images = [(name, build(save, mapper, bits, mode))
               for name, save, mapper, bits, mode in CASES]
+    images.append(('a0', build(0, 0, 0, 0, 'a0.asm', 4)))
     images.append(('gdma', build(0, 0, 0, 0x80, 'gdma.asm', 4)))
     for mode, name in enumerate(['sound-channel2', 'sound-hyper', 'sound-direct']):
         images.append((name, build(0, 0, 0, 0x80, 'sound.asm',

@@ -42,6 +42,8 @@ impl Bus {
         ports[0x16] = 158;
         ports[0x91] = 0x80;
         ports[0x9e] = 3;
+        // Synthetic locked handoff with self-test status; not power-on values.
+        ports[0xa0] = if model == Model::Mono { 0x85 } else { 0x87 };
         Self {
             ram: vec![0; 65536],
             ports,
@@ -74,6 +76,9 @@ impl Bus {
             self.ports[0xd3] = 3;
             self.ports[0xd5] = 3;
         }
+        self.ports[0xa0] = (self.ports[0xa0] & 0x83)
+            | (u8::from(cartridge.header.rom_word_bus) << 2)
+            | (u8::from(cartridge.header.rom_wait) << 3);
         self.cartridge = Some(cartridge);
         self.reset_internal_eeprom();
     }
@@ -101,9 +106,9 @@ impl Bus {
             }
     }
     fn access_time(&self, address: usize) -> u32 {
-        // Byte bus accesses, including fetches. ROM header wait and SRAM wait add clocks.
+        // Byte bus accesses, including fetches. Live ROM and SRAM waits add clocks.
         let wait = if address >= 0x20000 {
-            self.cartridge.as_ref().is_some_and(|c| c.header.rom_wait) as u32
+            u32::from(self.ports[0xa0] & 8 != 0)
         } else if address >= 0x10000 {
             (self.ports[0x60] >> 1 & 1) as u32
         } else {
@@ -116,16 +121,19 @@ impl Bus {
             .set(self.accesses.get() + self.access_time(address));
     }
     pub fn word_transfer(&self, first: u32, second: u32) {
-        if first >= 0x20000 && first & 1 == 0 && second == first + 1 {
-            if let Some(c) = self.cartridge.as_ref().filter(|c| c.header.rom_word_bus) {
-                self.accesses.set(
-                    self.accesses
-                        .get()
-                        .saturating_sub(1 + u32::from(c.header.rom_wait)),
-                );
-            }
+        if (0x20000..0xfffff).contains(&first)
+            && first & 1 == 0
+            && second == first + 1
+            && self.ports[0xa0] & 4 != 0
+        {
+            self.accesses.set(
+                self.accesses
+                    .get()
+                    .saturating_sub(self.access_time(first as usize)),
+            );
         }
     }
+
     pub fn read(&self, address: u32) -> u8 {
         let a = address as usize & 0xfffff;
         self.account(a);
@@ -173,11 +181,7 @@ impl Bus {
         let mut length = u16::from_le_bytes([self.ports[0x46], self.ports[0x47]]);
         // SRAM is always an 8-bit region, including the 2003 self-flash window.
         let valid_source = source < 0x10000
-            || (source >= 0x20000
-                && self
-                    .cartridge
-                    .as_ref()
-                    .is_some_and(|c| c.header.rom_word_bus && !c.header.rom_wait));
+            || (source >= 0x20000 && self.cartridge.is_some() && self.ports[0xa0] & 0x0c == 4);
         if !self.color_mode() || length == 0 || !valid_source {
             self.ports[0x48] &= 0x40;
             self.gdma_started = false;
@@ -356,11 +360,7 @@ impl Bus {
                 }
                 Ok(select | rows)
             }
-            0xa0 => Ok(if self.model == Model::Mono {
-                0x85
-            } else {
-                0x87
-            }),
+            0xa0 => Ok(self.ports[0xa0]),
             0x62 if self.model != Model::Mono => {
                 Ok(if self.model == Model::Crystal { 128 } else { 0 })
             }
@@ -418,6 +418,12 @@ impl Bus {
         self.accesses
             .set(self.accesses.get() + 1 + u32::from(port >= 0xc0 && (self.ports[0x60] & 8 != 0)));
         match port {
+            0xa0 => {
+                // IPL lock is sticky; model/self-test status are read-only.
+                // Reserved bits 4–6 ignore writes and read zero.
+                self.ports[0xa0] = (self.ports[0xa0] & 0x83) | (value & 0x0d);
+                return Ok(());
+            }
             // Wide OUT at 42/4C/50 reaches an unused fourth counter byte.
             0x43 | 0x4d | 0x51 if self.model != Model::Mono => return Ok(()),
             0x4a..=0x4c | 0x4e..=0x50 | 0x52 if self.model != Model::Mono => {

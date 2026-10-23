@@ -1,4 +1,6 @@
 //! From-scratch, browser-independent WonderSwan hardware subset.
+#[cfg(test)]
+mod a0_tests;
 mod audio;
 mod bus;
 mod cartridge;

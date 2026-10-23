@@ -403,6 +403,27 @@ try {
     await pause();
   }
   console.log('Original GDMA CPU byte-I/O fixture: forward/reverse transfers and register assertions passed on Color/Crystal');
+  // The original A0 CPU probe runs width edits from RAM, checks readbacks,
+  // matching-width ROM data and Color/Crystal GDMA + both SDMA destinations.
+  const a0 = await readFile(new URL('../../fixtures/generated/a0.ws', import.meta.url));
+  for (const model of ['mono','color','crystal']) {
+    await page.reload();await ready();
+    await page.locator('#model').selectOption(model);
+    await page.locator('#rom').setInputFiles({name:'a0.ws',mimeType:'application/octet-stream',buffer:a0});
+    const success = async () => {
+      await page.waitForFunction(model => {
+        const p = document.querySelector('#screen').getContext('2d').getImageData(0,0,1,1).data;
+        const expected = model === 'mono' ? [170,170,170] : [0,255,0];
+        return document.querySelector('#rom-status').textContent === 'Running'
+          && expected.every((value,i) => p[i] === value);
+      },model);
+      assert.equal(await page.locator('#error').textContent(),'');
+    };
+    await success();
+    await page.locator('#reset').click();await success();
+    await pause();
+  }
+  console.log('Original A0 CPU OUT/IN fixture: all models, matching ROM, live wait SDMA, GDMA acceptance/rejection and restart passed');
   // Actual compiled core PCM passes through the same adapter and Web Audio
   // graph as cartridge gameplay. Inspect pre-filter buffers, not port acceptance.
   async function greenSound() {
