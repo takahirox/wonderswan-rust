@@ -75,7 +75,6 @@ async function main() {
   let animation: number | null = null;
   let lastTime: number | null = null;
   let elapsed = 0;
-  const frameDuration = 1000 / machine.frame_rate();
   const pressed = new Set<string>();
   const pointers = new Map<number, HTMLButtonElement>();
   const bindings: Record<string, number> = {
@@ -144,13 +143,15 @@ async function main() {
     try {
       // Bounded catch-up. Never run an unbounded loop after suspension.
       let frames = 0;
-      while (elapsed >= frameDuration && frames < 4) {
+      while (frames < 4) {
+        const frameDuration = 1000 / machine.frame_rate();
+        if (elapsed < frameDuration) break;
         machine.run_frame();
         sound.push(machine.audio_samples(), machine.sample_rate());
         elapsed -= frameDuration;
         frames++;
       }
-      elapsed = Math.min(elapsed, frameDuration);
+      elapsed = Math.min(elapsed, 1000 / machine.frame_rate());
       if (frames) draw();
       animation = requestAnimationFrame(tick);
     } catch (error) {

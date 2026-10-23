@@ -13,6 +13,8 @@ pub(crate) struct Bus {
     pub cartridge: Option<Cartridge>,
     pub buttons: u16,
     pub cycles: u64,
+    pub raster_line: u8,
+    pub completed_frames: u64,
     pub model: Model,
     pub audio: Audio,
     pub sprites: [u8; 512],
@@ -40,6 +42,7 @@ impl Bus {
         ports[0xd2] = 255;
         ports[0xd4] = 255;
         ports[0x16] = 158;
+        ports[0x17] = if model == Model::Crystal { 0 } else { 155 };
         ports[0x91] = 0x80;
         ports[0x9e] = 3;
         // Synthetic locked handoff with self-test status; not power-on values.
@@ -50,6 +53,8 @@ impl Bus {
             cartridge: None,
             buttons: 0,
             cycles: 0,
+            raster_line: 0,
+            completed_frames: 0,
             model,
             audio: Audio::default(),
             sprites: [0; 512],
@@ -301,8 +306,16 @@ impl Bus {
         if let Some(cart) = &mut self.cartridge {
             self.eeprom.tick(cycles, cart);
         }
-        for line in before + 1..=self.cycles / 256 {
-            let line = (line % 159) as u8;
+        for _ in before + 1..=self.cycles / 256 {
+            // Register writes take effect at line end, including shortening
+            // below the current line. See docs/lcd-timing.md for edge policies.
+            if self.raster_line >= self.ports[0x16] {
+                self.raster_line = 0;
+                self.completed_frames += 1;
+            } else {
+                self.raster_line += 1;
+            }
+            let line = self.raster_line;
             self.timer_tick(0);
             if line == self.ports[3] {
                 self.request(4);
@@ -344,7 +357,7 @@ impl Bus {
             }
             // Reserved source-segment high bytes: deterministic model readback.
             0x43 | 0x4d | 0x51 if self.model != Model::Mono => Ok(0),
-            2 => Ok(((self.cycles / 256) % 159) as u8),
+            2 => Ok(self.raster_line),
             0xb0 => Ok(self.interrupt().unwrap_or(self.ports[0xb0] & 0xf8)),
             0xb5 => {
                 let select = self.ports[0xb5] & 0x70;
@@ -400,7 +413,7 @@ impl Bus {
                 };
                 Ok((value >> ((port & 1) * 8)) as u8)
             }
-            0x00..=0x16
+            0x00..=0x17
             | 0x1c..=0x3f
             | 0x80..=0x90
             | 0x94
@@ -474,12 +487,9 @@ impl Bus {
                     return Err(Error::new("Packed mode requires 4bpp."));
                 }
             }
-            0x16 if value == 158 => {}
-            0x16 => {
-                return Err(Error::new(
-                    "Programmable LCD total lines is unsupported; expected 158.",
-                ))
-            }
+            0x16 => {}
+            0x17 if self.model == Model::Crystal => return Ok(()),
+            0x17 => {}
             0xa3 if value == 0 => return Ok(()),
             0xb0 => {
                 self.ports[0xb0] = value & 0xf8;

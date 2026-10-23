@@ -99,7 +99,7 @@ impl WebMachine {
     }
 
     pub fn frame_rate(&self) -> f64 {
-        ws_core::FRAME_RATE
+        self.machine.frame_rate()
     }
 
     pub fn rom_len(&self) -> usize {

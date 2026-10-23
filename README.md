@@ -16,6 +16,8 @@ supports ordinary word transfers, settings protection and separate per-model
 retention.
 Exact raw 3 MiB and 6 MiB cartridges are supported with top-aligned ROM mapping,
 unchanged raw-content save identities and no external padding.
+LCD total-line programming updates core frame progression and browser cadence; see
+[register/model/edge policies](docs/lcd-timing.md).
 Compatibility and timing remain limited; see the exact
 [support matrix and limitations](docs/hardware-subset.md).
 Unsupported instructions and hardware operations stop with a visible diagnostic.
