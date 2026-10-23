@@ -497,15 +497,18 @@ by CPU vectors. See [source limits](../docs/shift-rotate-flags.md) and
 [executed validation](../docs/issue-45-validation.md). This is bounded emulator
 acceptance, not independently measured console or commercial-title compatibility.
 
-## Successful word division probe (Issue #47)
+## Successful division probe (Issues #47 and #49)
 
 `divide.asm` builds the original source-included CC0-1.0 `generated/divide.ws`,
 a 128 KiB cartridge with 32 KiB SRAM and the ordinary reset/footer/checksum.
-It executes word DIV and IDIV through the CPU, using 26 literal arithmetic
-vectors under opposing F002/FCD7 incoming flags (52 operations per mode pass).
+It executes word DIV and IDIV plus byte IDIV through the CPU. The original
+26 word vectors remain; Issue #49 adds 15 byte-IDIV vectors. Opposing F002/FCD7
+incoming flags make 82 operations per mode pass (52 word and 30 byte).
 Cases include zero, odd/even and exact/inexact results, high-word unsigned
 dividends, all signed operand combinations, negative odd exact quotients and
-successful boundaries. The CPU captures AX, DX, full FLAGS and subsequent
+successful boundaries. Byte cases include zero AL with nonzero AH, signed
+remainders, parity differences and unambiguous ±127 quotient boundaries.
+The CPU captures AX, DX (unchanged 5AA5 for byte IDIV), full FLAGS and subsequent
 ZF/CF/OF/SF/PF/signed-LT branch decisions, restoring captured FLAGS before each
 branch. Every observation is checked by the cartridge and independently by
 native and production-browser literal expectations.
@@ -513,7 +516,7 @@ native and production-browser literal expectations.
 RAM 0400 contains 600D on success or 0BAD on failure; 0402 is the retained boot
 count, 0404 the A0 model bit (0/2), and 0406 the completed mode-pass count (1/3).
 Records start at 0408, four words per operation. Mono runs one monochrome pass;
-Color/Crystal run mono, color, mono. All 628 words, including unused zero records
+Color/Crystal run mono, color, mono. All 988 words, including unused zero records
 on Mono, are copied to SRAM offset zero. Each boot clears the RAM records,
 invalidates retained completion and increments the boot count before testing.
 Native and production Chromium/Wasm checks poison old saved observations with
@@ -524,7 +527,8 @@ stay local. CPU tests additionally cover aliases, mapped even/odd RAM/ROM/SRAM,
 segment overrides, TF/IF/DF preservation, exact IP and transfer/execution costs,
 and normal machine scheduling across live mode changes.
 
-SHA-256: `49ff7cbcf107360d71abf5d330a2f251da458b4b73b546c55dc879a309f1c290`.
-See [source reconciliation and limits](../docs/word-division-flags.md) and
-[executed validation](../docs/issue-47-validation.md). This is bounded emulator
-acceptance, not physical-console or commercial-title evidence.
+SHA-256: `d581d36ffbb6cbf1a44b2c69068aedea29b1da9ac73f62d2006345c0a96611a0`.
+See [word source reconciliation](../docs/word-division-flags.md),
+[byte-IDIV correction and limits](../docs/byte-idiv-flags.md), and
+[Issue #49 executed validation](../docs/issue-49-validation.md). This is bounded
+emulator acceptance, not physical-console or commercial-title evidence.

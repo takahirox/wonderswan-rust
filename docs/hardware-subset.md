@@ -303,8 +303,11 @@ Implemented with generic operands, not ROM-specific dispatch:
   Successful word DIV/IDIV clear AF/CF/OF/PF/SF and set ZF only for an exact
   odd quotient on every emulated model, independently of graphics mode.
   Control flags and quotient/remainder remain unchanged by this correction.
-  Byte-division flags and exceptional-result refinements remain unresolved.
-  See [word-division source reconciliation and limits](word-division-flags.md).
+  Successful byte IDIV clears AF/CF/OF and derives SF/ZF/PF from quotient AL,
+  preserving unrelated FLAGS on every model and across graphics-mode changes.
+  Byte DIV multiplication-history flags and exceptional-result refinements
+  remain unresolved. See [word-division source reconciliation](word-division-flags.md)
+  and [byte-IDIV correction and limits](byte-idiv-flags.md).
 - DAA/DAS, AAA/AAS, AAM/AAD; CF/PF/AF/ZF/SF/OF arithmetic; logical AF cleared.
 - PUSH/POP registers, segments, immediates and memory, PUSHA/POPA, PUSHF/POPF,
   LAHF/SAHF, ENTER/LEAVE.
