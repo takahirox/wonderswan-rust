@@ -300,6 +300,11 @@ Implemented with generic operands, not ROM-specific dispatch:
   models. Unsigned ZF clears on physical WonderSwan and sets on Color/Crystal,
   independently of graphics mode. Products, CF/OF and control flags retain their
   ordinary rules. See [source reconciliation and experimental limits](multiplication-flags.md).
+  Successful word DIV/IDIV clear AF/CF/OF/PF/SF and set ZF only for an exact
+  odd quotient on every emulated model, independently of graphics mode.
+  Control flags and quotient/remainder remain unchanged by this correction.
+  Byte-division flags and exceptional-result refinements remain unresolved.
+  See [word-division source reconciliation and limits](word-division-flags.md).
 - DAA/DAS, AAA/AAS, AAM/AAD; CF/PF/AF/ZF/SF/OF arithmetic; logical AF cleared.
 - PUSH/POP registers, segments, immediates and memory, PUSHA/POPA, PUSHF/POPF,
   LAHF/SAHF, ENTER/LEAVE.
