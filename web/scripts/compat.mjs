@@ -2,6 +2,7 @@
 // Production-preview checks using only this repository's original CC0 probes.
 import assert from 'node:assert/strict';
 import { lcdChecks } from './lcd.mjs';
+import { lcdOutputChecks } from './lcd-output.mjs';
 import { keypadChecks } from './keypad.mjs';
 import { sweepChecks } from './sweep.mjs';
 import { startupChecks } from './startup.mjs';
@@ -507,6 +508,7 @@ try {
   await startupChecks(browser,base,errors);
   await buslockChecks(browser,base,errors);
   await lcdChecks(browser,base,errors);
+  await lcdOutputChecks(browser,base,errors);
   await keypadChecks(browser,base,errors);
   await rawRomChecks(browser,base,errors);
   await consoleChecks(browser,base,errors);

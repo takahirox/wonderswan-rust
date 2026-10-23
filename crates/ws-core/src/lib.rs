@@ -12,6 +12,8 @@ mod internal_eeprom;
 #[cfg(test)]
 mod internal_eeprom_tests;
 #[cfg(test)]
+mod lcd_pipeline_tests;
+#[cfg(test)]
 mod lcd_tests;
 #[cfg(test)]
 mod raw_rom_tests;
@@ -95,6 +97,7 @@ pub struct Machine {
     bus: bus::Bus,
     cpu: Cpu,
     framebuffer: Vec<u8>,
+    video: video::Pipeline,
     fault: Option<Error>,
 }
 impl Default for Machine {
@@ -104,14 +107,13 @@ impl Default for Machine {
 }
 impl Machine {
     pub fn new(model: Model) -> Self {
-        let mut machine = Self {
+        Self {
             bus: bus::Bus::new(model),
             cpu: Cpu::default(),
-            framebuffer: vec![0; FRAME_BYTES],
+            framebuffer: vec![255; FRAME_BYTES],
+            video: video::Pipeline::default(),
             fault: None,
-        };
-        video::render(&machine.bus, &mut machine.framebuffer);
-        machine
+        }
     }
     pub fn model(&self) -> Model {
         self.bus.model
@@ -239,6 +241,23 @@ impl Machine {
     pub fn frame_rate(&self) -> f64 {
         3_072_000.0 / (256.0 * (f64::from(self.bus.ports[0x16]) + 1.0))
     }
+    // Advance at line boundaries so translation, composition and events share time.
+    fn advance(&mut self, cycles: u32) {
+        let mut remaining = cycles;
+        while remaining > 0 {
+            let line = self.bus.raster_line as usize;
+            let count = remaining.min(256 - (self.bus.cycles % 256) as u32);
+            if self.bus.cycles % 256 + count as u64 == 256 {
+                self.video.line_end(&self.bus, &mut self.framebuffer, line);
+            }
+            let frame = self.frame_number();
+            self.bus.tick(count);
+            if self.frame_number() != frame {
+                self.video.frame_wrap();
+            }
+            remaining -= count;
+        }
+    }
     pub fn run_frame(&mut self) -> Result<(), Error> {
         if self.rom_len() == 0 {
             return Err(Error::new("Load a cartridge before running."));
@@ -250,17 +269,7 @@ impl Machine {
         while self.frame_number() < end {
             match self.cpu.step(&mut self.bus) {
                 Ok(cycles) => {
-                    // Advance at line boundaries so rendering and event delivery share time.
-                    let mut remaining = cycles;
-                    while remaining > 0 {
-                        let line = self.bus.raster_line as usize;
-                        let count = remaining.min(256 - (self.bus.cycles % 256) as u32);
-                        if self.bus.cycles % 256 + count as u64 == 256 && line < FRAME_HEIGHT {
-                            video::render_line(&self.bus, &mut self.framebuffer, line);
-                        }
-                        self.bus.tick(count);
-                        remaining -= count;
-                    }
+                    self.advance(cycles);
                 }
                 Err(error) => {
                     self.fault = Some(error.clone());
