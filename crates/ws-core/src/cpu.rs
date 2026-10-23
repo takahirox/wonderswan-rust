@@ -1058,6 +1058,12 @@ impl Cpu {
                                 self.registers[0] = q as u16;
                                 self.registers[2] = rem as u16;
                             } else {
+                                if signed {
+                                    // WSCPUTest's successful byte IDIV rule uses
+                                    // quotient AL, independently of remainder AH.
+                                    self.flags &= !(AF | CF);
+                                    self.szp(q as u8 as u16, false);
+                                }
                                 self.set_reg(0, false, q as u16);
                                 self.set_reg(4, false, rem as u16);
                             }
@@ -1672,6 +1678,9 @@ mod compatibility_tests {
     fn divide_zero_and_quotient_overflow_deliver_vector_zero_without_host_panics() {
         for (opcode, ext, ax, dx, bx) in [
             (0xf6, 0xf3, 123, 0, 0),
+            (0xf6, 0xfb, 123, 0, 0),
+            (0xf6, 0xfb, 128, 0, 1),
+            (0xf6, 0xfb, 0xff7f, 0, 1),
             (0xf7, 0xf3, 0, 1, 1),
             (0xf6, 0xfb, 0x8000, 0, 255),
             (0xf7, 0xfb, 0, 0x8000, 65535),
@@ -1689,6 +1698,9 @@ mod compatibility_tests {
             assert_eq!(word(&b, 0x1ffa), 0x1000);
             assert_eq!(word(&b, 0x1ffe), IF | CF | 0xf002);
             assert_eq!(c.flags & IF, 0);
+            assert_eq!(c.registers[0], ax);
+            assert_eq!(c.registers[2], dx);
+            assert_eq!(c.registers[3], bx);
         }
     }
     #[test]

@@ -65,17 +65,21 @@ existing access/execution charges. A normal `Machine::run_frame` test positions
 each form one instruction before frame completion and verifies exactly one
 34-clock advance through the shared scheduler across live mode transitions.
 
-The original `fixtures/divide.asm` probe records actual CPU-written AX, DX,
-full FLAGS and six branch decisions for 52 operations per mode pass. Mono runs
+The original Issue #47 version of `fixtures/divide.asm` records actual CPU-written
+AX, DX, full FLAGS and six branch decisions for 52 operations per mode pass. Mono runs
 one pass; Color/Crystal run mono → color → mono. Native and production
 Chromium/Wasm tests compare every RAM/SRAM or browser-save word against literals
 on every model and after restart. Each boot clears volatile records, invalidates
 saved completion and increments the retained boot counter. Poisoned observations
 with stale success markers cannot satisfy the fresh execution checks.
 
-Byte DIV multiplication-history flags, byte IDIV flags, signed exceptional
-results, fault flags/classification, decimal adjustment, single-step delivery
-and absolute instruction timing remain separate unresolved work. Existing byte
-and fault behavior is deliberately preserved. Passing these emulator tests does
-not establish complete CPU readiness, commercial-title impact or commercial-game
-compatibility. See [actual validation](issue-47-validation.md).
+[Issue #49](byte-idiv-flags.md) subsequently corrects successful byte IDIV
+flags and extends the same original fixture while retaining the word assertions.
+The 52-operation and 628-word counts above describe the Issue #47 version.
+
+Byte DIV multiplication-history flags, signed exceptional results, fault
+flags/classification, decimal adjustment, single-step delivery and absolute
+instruction timing remain separate unresolved work. Issue #47 preserved byte
+and fault behavior; Issue #49 preserves byte DIV and the fault paths. Passing
+these emulator tests does not establish complete CPU readiness, commercial-title
+impact or commercial-game compatibility. See [actual validation](issue-47-validation.md).
