@@ -11,7 +11,9 @@ framebuffer. The browser only provides input/timing and displays those pixels.
 The core now also implements cartridge SRAM/EEPROM, common and Bandai 2003
 banking, a broader 80186 instruction set, interrupts/timers, color backgrounds
 and sprites, four-channel audio, and Color/Crystal General DMA, Sound DMA and
-Hyper Voice PCM with distinct headphone/speaker mixing.
+Hyper Voice PCM with distinct headphone/speaker mixing. Internal console EEPROM
+supports ordinary word transfers, settings protection and separate per-model
+retention.
 Compatibility and timing remain limited; see the exact
 [support matrix and limitations](docs/hardware-subset.md).
 Unsupported instructions and hardware operations stop with a visible diagnostic.
@@ -57,6 +59,15 @@ reopen the page and select the same ROM again to restore them. Storage errors
 show a notice; unreadable saved data is preserved rather than overwritten. No
 ROM or save is uploaded. Browser storage clearing/private-session expiry removes
 these saves.
+
+Console EEPROM data is also automatic and **browser-local**, in separate versioned
+records for WonderSwan (128 bytes), WonderSwan Color (2048 bytes) and SwanCrystal
+(2048 bytes). Different cartridges share that model's console data; switching
+away and back, reload and reopening preserve it. Storage failures report a
+separate console notice and unreadable records are preserved. Initial settings
+are deterministic synthetic data, not a factory image. Direct erase/bulk commands
+and exact programming timing remain hardware gaps; there is no settings editor.
+See the [console behavior and core/Wasm API](docs/hardware-subset.md#internal-eeprom-transfers-retention-and-api).
 
 Sound defaults to **on at 70%** after a **Play demo** or **Load ROM** interaction;
 there is no audible autoplay on page load. Browser autoplay restrictions may keep
@@ -179,7 +190,10 @@ unavailable audio. Suspended, rejected and pending resumes, creation/playback
 failures, and visibility/pagehide are simulated; sample buffers and analyser
 measurements use real Web Audio nodes. It also loads the original SDMA/Hyper Voice
 probes on Color/Crystal, checks exact PCM buffers and gain/lifecycle controls,
-and verifies mono silence. See [audio control validation](docs/issue-17-validation.md)
+and verifies mono silence. Internal EEPROM CPU probes additionally check settings,
+status, write locking/protection, three-model console isolation, cross-cartridge
+retention, lifecycle flushes, reload/reopen and corrupt/denied/full console storage
+through actual Wasm execution. See [audio control validation](docs/issue-17-validation.md)
 and [SDMA/Hyper Voice validation](docs/issue-19-validation.md).
 See [hardware milestone results](docs/issue-11-validation.md),
 [player UI pre-merge results](docs/issue-9-validation.md) and the

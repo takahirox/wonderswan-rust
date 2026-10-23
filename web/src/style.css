@@ -51,9 +51,9 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 224 / 144; ima
 #sound { min-width: 76px; }
 #sound-status { flex-basis: 100%; font-size: 12px; }
 .feedback { font-size: 13px; }
-#error:not(:empty), #notice:not(:empty), #retry:not([hidden]) { margin-top: 16px; }
+#error:not(:empty), #notice:not(:empty), #console-notice:not(:empty), #retry:not([hidden]) { margin-top: 16px; }
 #error { color: #ffb5b5; overflow-wrap: anywhere; }
-#notice { color: var(--muted); }
+#notice, #console-notice { color: var(--muted); }
 #touch-controls { display: none; justify-content: space-between; align-items: center; gap: 8px; margin-top: 24px; }
 #touch-controls button { touch-action: none; user-select: none; -webkit-user-select: none; min-width: 44px; min-height: 44px; padding: 6px; }
 .dpad { display: grid; grid-template-columns: repeat(3, 44px); gap: 4px; }

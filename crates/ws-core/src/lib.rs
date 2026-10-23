@@ -6,6 +6,9 @@ mod cpu;
 mod eeprom;
 #[cfg(test)]
 mod gdma_tests;
+mod internal_eeprom;
+#[cfg(test)]
+mod internal_eeprom_tests;
 mod sdma;
 #[cfg(test)]
 mod sound_tests;
@@ -30,6 +33,13 @@ pub enum Model {
     Crystal,
 }
 impl Model {
+    pub(crate) fn index(self) -> usize {
+        match self {
+            Self::Mono => 0,
+            Self::Color => 1,
+            Self::Crystal => 2,
+        }
+    }
     pub fn name(self) -> &'static str {
         match self {
             Self::Mono => "WonderSwan (mono)",
@@ -96,8 +106,11 @@ impl Machine {
         self.bus.model
     }
     /// Clear cartridge, CPU, input, RAM, ports and display, even for the same model.
+    /// Retain completed console EEPROM bytes for all three physical models.
     pub fn reset(&mut self, model: Model) {
+        let console_data = std::mem::take(&mut self.bus.console_data);
         *self = Self::new(model);
+        self.bus.console_data = console_data;
     }
     /// Validate before replacing the running machine. Failed loads preserve it.
     pub fn load_rom(&mut self, bytes: &[u8]) -> Result<usize, Error> {
@@ -118,7 +131,8 @@ impl Machine {
             self.bus.insert_cartridge(c);
         }
     }
-    /// Switch the console and restart its volatile state, preserving the cartridge save.
+    /// Switch the console and restart its volatile state, preserving the cartridge
+    /// save and the independent console EEPROM record for every model.
     /// Reject incompatible models before replacing any state.
     pub fn change_model(&mut self, model: Model) -> Result<(), Error> {
         if model == Model::Mono
@@ -139,6 +153,25 @@ impl Machine {
     }
     pub fn cartridge_header(&self) -> Option<&Header> {
         self.bus.cartridge.as_ref().map(|c| &c.header)
+    }
+    /// Completed console EEPROM bytes for the active physical model, independent
+    /// of the cartridge save and active mono/Color command mode.
+    pub fn console_data(&self) -> &[u8] {
+        &self.bus.console_data[self.model().index()]
+    }
+    /// Length-checked import for the active model. Failure preserves all state;
+    /// success cancels pending transfers so they cannot overwrite imported bytes.
+    pub fn load_console_data(&mut self, data: &[u8]) -> Result<(), Error> {
+        let expected = self.console_data().len();
+        if data.len() != expected {
+            return Err(Error::new(format!(
+                "Console EEPROM size mismatch: expected {expected} bytes, got {}.",
+                data.len()
+            )));
+        }
+        self.bus.console_data[self.model().index()].copy_from_slice(data);
+        self.bus.reset_internal_eeprom();
+        Ok(())
     }
     pub fn save_data(&self) -> &[u8] {
         self.bus

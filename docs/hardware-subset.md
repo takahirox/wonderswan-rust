@@ -17,9 +17,11 @@ commercial software will run or that timing matches a physical console.
 | ROM | Power-of-two 128 KiB–16 MiB common interface; up to 64 MiB with mapper 01 | 3/6 MiB unpadded images rejected with leading-padding explanation. ROM is read-only. Header 00 identifies a common interface, not proof of a physical 2001 chip (KARNAK also uses 00). Pocket Challenge board features unsupported. |
 | Common banking | C0 linear 1 MiB bank, C1 save 64 KiB bank, C2/C3 64 KiB ROM banks | Address bus wraps at 20 bits. Unconnected ROM/save address bits mirror physical power-of-two sizes. Only upper 768 KiB of each linear bank is visible at 40000–FFFFF. |
 | SRAM | Codes 01/02: 32 KiB; 03: 128 KiB; 04: 256 KiB; 05: 512 KiB; FF initialization, byte reads/writes and C1 banking | Cartridge SRAM is battery-backed, separate from zero-initialized internal volatile RAM. Code 01 follows the current hardware survey (32 KiB), not older 8 KiB descriptions. No-save region reads FF and ignores writes. |
-| External EEPROM | 10: 128 B, 50: 1024 B, 20: 2048 B; C4/C5 data, C6/C7 command, C8/C9 control/status | Word organization, separate read/write buffers, WEN/WDS, READ/WRITE/ERASE, WRAL/ERAL, abort/invalid controller combinations, write latch and busy/done status. Fixed 32-clock read / 3072-clock programming latency, not analogue-accurate. Writes start disabled. 2001's stale read-done quirk is retained. Internal console EEPROM is unsupported. |
+| External EEPROM | 10: 128 B, 50: 1024 B, 20: 2048 B; C4/C5 data, C6/C7 command, C8/C9 control/status | Word organization, separate read/write buffers, WEN/WDS, READ/WRITE/ERASE, WRAL/ERAL, abort/invalid controller combinations, write latch and busy/done status. Fixed 32-clock read / 3072-clock programming latency, not analogue-accurate. Writes start disabled. 2001's stale read-done quirk is retained. Internal EEPROM uses a separate controller below. |
+| Internal EEPROM | Mono 128 B; Color and Crystal independently 2048 B, retained in mono mode; BA/BB data, BC/BD command, BE status/control; ordinary READ/WRITE, WEN/WDS and sticky settings protection | Six-bit mono / ten-bit Color command addresses follow active mode. BF reads zero and ignores writes. Direct ERASE, WRAL/ERAL and silicon edge cases remain unsupported; see detailed policies below. |
 | Bandai 2003 | CA/CB RTC transport with no attached RTC; CC/CD four GPO directions/data; CE read-only ROM mapping into save area; CF alias of C0; D0/D2/D4 low banks alias C1/C2/C3; D1/D3/D5 high two bits | RTC commands 10–1B transfer documented payload lengths, busy/ready handshake at byte granularity (64 clocks), and FF from absent RTC pull-up. No S-3511A date/time emulation, alarms, attached GPO peripherals, flash programming or lockout handshake. Invalid commands/control values and self-flash writes fail explicitly. |
 | Nonvolatile browser saves | localStorage per SHA-256 of complete ROM bytes, automatic once/second, on pause/hide/pagehide, before replacing a ROM | Reset/model changes preserve in-memory saves. Reload/reopen requires reselecting local ROM. No ROM/save upload or server storage. Corrupt/size-mismatched slots are preserved and not overwritten; denied/full storage shows a notice. Browser profile clearing/private-session expiry removes browser data. No import/export UI. |
+| Console browser records | Separate `wonderswan:console:v1:mono`, `:color`, `:crystal` localStorage keys, base64 complete physical EEPROM bytes | Restored once per model before execution, independent of cartridge SHA-256 saves. Same periodic/lifecycle flushes as cartridge saves, including before model replacement. Corrupt/denied reads block overwriting that slot; quota failures report separately and leave emulation/cartridge saves usable. Browser-local only; no settings editor. |
 | CPU | Generic 8/16-bit register, ModR/M, segment, stack and string operations below | Unsupported opcodes/group extensions/ports/prefix combinations stop execution visibly, with CS:IP for unknown opcodes. No silent NOP fallback. |
 | Interrupts | IF, vector table and stack entry, INT/INT3/INTO/IRET, divide faults, BOUND fault; hardware priority highest source first; B0 vector/request, B2 enable, B4 status, B6 acknowledgement | Enable gates request latching; changing enable does not clear latched status. Key edges, line match, VBlank and both timer sources generated. UART/cartridge IRQ sources, single-step trap and low-battery NMI not generated. STI and MOV/POP SS inhibit delivery for the next instruction; POPF/IRET do so when IF changes from 0 to 1. HLT wakes for a latched IRQ even with IF=0, resuming without vectoring in that case. |
 | Timers | A2 control, A4–A7 reload, A8–AB counter; HBlank and VBlank count sources, one-shot/repeat, reload-on-write and disabled-count-at-one IRQ quirk | Test modes at A3 unsupported. Word writes to A2 with high byte zero allowed. No programmable LCD line total (16 must remain 158). |
@@ -215,15 +217,84 @@ disabled, and C0=0F and C2=C3=FF for the common interface. Bandai 2003 uses C0/C
 and ROM bank high bits=3 so even a 64 MiB ROM starts at its final bank;
 RAM bank high bits remain zero. Cartridge save bytes start FF
 unless restored by the adapter. ROM code must initialize stack, segments,
-palettes, sound, timers and interrupts. EEPROM programming starts disabled.
+palettes, sound, timers and interrupts. Cartridge EEPROM programming starts disabled.
 
 This is a reproducible firmware-free handoff, not the real console's post-BIOS
-state. Console internal EEPROM/user settings, authentication, RTC and boot-firmware
-services are unavailable. `restart`/`change_model` reset volatile hardware while
-preserving the cartridge and completed nonvolatile writes; a model incompatibility
-fails before replacing state. `reset` is the explicit unload/clear API; browser
-ordinary Restart/model controls use the preserving path. A failed ROM validation
+state. Internal EEPROM uses the minimal handoff described below. Authentication,
+RTC and broader boot-firmware services are unavailable. `restart`/`change_model`
+reset volatile hardware while preserving the cartridge and completed nonvolatile
+writes; a model incompatibility fails before replacing state. `reset` unloads the cartridge and clears volatile
+state but retains all three console EEPROM records; browser ordinary Restart/model
+controls use the preserving path. A failed ROM validation
 preserves the running machine. Execution errors latch until restart or valid load.
+
+## Internal EEPROM transfers, retention and API
+
+BA/BB have independent little-endian write and read buffers; writes to the data
+ports never change readback. BC/BD retain a 16-bit command. Command layout is
+`start=1`, two operation bits and six address bits in mono mode, or ten address
+bits with Color enabled at 60.7. READ is op 2/control 10, WRITE op 1/control 20,
+and WDS/WEN op 0/subcommand 0/3 (top two address bits)/control 40. Mono commands
+address the first 128 bytes on every model. Switching active video/command mode
+never reallocates bytes or resets write-enable/protection. Pending operations
+capture their decoded address, data and write-enable decision when accepted;
+completion does not reinterpret them using later register/mode values.
+
+BE bit 0 is READ DONE, cleared at each accepted READ and set on completion.
+Bit 1 is READY, clear while an operation is pending and set after it finishes.
+Other completed operations leave DONE and the read buffer unchanged. Bit 7 is
+settings protection: writing one sets a sticky latch, readback reports it, and
+writing zero cannot clear it. It does not abort a transfer. Words at byte 5E
+remain writable; words from byte 60 through the physical end reject writes when
+protected. WDS separately locks all writes; WEN does not remove protection.
+Protection also applies at completion, including if set while a write is pending.
+BF, the reserved high byte of word IN/OUT BE, reads zero and ignores every write
+without changing controller state. Lower reserved BE bits are ignored.
+
+The shared emulated clock completes READ in 32 clocks and WRITE/WEN/WDS in
+3072 clocks. These are **bounded approximations**, not measured internal EEPROM
+latencies (including short WEN/WDS commands). Polling consumes normal CPU/I/O
+clocks; scanlines, timers, audio and both DMAs keep advancing. Unsupported direct
+ERASE, WRAL/ERAL, malformed command formats, mixed operation controls and new
+requests while busy produce explicit diagnostics without changing stored bytes.
+No external EEPROM bulk/abort behavior is inherited. Serial command adaptation,
+invalid-command silicon behavior, protection races and precise busy/DONE timing
+outside these ordinary transfers remain unresolved hardware gaps.
+
+Each `Machine` owns one record per physical model. Completed bytes survive
+restart, reset/unload, cartridge replacement and switching away/back. Pending
+operations are discarded by those lifecycle resets. Failed ROM validation,
+incompatible model changes and failed imports preserve existing state. At every
+cartridge load/restart/compatible model change, the firmware-free handoff enables
+ordinary internal writes and sets settings protection from header byte 9 bit 7:
+zero protects, one requests the writable-settings exception. Software may protect
+again; a subsequent handoff reapplies the new cartridge's flag. This explicit
+policy does not execute firmware, update cartridge/boot counters or synthesize
+other firmware services.
+
+New records have FF in bytes 00–5F and zero in bytes 60 through the physical end:
+an empty owner name, unknown personal fields and zero counters/options. This is
+a deterministic synthetic initial record, **not a factory image** or an assertion
+that zero settings implement all firmware expectations. Imported data is opaque.
+
+Core `Machine::console_data() -> &[u8]` exports completed bytes for the active
+physical model; `load_console_data(&[u8]) -> Result<(), Error>` accepts exactly
+128 bytes for Mono or 2048 for either Color model. Successful administrative
+import replaces that model's bytes, cancels pending transfers, clears buffers and
+reapplies the current header handoff (or disabled/unprotected state if unloaded).
+Failure changes nothing. The thin Wasm equivalents `console_data(): Uint8Array`
+and `load_console_data(data: Uint8Array)` copy across the boundary and throw on
+length mismatch. These APIs are separate from cartridge `save_data/load_save`;
+no ROM is required. `reset(model)` selects/unloads, retaining every record;
+`change_model(model)` retains the loaded cartridge and its save when compatible.
+
+The browser restores each model's versioned record once before executing it,
+then retains the core's record across cartridge changes. It flushes on the existing
+one-second timer, pause, hide/pagehide and before ROM/model replacement. Unreadable
+records remain untouched for the session; storage failures have their own notice
+and cannot clear cartridge save diagnostics. Clearing browser storage removes
+console data; no record or ROM is uploaded. Cross-tab conflict resolution and a
+settings/import/export UI are outside this milestone.
 
 ## Independent hardware references and validation
 
@@ -251,6 +322,17 @@ Public hardware descriptions consulted (not emulator source):
 [palettes](https://ws.nesdev.org/wiki/Display/Palette),
 [sound](https://ws.nesdev.org/wiki/Sound),
 [Hyper Voice](https://ws.nesdev.org/wiki/Hyper_Voice).
+
+For internal EEPROM, the independently authored implementation also consulted
+[libws EEPROM definitions and protection documentation](https://github.com/WonderfulToolchain/target-wswan-syslibs/blob/e1f2a59c5e61382b1b5339098414c143c2aea5f0/libws/include/ws/eeprom.h),
+[active-mode handle selection](https://github.com/WonderfulToolchain/target-wswan-syslibs/blob/e1f2a59c5e61382b1b5339098414c143c2aea5f0/libws/src/eeprom/eeprom_handle_internal.c),
+and [register definitions](https://wonderful.asie.pl/doc/libws/ports_8h_source.html).
+The [public internal EEPROM experiment source](https://github.com/asiekierka/ws-test-suite/blob/7dfa0e2e869d08386b685d6a56df0bcfaf181b47/src/mono/eeprom/internal/main.c)
+was inspected for independent buffer/status/locking/protection/mode vectors and
+its explicit uncertainty about direct erase. It was not built/run, copied into
+our fixtures or reported as a hardware pass. No Ares/emulator implementation or
+inaccessible WSdev snippets establish behavior here. The CC0 probes are original.
+See [Issue #21 validation and source review](issue-21-validation.md).
 
 Native tests exercise hardware vectors and full cartridge paths. Browser smoke
 checks use original licensed files only. See [fixture provenance/builds](../fixtures/README.md)
