@@ -14,8 +14,8 @@ commercial software will run or that timing matches a physical console.
 | --- | --- | --- |
 | Models | WonderSwan mono; WonderSwan Color; SwanCrystal (default) | Mono has 16 KiB internal RAM; color-enabled models have 64 KiB. WSC/Crystal share graphics architecture. A0 exposes live ROM controls and fixed model/status bits; 62 distinguishes WSC/Crystal. LCD panel characteristics are not simulated. |
 | Header | Named entry/maintenance/publisher/model/ID/version/protection/size/save/orientation/ROM width/wait/mapper/checksum fields | Independent errors include bad field/value, declared/file size or checksum. Reserved flags and unknown model/save/mapper codes fail. Firmware authentication is absent. |
-| ROM | Power-of-two 128 KiB–16 MiB common interface; up to 64 MiB with mapper 01 | 3/6 MiB unpadded images rejected with leading-padding explanation. ROM is read-only. Header 00 identifies a common interface, not proof of a physical 2001 chip (KARNAK also uses 00). Pocket Challenge board features unsupported. |
-| Common banking | C0 linear 1 MiB bank, C1 save 64 KiB bank, C2/C3 64 KiB ROM banks | Address bus wraps at 20 bits. Unconnected ROM/save address bits mirror physical power-of-two sizes. Only upper 768 KiB of each linear bank is visible at 40000–FFFFF. |
+| ROM | Header-declared 128 KiB–16 MiB common interface, including raw 3/6 MiB; up to 64 MiB with mapper 01 | Exact raw file length and checksum required. 3/6 MiB top-align in rounded 4/8 MiB spaces; synthetic leading region reads FF by policy, not electrical certification. ROM is read-only. Header 00 identifies a common interface, not proof of a physical 2001 chip (KARNAK also uses 00). Pocket Challenge board features unsupported. |
+| Common banking | C0 linear 1 MiB bank, C1 save 64 KiB bank, C2/C3 64 KiB ROM banks | Address bus wraps at 20 bits. ROM addresses wrap within rounded power-of-two capacity; saves mirror their power-of-two size. Only upper 768 KiB of each linear bank is visible at 40000–FFFFF. |
 | SRAM | Codes 01/02: 32 KiB; 03: 128 KiB; 04: 256 KiB; 05: 512 KiB; FF initialization, byte reads/writes and C1 banking | Cartridge SRAM is battery-backed, separate from zero-initialized internal volatile RAM. Code 01 follows the current hardware survey (32 KiB), not older 8 KiB descriptions. No-save region reads FF and ignores writes. |
 | External EEPROM | 10: 128 B, 50: 1024 B, 20: 2048 B; C4/C5 data, C6/C7 command, C8/C9 control/status | Word organization, separate read/write buffers, WEN/WDS, READ/WRITE/ERASE, WRAL/ERAL, abort/invalid controller combinations, write latch and busy/done status. Fixed 32-clock read / 3072-clock programming latency, not analogue-accurate. Writes start disabled. 2001's stale read-done quirk is retained. Internal EEPROM uses a separate controller below. |
 | Internal EEPROM | Mono 128 B; Color and Crystal independently 2048 B, retained in mono mode; BA/BB data, BC/BD command, BE status/control; ordinary READ/WRITE, WEN/WDS and sticky settings protection | Six-bit mono / ten-bit Color command addresses follow active mode. BF reads zero and ignores writes. Direct ERASE, WRAL/ERAL and silicon edge cases remain unsupported; see detailed policies below. |
@@ -36,6 +36,36 @@ commercial software will run or that timing matches a physical console.
 | Sound | Four 32×4-bit wavetable channels; channel 2 unsigned PCM/voice volume; channel 3 signed sweep with wrap; channel 4 eight LFSR tap modes/reset | 80–94 documented bit masks, 96–9B 10/11-bit legacy mixer readbacks, 9E speaker volume; 24 kHz stereo clock, bounded 200 ms queue. Headphone 16-bit and speaker 8-bit adders wrap; speaker main volume uses a linear approximation. Sound test port 95 remains rejected. Analogue filters/volume levels are approximate. |
 | Browser sound | Default-on sound preference, Mute/Unmute and 0–100% volume, gesture activation, Web Audio buffers, high-pass DC removal, bounded queue, reused single AudioContext | Pause/restart/hide clears scheduled sources; failures show a notice and keep gameplay usable. No output loop while paused. Headless buffer validation does not certify physical speaker quality. Original demo stays silent. |
 | Input | B5 active-high keypad matrix (yyyy xxxx bas0); keyboard/touch adapters | No serial/UART, link cable, sound/power buttons or accessories. |
+
+## Raw ROM length and mapped capacity
+
+Exact 3,145,728-byte (size code 05) and 6,291,456-byte (07) images load without
+padding or header edits on every compatible model and both mapper interfaces.
+For raw length L, capacity C = next power of two. Mask the bank/offset address
+by C − 1, return FF below C − L, otherwise read raw byte `address − (C − L)`.
+Thus common-interface D0 starts raw 3 MiB data and A0 starts raw 6 MiB data;
+FF remains the final bank with the original footer/reset jump. The same shared
+map serves CPU, startup, General DMA, Sound DMA and 2003 self-map reads.
+Power-of-two images have no leading gap and keep their previous mapping.
+
+Raw bytes remain unchanged. Header size/checksum, core/Wasm `load_rom` return
+length and `rom_len`, and browser SHA-256 save identity all describe the exact
+original image, excluding synthetic fill. Files padded to a different length
+while retaining their original size header are rejected with a declared/file
+size diagnostic. Unsupported sizes/fields, mapper limits, checksums and model
+restrictions retain their existing validation.
+
+The previous power-of-two-only restriction and leading-padding advice could not
+load a valid raw 3/6 MiB image. [Wonderful linker placement documentation](https://wonderful.asie.pl/wiki/doku.php?id=wswan:guide:memory_management)
+defines bank placement relative to the ROM's upper end. Independently inspected
+[pinned ares loader behavior](https://github.com/ares-emulator/ares/blob/64c835451157de74e418ca3fdbe1b5aec9972af9/ares/ws/cartridge/cartridge.cpp#L31-L38)
+and [pinned Beetle loader behavior](https://github.com/libretro/beetle-wswan-libretro/blob/0db0832183ad264bbe67bcd7e651365e7dac5389/libretro.c#L554-L568)
+corroborate rounded/top-aligned placement; Beetle explicitly fills the gap with FF.
+These are placement evidence, not measurements of unpopulated physical cartridge
+addresses. FF is an explicit emulation policy; electrical open bus remains
+unverified. No emulator code was copied. See the [original raw-image probes](../fixtures/README.md#raw-36-mib-probes-issue-25)
+and [Issue #25 validation](issue-25-validation.md). Commercial playability remains
+untested; firmware-free startup and other hardware limitations are unchanged.
 
 ## Runtime ROM controls (A0)
 

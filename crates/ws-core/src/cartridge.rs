@@ -59,8 +59,8 @@ pub struct Cartridge {
 }
 impl Cartridge {
     pub fn parse(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() < 131_072 || bytes.len() > 67_108_864 || !bytes.len().is_power_of_two() {
-            return Err(Error::new(format!("Expected a 128 KiB–64 MiB power-of-two WonderSwan ROM; file size is {} bytes. Non-power-of-two dumps require documented leading padding.", bytes.len())));
+        if bytes.len() < 131_072 || bytes.len() > 67_108_864 {
+            return Err(Error::new(format!("Expected a 128 KiB–64 MiB WonderSwan ROM; file size is {} bytes. Use an exact raw image matching its header ROM size (including 3 MiB and 6 MiB).", bytes.len())));
         }
         let h = &bytes[bytes.len() - 16..];
         if h[0] != 0xea {
@@ -160,7 +160,16 @@ impl Cartridge {
         })
     }
     pub fn rom(&self, bank: usize, offset: usize) -> u8 {
-        self.bytes[((bank << 16) | offset) & (self.bytes.len() - 1)]
+        // Wrap in the rounded address space, then top-align the original image.
+        // FF in the leading gap is an emulation policy, not electrical open bus.
+        let capacity = self.bytes.len().next_power_of_two();
+        let address = ((bank << 16) | offset) & (capacity - 1);
+        let gap = capacity - self.bytes.len();
+        if address < gap {
+            0xff
+        } else {
+            self.bytes[address - gap]
+        }
     }
 }
 
@@ -175,7 +184,9 @@ pub(crate) mod tests {
             524288 => 2,
             1048576 => 3,
             2097152 => 4,
+            3145728 => 5,
             4194304 => 6,
+            6291456 => 7,
             8388608 => 8,
             16777216 => 9,
             33554432 => 10,
