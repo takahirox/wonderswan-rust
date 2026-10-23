@@ -1844,6 +1844,90 @@ mod compatibility_tests {
         assert_eq!(word(&b, 0x800), 0x1234);
     }
     #[test]
+    fn live_a0_costs_cover_fetch_and_data_word_alignment_mapping_and_wrap() {
+        let mut b = Bus::new(Model::Crystal);
+        let mut cart =
+            crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(262144, 0, 0))
+                .unwrap();
+        for bank in 0..4 {
+            cart.bytes[bank * 65536..(bank + 1) * 65536].fill(0x30 + bank as u8);
+        }
+        b.insert_cartridge(cart);
+        b.output(0xc2, 1).unwrap();
+        b.output(0xc3, 2).unwrap();
+        b.output(0xc0, 0).unwrap();
+        let mut c = Cpu::default();
+        // Mapping values under a width mismatch test deterministic emulator policy,
+        // not physical-ROM data accuracy. Costs test the live controller setting.
+        for control in [0, 4, 8, 12] {
+            b.output(0xa0, control).unwrap();
+            let byte_cost = 1 + u32::from(control & 8 != 0);
+            b.accesses.set(0);
+            assert_eq!(b.read(0x20000), 0x31);
+            assert_eq!(b.accesses.get(), byte_cost);
+            for (segment, offset, expected, coalesced) in [
+                (0x2000, 0, 0x3131, true),
+                (0x2000, 1, 0x3131, false),
+                (0x2000, 0xfffe, 0x3131, true),
+                (0x2000, 0xffff, 0x3131, false), // segment offset wraps
+                (0x2800, 0x7fff, 0x3231, false), // different bank windows
+                (0xffff, 0x000f, 0x0033, false), // 20-bit wrap to RAM
+                (0x1000, 0xffff, 0xffff, false), // SRAM segment wrap
+            ] {
+                let rom_bytes = if segment == 0xffff {
+                    1
+                } else if segment == 0x1000 {
+                    0
+                } else {
+                    2
+                };
+                let cost = if coalesced && control & 4 != 0 {
+                    byte_cost
+                } else {
+                    rom_bytes * byte_cost + (2 - rom_bytes)
+                };
+                // Instruction operand fetch uses the same physical addresses as data.
+                c.segments[1] = segment;
+                c.ip = offset;
+                b.accesses.set(0);
+                assert_eq!(c.word(&b), expected);
+                assert_eq!(
+                    b.accesses.get(),
+                    cost,
+                    "fetch {segment:04x}:{offset:04x}/{control}"
+                );
+                b.accesses.set(0);
+                assert_eq!(c.read(&b, Operand::Memory(segment, offset), true), expected);
+                assert_eq!(
+                    b.accesses.get(),
+                    cost,
+                    "data {segment:04x}:{offset:04x}/{control}"
+                );
+            }
+            // Actual MOV AX,imm16: opcode fetch + aligned/unaligned operand word.
+            let cart = b.cartridge.as_mut().unwrap();
+            cart.bytes[65536..65543].copy_from_slice(&[0x90, 0xb8, 0x34, 0x12, 0xb8, 0x78, 0x56]);
+            c.segments[1] = 0x2000;
+            for (ip, value, operand_cost) in [
+                (
+                    1,
+                    0x1234,
+                    if control & 4 != 0 {
+                        byte_cost
+                    } else {
+                        2 * byte_cost
+                    },
+                ),
+                (4, 0x5678, 2 * byte_cost),
+            ] {
+                c.ip = ip;
+                assert_eq!(c.step(&mut b).unwrap(), 1 + byte_cost + operand_cost);
+                assert_eq!(c.registers[0], value);
+            }
+            b.cartridge.as_mut().unwrap().bytes[65536..65543].fill(0x31);
+        }
+    }
+    #[test]
     fn cycle_accounting_depends_on_instruction_operand_bus_waits_and_halt() {
         let (mut c, mut b) = setup(&[0x90, 0xb8, 1, 0, 0xa1, 0, 8, 0xf7, 0xe0, 0xf4]);
         let mut costs = Vec::new();
@@ -1864,7 +1948,7 @@ mod compatibility_tests {
         c.segments[1] = 0xf000;
         let fast = c.step(&mut b).unwrap();
         c.ip = 0;
-        b.cartridge.as_mut().unwrap().header.rom_wait = true;
+        b.output(0xa0, 0x0c).unwrap();
         let slow = c.step(&mut b).unwrap();
         assert_eq!(slow, fast + 1);
     }

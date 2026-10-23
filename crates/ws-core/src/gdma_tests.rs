@@ -288,9 +288,9 @@ fn zero_invalid_sram_slow_and_byte_rom_sources_stop_without_setup_or_save_change
     for source in [0x10000, 0x1fffe, 0x20000] {
         for (word, wait) in [(false, false), (true, true), (false, true)] {
             let mut b = bus();
-            let c = b.cartridge.as_mut().unwrap();
-            c.header.rom_word_bus = word;
-            c.header.rom_wait = wait;
+            b.output(0xa0, (u8::from(word) << 2) | (u8::from(wait) << 3))
+                .unwrap();
+            let c = b.cartridge.as_ref().unwrap();
             let save = c.save.clone();
             let rom = c.bytes.clone();
             program(&mut b, source, 0x100, 4, 0xc0);
@@ -336,13 +336,24 @@ fn invalid_source_mid_transfer_preserves_remaining_length_and_next_addresses() {
         assert_eq!(&b.ram[0x200..0x202], &expected);
         assert!(b.ram[0x202..0x206].iter().all(|v| *v == 0));
     }
-    // Re-evaluate the ROM access restrictions for every word.
-    let mut b = bus();
-    program(&mut b, 0x20000, 0x100, 4, 0x80);
-    assert_eq!(b.gdma_step(), Some(7));
-    b.cartridge.as_mut().unwrap().header.rom_wait = true;
-    assert_eq!(b.gdma_step(), None);
-    assert_eq!(state(&mut b), (0x20002, 0x102, 2, 0));
+    // Bus-level edits between bounded words; the CPU itself is stalled by GDMA.
+    for model in [Model::Color, Model::Crystal] {
+        for control in [0, 8, 12] {
+            let mut b = bus();
+            b.model = model;
+            program(&mut b, 0x20000, 0x100, 6, 0x80);
+            b.accesses.set(0);
+            assert_eq!(b.gdma_step(), Some(7));
+            b.output(0xa0, control).unwrap();
+            b.accesses.set(0);
+            assert_eq!(b.gdma_step(), None);
+            assert_eq!(b.accesses.get(), 0);
+            assert_eq!(state(&mut b), (0x20002, 0x102, 4, 0));
+            assert_eq!(&b.ram[0x100..0x106], &[0x33, 0x33, 0, 0, 0, 0]);
+            assert!(!b.cartridge.as_ref().unwrap().header.rom_wait);
+            assert!(b.cartridge.as_ref().unwrap().header.rom_word_bus);
+        }
+    }
 }
 
 #[test]

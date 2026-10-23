@@ -217,9 +217,8 @@ fn source_mapping_sram_slow_byte_rom_banks_and_twenty_bit_wrap() {
             b.output(0xc2, 1).unwrap();
             b.output(0xc3, 2).unwrap();
             b.output(0x60, if slow { 0x82 } else { 0x80 }).unwrap();
+            b.output(0xa0, u8::from(slow) << 3).unwrap();
             let c = b.cartridge.as_mut().unwrap();
-            c.header.rom_word_bus = false;
-            c.header.rom_wait = slow;
             c.save[0] = 0xb1;
             c.save[65535] = 0xb2;
             b.ram[0xfffe..].copy_from_slice(&[0xa1, 0xa2]);
@@ -517,4 +516,47 @@ fn sound_stall_clocks_complete_eeprom_without_corrupting_samples_or_save_buffers
     assert_eq!(b.input(0xc6).unwrap(), 0x40);
     assert!(b.audio.drain().chunks_exact(2).any(|v| v == [0.125, 0.125]));
     assert_eq!(cpu.ip, 0);
+}
+
+#[test]
+fn active_rom_sdma_samples_live_a0_wait_at_each_event_for_both_targets() {
+    for model in [Model::Color, Model::Crystal] {
+        for hyper in [false, true] {
+            let mut b = bus();
+            b.model = model;
+            b.output(0xc2, 1).unwrap();
+            // Matching physical 16-bit ROM; both wait settings are supported.
+            b.cartridge.as_mut().unwrap().header.rom_word_bus = true;
+            b.cartridge.as_mut().unwrap().bytes[65536..65540]
+                .copy_from_slice(&[0x20, 0xe0, 0x40, 0xc0]);
+            pcm(&mut b, 0x89);
+            program(&mut b, 0x20000, 4, if hyper { 0x93 } else { 0x83 });
+            for (i, (control, byte)) in [(4, 0x20), (12, 0xe0), (12, 0x40), (4, 0xc0)]
+                .into_iter()
+                .enumerate()
+            {
+                b.output(0xa0, control).unwrap();
+                b.accesses.set(0);
+                cadence(&mut b);
+                assert_eq!(b.cycles, 117 + i as u64 * 128);
+                assert_eq!(
+                    b.sound_dma_stall(),
+                    Some(if control & 8 == 0 { 7 } else { 8 })
+                );
+                assert_eq!(b.accesses.get(), 0);
+                assert_eq!(counter(&mut b, 0x4a), 0x20001 + i as u32);
+                assert_eq!(counter(&mut b, 0x4e), 3 - i as u32);
+                if hyper {
+                    assert_eq!(b.input(0x68).unwrap(), byte);
+                    assert_eq!(b.input(0x69).unwrap(), byte);
+                } else {
+                    assert_eq!(b.input(0x89).unwrap(), byte);
+                }
+                assert!(!b.cartridge.as_ref().unwrap().header.rom_wait);
+            }
+            assert_eq!(b.input(0x52).unwrap() & 0x80, 0);
+            cadence(&mut b);
+            assert_eq!(b.sound_dma_stall(), None);
+        }
+    }
 }

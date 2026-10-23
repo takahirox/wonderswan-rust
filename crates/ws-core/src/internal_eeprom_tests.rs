@@ -218,8 +218,17 @@ fn machine_retention_import_failures_header_handoff_and_pending_cancellation() {
 }
 #[test]
 fn shared_clock_advances_internal_transfer_timer_audio_and_both_dmas() {
-    for model in [Model::Color, Model::Crystal] {
+    for (model, rom_source) in [Model::Color, Model::Crystal]
+        .into_iter()
+        .flat_map(|model| [false, true].map(|rom| (model, rom)))
+    {
         let mut b = Bus::new(model);
+        if rom_source {
+            let mut c = cartridge::Cartridge::parse(&cartridge::tests::rom(131072, 0, 0)).unwrap();
+            c.header.rom_word_bus = true;
+            c.bytes[65536..65540].copy_from_slice(&[0x12, 0x34, 0x56, 0x78]);
+            b.insert_cartridge(c);
+        }
         b.output(0x60, 0x80).unwrap();
         latch(&mut b, true);
         out_word(&mut b, 0xba, 0x1234);
@@ -228,7 +237,8 @@ fn shared_clock_advances_internal_transfer_timer_audio_and_both_dmas() {
         out_word(&mut b, 0xa4, 4);
         b.output(0xb2, 0x80).unwrap();
         b.ram[0x1000..0x1004].copy_from_slice(&[0x12, 0x34, 0x56, 0x78]);
-        out_word(&mut b, 0x4a, 0x1000);
+        out_word(&mut b, 0x4a, if rom_source { 0 } else { 0x1000 });
+        b.output(0x4c, if rom_source { 2 } else { 0 }).unwrap();
         out_word(&mut b, 0x4e, 4);
         b.output(0x52, 0x83).unwrap();
         out_word(&mut b, 0x40, 0x1000);
@@ -238,6 +248,11 @@ fn shared_clock_advances_internal_transfer_timer_audio_and_both_dmas() {
         let start = b.cycles;
         let mut cpu = Cpu::default();
         while b.ports[0x48] & 0x80 != 0 {
+            if rom_source {
+                // Live ROM waits change while SDMA and RAM GDMA share the clock.
+                b.output(0xa0, 4 | (((b.cycles / 128) as u8 & 1) << 3))
+                    .unwrap();
+            }
             let cycles = cpu.step(&mut b).unwrap();
             b.tick(cycles);
         }

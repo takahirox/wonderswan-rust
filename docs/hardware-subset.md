@@ -12,7 +12,7 @@ commercial software will run or that timing matches a physical console.
 
 | Component | Implemented | Limitations / explicit rejection |
 | --- | --- | --- |
-| Models | WonderSwan mono; WonderSwan Color; SwanCrystal (default) | Mono has 16 KiB internal RAM; color-enabled models have 64 KiB. WSC/Crystal share graphics architecture. A0 reports 85/87; 62 distinguishes WSC/Crystal. LCD panel characteristics are not simulated. |
+| Models | WonderSwan mono; WonderSwan Color; SwanCrystal (default) | Mono has 16 KiB internal RAM; color-enabled models have 64 KiB. WSC/Crystal share graphics architecture. A0 exposes live ROM controls and fixed model/status bits; 62 distinguishes WSC/Crystal. LCD panel characteristics are not simulated. |
 | Header | Named entry/maintenance/publisher/model/ID/version/protection/size/save/orientation/ROM width/wait/mapper/checksum fields | Independent errors include bad field/value, declared/file size or checksum. Reserved flags and unknown model/save/mapper codes fail. Firmware authentication is absent. |
 | ROM | Power-of-two 128 KiB–16 MiB common interface; up to 64 MiB with mapper 01 | 3/6 MiB unpadded images rejected with leading-padding explanation. ROM is read-only. Header 00 identifies a common interface, not proof of a physical 2001 chip (KARNAK also uses 00). Pocket Challenge board features unsupported. |
 | Common banking | C0 linear 1 MiB bank, C1 save 64 KiB bank, C2/C3 64 KiB ROM banks | Address bus wraps at 20 bits. Unconnected ROM/save address bits mirror physical power-of-two sizes. Only upper 768 KiB of each linear bank is visible at 40000–FFFFF. |
@@ -25,7 +25,7 @@ commercial software will run or that timing matches a physical console.
 | CPU | Generic 8/16-bit register, ModR/M, segment, stack and string operations below | Unsupported opcodes/group extensions/ports/prefix combinations stop execution visibly, with CS:IP for unknown opcodes. No silent NOP fallback. |
 | Interrupts | IF, vector table and stack entry, INT/INT3/INTO/IRET, divide faults, BOUND fault; hardware priority highest source first; B0 vector/request, B2 enable, B4 status, B6 acknowledgement | Enable gates request latching; changing enable does not clear latched status. Key edges, line match, VBlank and both timer sources generated. UART/cartridge IRQ sources, single-step trap and low-battery NMI not generated. STI and MOV/POP SS inhibit delivery for the next instruction; POPF/IRET do so when IF changes from 0 to 1. HLT wakes for a latched IRQ even with IF=0, resuming without vectoring in that case. |
 | Timers | A2 control, A4–A7 reload, A8–AB counter; HBlank and VBlank count sources, one-shot/repeat, reload-on-write and disabled-count-at-one IRQ quirk | Test modes at A3 unsupported. Word writes to A2 with high byte zero allowed. No programmable LCD line total (16 must remain 158). |
-| Timing | Shared 3.072 MHz clock, 256 clocks/line, 159 lines/frame, 144 visible; deterministic frame progression | Per-instruction execution cost + fetch/data/I/O transfers, ROM/SRAM/cartridge-I/O wait flags, aligned 16-bit ROM transfers, branch/shift/multiply/divide/interrupt costs. Approximate, not cycle-table/prefetch accurate. Instructions and DMA words are atomic; events/raster output use that granularity. |
+| Timing | Shared 3.072 MHz clock, 256 clocks/line, 159 lines/frame, 144 visible; deterministic frame progression | Per-instruction execution cost + fetch/data/I/O transfers, live A0 ROM waits, SRAM/cartridge-I/O waits, aligned 16-bit ROM transfers, branch/shift/multiply/divide/interrupt costs. Approximate, not cycle-table/prefetch accurate. Instructions and DMA words are atomic; events/raster output use that granularity. |
 | General DMA | Color/Crystal registers 40–42 source, 44–45 destination, 46–47 byte length, 48 control; increment/decrement word copies from RAM or mapped fast 16-bit ROM to internal RAM | Engine requires 60.7 color enable; mono rejects all GDMA register I/O. CPU and IRQ delivery stall for 5 + 2 × copied words on the existing clock. SRAM, byte-wide ROM, wait-state ROM and unmapped ROM stop at the first invalid source word; zero/initially invalid requests cost no DMA clocks. SDMA shares the clock and takes priority over the next GDMA word; see semantics below. |
 | Sound DMA | Color/Crystal 4A–4C source, 4E–50 length, 52 control; byte transfers to Channel 2 or Hyper Voice, all four rates, hold/repeat/direction and bytewise repeat shadows | 20-bit counters and current RAM/ROM/SRAM mapper path, including slow/byte-wide sources. Phase 117 mod 128 reserves 6 + source access clocks every enabled tick; CPU/IRQ/GDMA resume at instruction/word boundaries. Reserved 4D/51 read zero, ignore writes. See timing and readback policies below. |
 | Hyper Voice | Color/Crystal signed 16-bit output latches 64–67; alternating CPU 8-bit input at 69; DMA stereo/mono routing; 6A conversion/shift/rate/enable and 6B layout/reset | All eight divisors, signed/unsigned/unsigned-negated/ignored extension. Headphone-only 16-bit wrapping addition. Direct CPU write to internal left latch 68 and unknown 6B low-nibble controls rejected. See semantics below. |
@@ -36,6 +36,36 @@ commercial software will run or that timing matches a physical console.
 | Sound | Four 32×4-bit wavetable channels; channel 2 unsigned PCM/voice volume; channel 3 signed sweep with wrap; channel 4 eight LFSR tap modes/reset | 80–94 documented bit masks, 96–9B 10/11-bit legacy mixer readbacks, 9E speaker volume; 24 kHz stereo clock, bounded 200 ms queue. Headphone 16-bit and speaker 8-bit adders wrap; speaker main volume uses a linear approximation. Sound test port 95 remains rejected. Analogue filters/volume levels are approximate. |
 | Browser sound | Default-on sound preference, Mute/Unmute and 0–100% volume, gesture activation, Web Audio buffers, high-pass DC removal, bounded queue, reused single AudioContext | Pause/restart/hide clears scheduled sources; failures show a notice and keep gameplay usable. No output loop while paused. Headless buffer validation does not certify physical speaker quality. Original demo stays silent. |
 | Input | B5 active-high keypad matrix (yyyy xxxx bas0); keyboard/touch adapters | No serial/UART, link cable, sound/power buttons or accessories. |
+
+## Runtime ROM controls (A0)
+
+All three models accept byte IN/OUT at A0. Bits 2 (16-bit ROM transfers) and
+3 (one extra ROM wait clock) are writable. Bit 0 (IPL lock) is sticky: writing
+zero cannot clear it. Model identification at bit 1 and self-test status at bit
+7 ignore writes. Reserved bits 4–6 ignore writes and read zero. The synthetic
+handoff keeps lock/status set and reports bit 1 on Color/Crystal only.
+
+Successful cartridge load, restart and compatible model change seed bits 2/3
+from the cartridge header's physical ROM width/wait flags. Software then controls
+the live register without changing header metadata or ROM bytes. Failed loads
+and incompatible model changes preserve live state. An unloaded new/reset bus
+retains the prior synthetic 85/87 policy; these are not authentic power-on values.
+No IPL mapping, firmware execution or authentication emulation is added.
+
+ROM byte accounting is `1 + A0.3` clocks. An aligned word with adjacent physical
+ROM addresses costs the same when A0.2 is set; otherwise it costs two byte
+transfers. Instruction operand fetches and data reads share this rule. Odd,
+segment-wrapped, 20-bit-wrapped and bank-crossing pairs are not incorrectly
+coalesced. Opcode/prefix fetches and instruction execution retain the existing
+approximation; there is no prefetch simulation or claim of exact instruction timing.
+
+Configured width is separate from physical cartridge characteristics. With a
+width mismatch the current deterministic mapping still returns the same ROM
+bytes; only accounting and GDMA eligibility follow live controls. Exact mismatched
+width data/electrical behavior is unresolved and is outside hardware-accuracy
+assertions. SRAM/self-flash window and unrelated RAM/I/O timing policies remain
+as described elsewhere in this document. SDMA accepts either ROM wait setting
+and samples the live source cost at each event; GDMA rejects slow/byte configuration.
 
 ## General DMA semantics
 
@@ -57,8 +87,9 @@ ports are available only on Color/Crystal as described below.
 Each word is read completely before being written, in the selected direction;
 overlaps therefore follow word transfer order. Both addresses advance by two,
 wrapping source at 20 bits and destination at 16 bits, while length decreases by
-two. ROM reads reuse the CPU's current common/extended bank mapping. The header's
-ROM width/wait flags govern source eligibility. The 10000–1FFFF window is always
+two. ROM reads reuse the CPU's current common/extended bank mapping. Live A0.2/3
+govern source eligibility for every bounded word (16-bit, no extra wait).
+The 10000–1FFFF window is always
 rejected, including the 2003 flash mapping. DMA never writes cartridge memory.
 Completion or rejection clears enable, retains direction, and exposes the next
 addresses and remaining length (unchanged if nothing transferred).
@@ -219,6 +250,7 @@ RAM bank high bits remain zero. Cartridge save bytes start FF
 unless restored by the adapter. ROM code must initialize stack, segments,
 palettes, sound, timers and interrupts. Cartridge EEPROM programming starts disabled.
 
+A0 width/wait is seeded from header flags under the runtime-control policy above.
 This is a reproducible firmware-free handoff, not the real console's post-BIOS
 state. Internal EEPROM uses the minimal handoff described below. Authentication,
 RTC and broader boot-firmware services are unavailable. `restart`/`change_model`
@@ -341,3 +373,15 @@ and [Issue #11 validation](issue-11-validation.md), plus
 [SDMA/Hyper Voice validation](issue-19-validation.md). Physical-device comparisons
 are optional and have not been performed. Public Pages deployment and live-site
 verification belong after merge and remain pending until actually executed.
+
+For A0, [pinned Wonderful hardware register definitions](https://github.com/WonderfulToolchain/hardware-definitions/blob/46783132a59e576c11456f5997620594eca1c390/target/wswan/soc.xml),
+[WSHWTest A0 experiments](https://github.com/FluBBaOfWard/WSHWTest/blob/34e33d5bfaaabb8b09fa5a557e409efe9fbfd979/WSHWTest.asm#L1270-L1295),
+[independent GDMA experiments](https://github.com/asiekierka/ws-test-suite/blob/7dfa0e2e869d08386b685d6a56df0bcfaf181b47/src/color/dma/alignment_access/main.c)
+and [SDMA experiments](https://github.com/asiekierka/ws-test-suite/blob/7dfa0e2e869d08386b685d6a56df0bcfaf181b47/src/color/dma/sound_dma/main.c)
+were inspected. The NEC manual's Table 2-1 and §§4.1–4.3 explain word bus cycles
+and added waits; console-specific controls come from the register definitions
+and experiments. These correct the old constant-A0/header-only runtime assumption;
+header flags seed the synthetic handoff, then software changes live controls.
+Experiments are source evidence, not physical-console pass logs. No third-party
+code was copied; no corroborating emulator implementation establishes silicon
+requirements. See [Issue #23 validation and source review](issue-23-validation.md).

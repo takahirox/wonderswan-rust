@@ -20,6 +20,12 @@ Unsupported instructions and hardware operations stop with a visible diagnostic.
 [Original CC0 hardware probes](fixtures/README.md) verify these paths separately
 from the unchanged demo. No broad commercial-ROM compatibility is claimed.
 
+ROM bus width and additional wait clocks are software-controlled through A0 on
+all three models. Header flags seed the synthetic firmware-free handoff on
+load/restart/model change; subsequent OUT writes change CPU/DMA behavior without
+changing cartridge metadata. See [runtime ROM controls and limitations](docs/hardware-subset.md#runtime-rom-controls-a0)
+and the [original A0 CPU probe](fixtures/README.md#a0-runtime-control-probe-issue-23).
+
 ## Play in the browser
 
 Public URL: **https://takahirox.github.io/wonderswan-rust/**. The new version becomes
@@ -190,7 +196,9 @@ unavailable audio. Suspended, rejected and pending resumes, creation/playback
 failures, and visibility/pagehide are simulated; sample buffers and analyser
 measurements use real Web Audio nodes. It also loads the original SDMA/Hyper Voice
 probes on Color/Crystal, checks exact PCM buffers and gain/lifecycle controls,
-and verifies mono silence. Internal EEPROM CPU probes additionally check settings,
+and verifies mono silence. The A0 CPU probe checks live ROM controls on all
+three models, matching-width ROM data and Color/Crystal DMA paths after restart.
+Internal EEPROM CPU probes additionally check settings,
 status, write locking/protection, three-model console isolation, cross-cartridge
 retention, lifecycle flushes, reload/reopen and corrupt/denied/full console storage
 through actual Wasm execution. See [audio control validation](docs/issue-17-validation.md)
