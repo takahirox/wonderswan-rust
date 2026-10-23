@@ -351,7 +351,7 @@ fn nondefault_frames_keep_audio_sdma_hyper_and_eeprom_on_elapsed_machine_clocks(
 #[test]
 fn rendering_uses_the_same_runtime_raster_and_short_frames_retain_unvisited_rows() {
     for model in MODELS {
-        for total in [156, 180] {
+        for total in [156, 158, 180] {
             let mut m = machine(model);
             m.cpu.halted = true;
             out(&mut m.bus, 0x16, total);
@@ -359,28 +359,28 @@ fn rendering_uses_the_same_runtime_raster_and_short_frames_retain_unvisited_rows
             out(&mut m.bus, 0x1c, 15); // black backdrop in mono video mode
             m.run_frame().unwrap();
             assert!(m.framebuffer.chunks_exact(4).all(|p| p == [0, 0, 0, 255]));
-            // After a nondefault frame, elapsed-clock modulo 159 gives a
-            // different line. Changing the backdrop now must begin at row 50.
-            m.bus.tick(50 * 256 + 128);
+            // Use the actual raster after full-height frames, including nondefault
+            // totals. A shade LUT write during line 50 must target row 49.
+            m.advance(50 * 256 + 128);
             out(&mut m.bus, 0x1c, 0);
             out(&mut m.bus, 0x16, if total == 156 { 180 } else { 156 });
             m.run_frame().unwrap();
             for (row, pixels) in m.framebuffer.chunks_exact(FRAME_WIDTH * 4).enumerate() {
-                let expected = if row < 50 { [0, 0, 0, 255] } else { [255; 4] };
+                let expected = if row < 49 { [0, 0, 0, 255] } else { [255; 4] };
                 assert!(
                     pixels.chunks_exact(4).all(|p| p == expected),
                     "{model:?} T={total} row={row}"
                 );
             }
-            // Literal short frames render only reachable rows and still finish.
+            // Short frames translate only rows with a visited successor and still finish.
             out(&mut m.bus, 0x16, 1);
             out(&mut m.bus, 0x1c, 5); // gray 170
             m.run_frame().unwrap();
             assert_eq!(m.frame_number(), 3);
             for row in 0..FRAME_HEIGHT {
-                let expected = if row < 2 {
+                let expected = if row == 0 {
                     [170, 170, 170, 255]
-                } else if row < 50 {
+                } else if row < 49 {
                     [0, 0, 0, 255]
                 } else {
                     [255; 4]

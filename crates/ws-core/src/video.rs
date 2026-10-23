@@ -34,18 +34,35 @@ fn tile_pixel(bus: &Bus, entry: u16, x: usize, y: usize, sprite: bool) -> Option
         Some((palette, index))
     }
 }
-fn rgb(bus: &Bus, palette: usize, index: u8) -> [u8; 4] {
+// Identity type latches the composition mode; translation never reinterprets it.
+#[derive(Clone, Copy)]
+enum Pixel {
+    Shade(u8),
+    Color(u8),
+}
+fn identity(bus: &Bus, palette: usize, index: u8) -> Pixel {
     if bus.color_mode() {
-        let c = word(bus, 0xfe00 + palette * 32 + index as usize * 2);
-        [
-            (c >> 8 & 15) as u8 * 17,
-            (c >> 4 & 15) as u8 * 17,
-            (c & 15) as u8 * 17,
-            255,
-        ]
+        Pixel::Color((palette * 16 + index as usize) as u8)
     } else {
         let p = u16::from_le_bytes([bus.ports[0x20 + palette * 2], bus.ports[0x21 + palette * 2]]);
-        shade(bus, ((p >> (index * 4)) & 7) as u8)
+        Pixel::Shade(((p >> (index * 4)) & 7) as u8)
+    }
+}
+fn translate(bus: &Bus, pixel: Pixel) -> [u8; 4] {
+    if bus.ports[0x14] & 1 == 0 {
+        return [255; 4];
+    }
+    match pixel {
+        Pixel::Color(index) => {
+            let c = word(bus, 0xfe00 + index as usize * 2);
+            [
+                (c >> 8 & 15) as u8 * 17,
+                (c >> 4 & 15) as u8 * 17,
+                (c & 15) as u8 * 17,
+                255,
+            ]
+        }
+        Pixel::Shade(index) => shade(bus, index),
     }
 }
 fn shade(bus: &Bus, index: u8) -> [u8; 4] {
@@ -59,7 +76,7 @@ fn window(bus: &Bus, base: usize, x: usize, y: usize) -> bool {
         && y >= bus.ports[base + 1] as usize
         && y <= bus.ports[base + 3] as usize
 }
-fn screen(bus: &Bus, layer: usize, x: usize, y: usize) -> Option<[u8; 4]> {
+fn screen(bus: &Bus, layer: usize, x: usize, y: usize) -> Option<Pixel> {
     if bus.ports[0] & (1 << layer) == 0 {
         return None;
     }
@@ -71,11 +88,11 @@ fn screen(bus: &Bus, layer: usize, x: usize, y: usize) -> Option<[u8; 4]> {
     let base =
         ((bus.ports[7] >> (layer * 4)) & if bus.color_mode() { 15 } else { 7 }) as usize * 0x800;
     let entry = word(bus, base + (sy / 8 * 32 + sx / 8) * 2);
-    tile_pixel(bus, entry, sx % 8, sy % 8, false).map(|(p, i)| rgb(bus, p, i))
+    tile_pixel(bus, entry, sx % 8, sy % 8, false).map(|(p, i)| identity(bus, p, i))
 }
-/// Render a scanline from current registers/RAM and the VBlank-latched sprite table.
-/// Instruction-granularity raster timing; the LCD's one-line output pipeline is omitted.
-pub(crate) fn render_line(bus: &Bus, pixels: &mut [u8], y: usize) {
+/// Compose identities, without final shade/RGB12 lookup. See docs/lcd-timing.md.
+fn compose_line(bus: &Bus, y: usize) -> [Pixel; FRAME_WIDTH] {
+    let mut row = [Pixel::Shade(0); FRAME_WIDTH];
     let count = (bus.ports[6] as usize).min(128);
     let first = bus.ports[5] as usize & 127;
     let sprites: Vec<usize> = if bus.ports[0] & 4 != 0 {
@@ -87,11 +104,11 @@ pub(crate) fn render_line(bus: &Bus, pixels: &mut [u8], y: usize) {
     } else {
         Vec::new()
     };
-    for x in 0..FRAME_WIDTH {
+    for (x, output) in row.iter_mut().enumerate() {
         let background = if bus.color_mode() {
-            rgb(bus, (bus.ports[1] >> 4) as usize, bus.ports[1] & 15)
+            Pixel::Color(bus.ports[1])
         } else {
-            shade(bus, bus.ports[1] & 7)
+            Pixel::Shade(bus.ports[1] & 7)
         };
         let mut pixel = screen(bus, 0, x, y).unwrap_or(background);
         // The first nontransparent sprite wins even when Screen 2 later obscures it.
@@ -108,7 +125,7 @@ pub(crate) fn render_line(bus: &Bus, pixels: &mut [u8], y: usize) {
             }
             let sy = (y as u8).wrapping_sub(bus.sprites[base + 2]);
             if let Some((p, c)) = tile_pixel(bus, entry, sx as usize, sy as usize, true) {
-                sprite_pixel = Some((rgb(bus, p, c), entry & 0x2000 != 0));
+                sprite_pixel = Some((identity(bus, p, c), entry & 0x2000 != 0));
                 break;
             }
         }
@@ -121,14 +138,46 @@ pub(crate) fn render_line(bus: &Bus, pixels: &mut [u8], y: usize) {
         if let Some((p, true)) = sprite_pixel {
             pixel = p;
         }
-        if bus.ports[0x14] & 1 == 0 {
-            pixel = [255; 4];
-        }
-        let offset = (y * FRAME_WIDTH + x) * 4;
-        pixels[offset..offset + 4].copy_from_slice(&pixel);
+        *output = pixel;
+    }
+    row
+}
+fn translate_line(bus: &Bus, pixels: &mut [u8], y: usize, row: [Pixel; FRAME_WIDTH]) {
+    for (output, pixel) in pixels[y * FRAME_WIDTH * 4..(y + 1) * FRAME_WIDTH * 4]
+        .chunks_exact_mut(4)
+        .zip(row)
+    {
+        output.copy_from_slice(&translate(bus, pixel));
     }
 }
-pub(crate) fn render(bus: &Bus, pixels: &mut [u8]) {
+
+#[derive(Default)]
+pub(crate) struct Pipeline {
+    pending: Option<(usize, [Pixel; FRAME_WIDTH])>,
+}
+impl Pipeline {
+    pub(crate) fn line_end(&mut self, bus: &Bus, pixels: &mut [u8], line: usize) {
+        if let Some((y, row)) = self.pending.take() {
+            if line == y + 1 {
+                translate_line(bus, pixels, y, row);
+            }
+        }
+        if line < FRAME_HEIGHT {
+            self.pending = Some((line, compose_line(bus, line)));
+        }
+    }
+    pub(crate) fn frame_wrap(&mut self) {
+        self.pending = None;
+    }
+}
+
+// Static rendering helpers for composition tests only; machines use Pipeline.
+#[cfg(test)]
+fn render_line(bus: &Bus, pixels: &mut [u8], y: usize) {
+    translate_line(bus, pixels, y, compose_line(bus, y));
+}
+#[cfg(test)]
+fn render(bus: &Bus, pixels: &mut [u8]) {
     for y in 0..FRAME_HEIGHT {
         render_line(bus, pixels, y);
     }
