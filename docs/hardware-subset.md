@@ -33,7 +33,7 @@ commercial software will run or that timing matches a physical console.
 | Sprites | 128-entry VBlank-latched table, first/count, 32 per line including clipped sprites, early-entry priority, behind/in-front Screen 2, palette 8–15, flips, wrapped coordinates, inclusive inside/outside window | Table copies atomically at line 144 rather than word-by-word over that line; mid-copy effects unsupported. Tile bank 0 only as on hardware. |
 | Mono video | 2bpp interleaved planar tiles at 2000–3FFF; palette ports 20–3F and shade LUT 1C–1F; LCD enable 14; grayscale RGBA 224×144 | No LCD ghosting, icons, contrast/panel response or gamma simulation. |
 | Color video | 60=80: 2bpp planar, 1024 tiles at 2000–5FFF; C0: 4bpp planar; E0: 4bpp packed, 1024 tiles at 4000–BFFF; FE00–FFFF 12-bit RGB palettes | Packed nibbles are left/high, right/low. 2bpp palettes 4–7/12–15 make index 0 transparent; 4bpp index 0 always transparent. Mono rejects color register writes; WSC/Crystal extra RAM requires color enable. Invalid mode combinations rejected. |
-| Sound | Four 32×4-bit wavetable channels; channel 2 unsigned PCM/voice volume; channel 3 signed sweep with wrap; channel 4 eight LFSR tap modes/reset | 80–94 documented bit masks, 96–9B 10/11-bit legacy mixer readbacks, 9E speaker volume; 24 kHz stereo clock, bounded 200 ms queue. Headphone 16-bit and speaker 8-bit adders wrap; speaker main volume uses a linear approximation. Sound test port 95 remains rejected. Analogue filters/volume levels are approximate. |
+| Sound | Four 32×4-bit wavetable channels; channel 2 unsigned PCM/voice volume; channel 3 signed ordinary/fast sweep with wrap; channel 4 eight LFSR tap modes/reset | 80–94 documented bit masks, 95 clearing/FAST_SWEEP control/readback, 96–9B 10/11-bit legacy mixer readbacks, 9E speaker volume; 24 kHz stereo clock, bounded 200 ms queue. Headphone 16-bit and speaker 8-bit adders wrap; speaker main volume uses a linear approximation. HOLD_CH/other debug controls remain rejected. Analogue filters/volume levels are approximate. |
 | Browser sound | Default-on sound preference, Mute/Unmute and 0–100% volume, gesture activation, Web Audio buffers, high-pass DC removal, bounded queue, reused single AudioContext | Pause/restart/hide clears scheduled sources; failures show a notice and keep gameplay usable. No output loop while paused. Headless buffer validation does not certify physical speaker quality. Original demo stays silent. |
 | Input | B5 active-high keypad matrix (yyyy xxxx bas0); independent X/Y/action keyboard and touch controls, union of simultaneous sources | Exact keypad IRQ timing remains approximate. No serial/UART, link cable, sound/power buttons or accessories. |
 | Orientation | Wasm `orientation()` returns `horizontal` by default or `vertical` from parsed header bit 0; browser portrait presentation rotates counterclockwise | Core framebuffer and canvas backing remain 224×144; portrait footprint 144:224, unchanged raw button identities and ROM/save bytes. Header selection only; runtime orientation signaling is unsupported. |
@@ -160,6 +160,24 @@ precede its clock advancement. Per-cycle read/write phases, display fetch
 contention and physical-device comparisons are not modeled/verified.
 
 ## Sound DMA semantics and shared timing
+
+On all three models, sound-test port 95 accepts 00 (clear) and 02 (FAST_SWEEP).
+Bit 1 bypasses the fixed 8192-clock sweep prescaler on the existing 3.072 MHz
+machine clock. The five-bit programmable time still applies: an update every
+`(8D & 31) + 1` selected ticks, including one update per machine clock at time
+zero in fast mode. Updates add signed 8C to the 11-bit channel-3 frequency with
+wrap. Both channel-3 and sweep enable bits (90.2 and 90.6) are required; every
+8D write resets both counters. Other channels/devices and output sampling keep
+their existing clocks. Unknown bits, including HOLD_CH, produce actionable
+diagnostics before changing control or timer state.
+
+Readback of the accepted control value, zero on reset/restart, and retention of
+counter phases across mode changes are deterministic emulator policies where
+unmeasured. Fast mode pauses the ordinary prescaler; clearing resumes it while
+retaining the programmable count. Disabling a prerequisite pauses both counters.
+See the [source-to-behavior table and correction record](fast-sweep.md) and
+[Issue #31 validation](issue-31-validation.md). This does not establish HOLD_CH,
+complete debug-port behavior or commercial-title compatibility.
 
 SDMA is Color/Crystal hardware, selected with the typed console model; it is
 available regardless of the video mode. Mono rejects 4A–52 and 64–6B and retains
