@@ -10,6 +10,9 @@ mod fpo1_poll_tests;
 mod word_transfer_tests;
 
 #[cfg(test)]
+mod divide_tests;
+
+#[cfg(test)]
 mod multiply_tests;
 
 #[cfg(test)]
@@ -1048,6 +1051,10 @@ impl Cpu {
                             self.flags &= !OF;
                             let rem = numerator % denominator;
                             if wide {
+                                // WSCPUTest's successful 32/16 DIV and IDIV rules:
+                                // ZF describes an exact odd quotient, not normal SZP.
+                                self.flags &= !(AF | CF | PF | SF | ZF);
+                                self.flag(ZF, rem == 0 && q & 1 != 0);
                                 self.registers[0] = q as u16;
                                 self.registers[2] = rem as u16;
                             } else {
