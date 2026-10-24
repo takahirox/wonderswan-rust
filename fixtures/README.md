@@ -501,37 +501,46 @@ acceptance, not independently measured console or commercial-title compatibility
 
 `divide.asm` builds the original source-included CC0-1.0 `generated/divide.ws`,
 a 128 KiB cartridge with 32 KiB SRAM and the ordinary reset/footer/checksum.
-It executes word DIV and IDIV plus byte IDIV through the CPU. The original
-26 word vectors remain; Issue #49 adds 15 byte-IDIV vectors. Opposing F002/FCD7
-incoming flags make 82 operations per mode pass (52 word and 30 byte).
-Cases include zero, odd/even and exact/inexact results, high-word unsigned
-dividends, all signed operand combinations, negative odd exact quotients and
-successful boundaries. Byte cases include zero AL with nonzero AH, signed
-remainders, parity differences and unambiguous ±127 quotient boundaries.
-The CPU captures AX, DX (unchanged 5AA5 for byte IDIV), full FLAGS and subsequent
-ZF/CF/OF/SF/PF/signed-LT branch decisions, restoring captured FLAGS before each
-branch. Every observation is checked by the cartridge and independently by
-native and production-browser literal expectations.
+Issue #65 extends this probe while preserving all 52 word DIV/IDIV operations
+and 30 byte-IDIV operations per mode pass. Sixteen byte-DIV cases add both
+multiplication histories, independently loaded FLAGS, zero, exact/inexact,
+odd/even quotients and FF. Original assembly and literal expectations are not
+copied from WSCPUTest or another implementation. A byte IMUL alias seeds each
+history; intervening XOR and POPF independently replace live arithmetic flags.
+
+The CPU captures AX, DX (unchanged 5AA5 for byte operations), full FLAGS and
+subsequent Z/C/O/S/P/signed-LT branch decisions, restoring captured FLAGS before
+each branch. Every observation is checked by the cartridge and independently
+by native and production-browser literals. Before any producer, one additional
+DIV checks the emulator's synthetic cleared-startup policy. The fixture leaves
+set history before HALT so a restart must discard it.
 
 RAM 0400 contains 600D on success or 0BAD on failure; 0402 is the retained boot
-count, 0404 the A0 model bit (0/2), and 0406 the completed mode-pass count (1/3).
-Records start at 0408, four words per operation. Mono runs one monochrome pass;
-Color/Crystal run mono, color, mono. All 988 words, including unused zero records
-on Mono, are copied to SRAM offset zero. Each boot clears the RAM records,
-invalidates retained completion and increments the boot count before testing.
-Native and production Chromium/Wasm checks poison old saved observations with
-a stale success marker and require fresh counts and every result on load and
-restart. Pass renders gray 170 on Mono and green on Color/Crystal. The browser
-uses the real file chooser, player save flush and localStorage; ROM/save bytes
-stay local. CPU tests additionally cover aliases, mapped even/odd RAM/ROM/SRAM,
-segment overrides, TF/IF/DF preservation, exact IP and transfer/execution costs,
-and normal machine scheduling across live mode changes.
+count, 0404 the A0 model bit (0/2), and 0406 the completed mode-pass count (1/7).
+Records at 0408 begin with the startup observation, then four words per operation
+for each 98-operation pass. Mono runs one pass; Color/Crystal run
+00/80/00/C0/00/E0/00 through all supported graphics modes. All 2,752 words,
+including unused zero records on Mono, are copied to SRAM offset zero.
+Each boot clears volatile observations, invalidates retained completion and
+increments the count. Native and production Chromium/Wasm tests poison old
+observations with a stale success marker and require fresh counters and every
+result on load and restart. Pass renders gray 170 on Mono and green on
+Color/Crystal. Browser checks use the real file chooser, player save flush and
+localStorage; ROM/save bytes stay local.
 
-SHA-256: `d581d36ffbb6cbf1a44b2c69068aedea29b1da9ac73f62d2006345c0a96611a0`.
+CPU tests also cover all explicit history producers, aliases, mapped even/odd
+RAM/ROM/SRAM and segment overrides, control flags, exact IP, unchanged memory,
+transfer/execution costs, runtime modes, shared scheduling, clones, successful
+lifecycle changes and failed loads/model changes. Successful unsigned AH aliases
+are impossible; signed AH success and unsigned AH faults are covered explicitly.
+
+SHA-256: `a2da8eed0deac022b84fce73cb3b2f9b6f02bfca4f1783b00892316c91ca01f8`.
 See [word source reconciliation](../docs/word-division-flags.md),
-[byte-IDIV correction and limits](../docs/byte-idiv-flags.md), and
-[Issue #49 executed validation](../docs/issue-49-validation.md). This is bounded
-emulator acceptance, not physical-console or commercial-title evidence.
+[byte-IDIV correction](../docs/byte-idiv-flags.md),
+[byte-DIV history evidence and limits](../docs/byte-div-flags.md), and
+[Issue #65 executed validation](../docs/issue-65-validation.md). These original
+probes establish bounded emulator acceptance, not physical-console accuracy or
+commercial-game readiness.
 
 ## PUSH SP probe (Issue #51)
 

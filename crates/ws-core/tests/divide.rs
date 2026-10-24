@@ -8,7 +8,11 @@ fn expected(model: Model, boot: u16) -> Vec<u16> {
         0x600d,
         boot,
         if mono { 0 } else { 2 },
-        if mono { 1 } else { 3 },
+        if mono { 1 } else { 7 },
+        0x0003,
+        0x5aa5,
+        0xf442,
+        1, // startup history policy
     ];
     // Literal quotient, remainder, full FLAGS and Z/C/O/S/P/LT branches.
     let results = [
@@ -43,16 +47,22 @@ fn expected(model: Model, boot: u16) -> Vec<u16> {
         0x007f, 0x5aa5, 0xf002, 0x0000, 0x007f, 0x5aa5, 0xf402, 0x0000, 0x0081, 0x5aa5, 0xf086,
         0x0038, 0x0081, 0x5aa5, 0xf486, 0x0038, 0x00fc, 0x5aa5, 0xf086, 0x0038, 0x00fc, 0x5aa5,
         0xf486, 0x0038, 0x007e, 0x5aa5, 0xf006, 0x0010, 0x007e, 0x5aa5, 0xf406, 0x0010,
+        // Byte DIV: AX, preserved DX, full FLAGS, history-sensitive branches.
+        0x0000, 0x5aa5, 0xf002, 0, 0x0100, 0x5aa5, 0xf402, 0, 0x0003, 0x5aa5, 0xf042, 1, 0x0004,
+        0x5aa5, 0xf402, 0, 0x0103, 0x5aa5, 0xf402, 0, 0x0104, 0x5aa5, 0xf002, 0, 0x00ff, 0x5aa5,
+        0xf042, 1, 0x01ff, 0x5aa5, 0xf402, 0, 0x0000, 0x5aa5, 0xf803, 38, 0x0100, 0x5aa5, 0xfc03,
+        38, 0x0003, 0x5aa5, 0xf843, 39, 0x0004, 0x5aa5, 0xfc03, 38, 0x0103, 0x5aa5, 0xfc03, 38,
+        0x0104, 0x5aa5, 0xf803, 38, 0x00ff, 0x5aa5, 0xf843, 39, 0x01ff, 0x5aa5, 0xfc03, 38,
     ];
-    for _ in 0..if mono { 1 } else { 3 } {
+    for _ in 0..if mono { 1 } else { 7 } {
         words.extend(results);
     }
-    words.resize(988, 0);
+    words.resize(2752, 0);
     words
 }
 
 #[test]
-fn word_and_byte_signed_division_cartridge_full_results_branches_modes_and_fresh_restart() {
+fn division_history_cartridge_full_results_branches_modes_and_fresh_restart() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let mut m = Machine::new(model);
         m.load_rom(ROM).unwrap();
@@ -62,9 +72,9 @@ fn word_and_byte_signed_division_cartridge_full_results_branches_modes_and_fresh
         stale[0..4].copy_from_slice(&[0x0d, 0x60, 0, 0]);
         m.load_save(&stale).unwrap();
         for boot in 1..=2 {
-            // The extended three-mode probe can finish during frame two;
-            // render one complete frame after its final palette write.
-            for _ in 0..3 {
+            // Allow all seven mode passes and a full frame after the final
+            // palette write; fresh CPU counters and all records are mandatory.
+            for _ in 0..12 {
                 m.run_frame().unwrap();
             }
             for (i, value) in expected(model, boot).into_iter().enumerate() {

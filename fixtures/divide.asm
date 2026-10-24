@@ -1,5 +1,5 @@
 ; SPDX-License-Identifier: CC0-1.0
-; Original Issues #47/#49 successful word division and byte IDIV probe. No imported code, assets or firmware.
+; Original Issues #47/#49/#65 successful division and multiplication-history probe. No imported code, assets or firmware.
 bits 16
 cpu 186
 org 0
@@ -18,7 +18,7 @@ start:
     mov ss,ax
     mov sp,0x3000
     mov di,0x400
-    mov cx,988
+    mov cx,2752
     rep stosw
     mov ax,0x1000
     mov es,ax
@@ -36,6 +36,7 @@ start:
     and ax,2
     mov [0x404],ax               ; physical model bit, independent of port 60
     mov di,0x408
+    call cold_probe             ; synthetic cleared history before any producer
     call probe                  ; all models begin in mono graphics
     inc word [0x406]
     cmp word [0x404],0
@@ -45,6 +46,18 @@ start:
     inc word [0x406]
     put 0x60,0
     call probe                  ; physical Color/Crystal, back to mono graphics
+    inc word [0x406]
+    put 0x60,0xc0
+    call probe                  ; planar 4bpp
+    inc word [0x406]
+    put 0x60,0
+    call probe
+    inc word [0x406]
+    put 0x60,0xe0
+    call probe                  ; packed 4bpp
+    inc word [0x406]
+    put 0x60,0
+    call probe
     inc word [0x406]
 complete:
     cmp sp,0x3000
@@ -124,6 +137,31 @@ complete:
     idiv bl
     observe ax,%4,0x5aa5,%5,%6
 %endmacro
+
+; seed AL, dividend AX, incoming FLAGS, result AX, full FLAGS, branches.
+%macro byte_div_case 6
+    mov al,%1
+    imul al                     ; demonstrated history producer, including alias
+    xor cx,cx                   ; live arithmetic flags do not carry history
+    nop
+    mov ax,%2
+    mov dx,0x5aa5
+    mov bl,2
+    push word %3
+    popf
+    div bl
+    observe ax,%4,0x5aa5,%5,%6
+%endmacro
+
+cold_probe:
+    mov ax,6
+    mov dx,0x5aa5
+    mov bl,2
+    push word 0xfcd7
+    popf
+    div bl                      ; no explicit multiplication since CPU startup
+    observe ax,3,0x5aa5,0xf442,1
+    ret
 
 probe:
     divide_case div,0x0000,0x0000,0x0002,0xf002,0x0000,0x0000,0xf002,0
@@ -209,6 +247,23 @@ probe:
     byte_idiv_case 0xfff8,0x02,0xfcd7,0x00fc,0xf486,56
     byte_idiv_case 0x007e,0x01,0xf002,0x007e,0xf006,16
     byte_idiv_case 0x007e,0x01,0xfcd7,0x007e,0xf406,16
+    ; Issue #65: both histories, opposite incoming flags, exact/inexact/FF.
+    byte_div_case 0x00,0x0000,0xf002,0x0000,0xf002,0
+    byte_div_case 0x00,0x0001,0xfcd7,0x0100,0xf402,0
+    byte_div_case 0x00,0x0006,0xf002,0x0003,0xf042,1
+    byte_div_case 0x00,0x0008,0xfcd7,0x0004,0xf402,0
+    byte_div_case 0x00,0x0007,0xfcd7,0x0103,0xf402,0
+    byte_div_case 0x00,0x0009,0xf002,0x0104,0xf002,0
+    byte_div_case 0x00,0x01fe,0xf002,0x00ff,0xf042,1
+    byte_div_case 0x00,0x01ff,0xfcd7,0x01ff,0xf402,0
+    byte_div_case 0x10,0x0000,0xf002,0x0000,0xf803,38
+    byte_div_case 0x10,0x0001,0xfcd7,0x0100,0xfc03,38
+    byte_div_case 0x10,0x0006,0xf002,0x0003,0xf843,39
+    byte_div_case 0x10,0x0008,0xfcd7,0x0004,0xfc03,38
+    byte_div_case 0x10,0x0007,0xfcd7,0x0103,0xfc03,38
+    byte_div_case 0x10,0x0009,0xf002,0x0104,0xf803,38
+    byte_div_case 0x10,0x01fe,0xf002,0x00ff,0xf843,39
+    byte_div_case 0x10,0x01ff,0xfcd7,0x01ff,0xfc03,38
     ret
 
 failed:
@@ -221,7 +276,7 @@ display:
     mov es,ax
     mov si,0x400
     xor di,di
-    mov cx,988
+    mov cx,2752
     rep movsw
     xor ax,ax
     mov es,ax
@@ -255,4 +310,6 @@ display:
     put 7,0
     put 0,1
     put 0x14,1
+    mov al,0x10
+    imul al                     ; restart must discard this set history
     hlt

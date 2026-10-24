@@ -77,7 +77,8 @@ with stale success markers cannot satisfy the fresh execution checks.
 flags and extends the same original fixture while retaining the word assertions.
 The 52-operation and 628-word counts above describe the Issue #47 version.
 
-Byte DIV multiplication-history flags, signed exceptional results, fault
+[Issue #65](byte-div-flags.md) subsequently resolves successful byte-DIV
+multiplication history. Signed exceptional results, fault
 flags/classification, decimal adjustment, single-step delivery and absolute
 instruction timing remain separate unresolved work. Issue #47 preserved byte
 and fault behavior; Issue #49 preserves byte DIV and the fault paths. Passing

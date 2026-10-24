@@ -32,3 +32,9 @@ The original CC0 probe and independent native/browser assertions are described
 in [fixture provenance](../fixtures/README.md#multiplication-probe-issue-43).
 [Validation evidence](issue-43-validation.md) separates baseline discrimination,
 checks actually executed, final review and optional unperformed hardware checks.
+
+Issue #65 also retains each explicit multiplication's overflow in private CPU
+history for [successful byte DIV](byte-div-flags.md). Byte IMUL is directly
+demonstrated by that experiment; extending history production to the other
+explicit forms is an instruction-level inference. Live multiplication flags and
+products are unchanged. No claim is made about implicit conversion microcode.

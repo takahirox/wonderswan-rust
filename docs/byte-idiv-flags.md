@@ -74,7 +74,8 @@ fresh boot marker; poisoned stale observations cannot satisfy acceptance.
 See [fixture provenance](../fixtures/README.md#successful-division-probe-issues-47-and-49)
 and [actual commands and acceptance review](issue-49-validation.md).
 
-Byte DIV multiplication history, signed exceptional results, fault flags and
+[Issue #65](byte-div-flags.md) subsequently resolves successful byte-DIV
+multiplication history. Signed exceptional results, fault flags and
 classification, decimal adjustment and absolute timing remain unresolved
 separate work. Automated emulator evidence does not establish physical-device
 accuracy, commercial-title impact or commercial-catalog compatibility.
