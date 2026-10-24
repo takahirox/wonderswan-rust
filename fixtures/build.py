@@ -48,6 +48,7 @@ if __name__ == '__main__':
                                  defines=(f'FIRST_BANK={first}',), size=mib*1024*1024)))
     images.append(('lcd-output', build(2, 0, 0, 0, 'lcd-output.asm')))
     images.append(('ordinary-io', build(2, 0, 0, 0, 'ordinary-io.asm', 4)))
+    images.append(('indirect-timing', build(2, 0, 0, 0, 'indirect-timing.asm', 4)))
     images.append(('call-timing', build(2, 0, 0, 0, 'call-timing.asm', 4)))
     images.append(('jcc-timing', build(2, 0, 0, 0, 'jcc-timing.asm', 4)))
     images.append(('jmp-timing', build(2, 0, 0, 0, 'jmp-timing.asm', 4)))

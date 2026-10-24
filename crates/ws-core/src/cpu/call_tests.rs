@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 use super::*;
 
-fn setup(model: Model) -> (Cpu, Bus) {
+pub(super) fn setup(model: Model) -> (Cpu, Bus) {
     let mut b = Bus::new(model);
     b.ram.fill(0xa5);
     (
@@ -19,7 +19,7 @@ fn setup(model: Model) -> (Cpu, Bus) {
 
 // Expected stack bytes are written into an independent RAM snapshot. This
 // helper neither executes the CPU nor consults bus/address/timing helpers.
-fn frame(ram: &mut [u8], ss: u16, sp: u16, old_cs: u16, next: u16, far: bool) -> u16 {
+pub(super) fn frame(ram: &mut [u8], ss: u16, sp: u16, old_cs: u16, next: u16, far: bool) -> u16 {
     let mut sp = sp;
     for value in if far { vec![old_cs, next] } else { vec![next] } {
         sp = sp.wrapping_sub(2);
@@ -119,7 +119,7 @@ fn literal_call_vectors_full_state_parities_and_live_modes() {
     }
 }
 
-fn mapped_code(b: &mut Bus, addresses: &[u32], code: &[u8]) {
+pub(super) fn mapped_code(b: &mut Bus, addresses: &[u32], code: &[u8]) {
     if b.cartridge.is_none() {
         b.insert_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(262144, 2, 0))
