@@ -612,20 +612,26 @@ ROM identity and browser-local save handling use the existing player unchanged.
 See [source reconciliation and limits](../docs/rtc-transport.md) and
 [actual validation](../docs/issue-53-validation.md).
 
-## Conversion probe (Issue #55)
+## Conversion probe (Issues #55 and #57)
 
 `conversion.asm` builds the original source-included CC0-1.0
 `generated/conversion.ws`, a 128 KiB firmware-free cartridge with 32 KiB SRAM.
 No proprietary ROM, firmware, external implementation code or assets are included.
 Build/reproduce with NASM through `python3 fixtures/build.py` / `--check`.
-SHA-256: `633e232ac261dc80a584442873c8a9b738528d2453f00ec65794e37e05c8aa09`.
+SHA-256: `19f0cb8de32e02179dbbba86043275352780529761402820a102fc299de5ad9f`.
 
-Each phase executes 27 literal conversion vectors under contrasting incoming
-arithmetic flags (54 conversions). AAM includes bases 1, 2, 10, 16, 255,
-ignored incoming AH, zero/nonzero quotient/remainder, and remainder sign/parity
+Each phase executes 43 literal conversion vectors under contrasting incoming
+arithmetic flags (86 conversions). The 16 AAA/AAS vectors cover Issue #57
+reproductions, adjusted nonzero AL, unadjusted zero AL, ignored upper AL nibble,
+incoming AF adjustment and independent AH wrap in both directions. AAA/AAS
+pairs use F002/FCC7 or F012/FCD7, preserving DF while contrasting every
+arithmetic flag except the independently controlled AF.
+
+The prior 27 AAM/AAD vectors are retained unchanged. AAM includes bases
+1, 2, 10, 16, 255, ignored incoming AH, zero/nonzero quotient/remainder, and remainder sign/parity
 boundaries. AAD includes bases 0, 1, 10, 16, 128, 255, product truncation,
-final-add carry/auxiliary carry/overflow and SZP. The first two vectors reproduce
-Issue #55; AAM starts with F8D7 and AAD with F002. Each pair contrasts clear
+final-add carry/auxiliary carry/overflow and SZP. The first two AAM/AAD vectors
+reproduce Issue #55; AAM starts with F8D7 and AAD with F002. Each pair contrasts clear
 versus set arithmetic flags and tests preserved DF. The AAM reproduction uses
 F8D7/F402; the other pairs use F002/FCD7.
 
@@ -637,11 +643,11 @@ they neither parse the ROM expectations nor call production ALU/conversion helpe
 
 RAM 0400 holds 600D/0BAD, 0402 the fresh boot count, 0404 the physical A0 model
 bit (0/2), and 0406 the completed phase count. From 0408, each phase has a mode
-readback word followed by 54 triples of AX/full FLAGS/branch mask: 163 words.
+readback word followed by 86 triples of AX/full FLAGS/branch mask: 259 words.
 Mono executes one phase at 00. Color/Crystal execute seven phases at
 00 → 80 → 00 → C0 → 00 → E0 → 00. Mono avoids its unsupported port 60.
-The complete observation block is 1145 words (0400–0CF1), copied to SRAM at
-0000–08F1. Unused Mono phases remain zero. Every boot clears all volatile words
+The complete observation block is 1817 words (0400–1231), copied to SRAM at
+0000–0E31. Unused Mono phases remain zero. Every boot clears all volatile words
 and invalidates saved completion before testing, retaining only the boot count.
 On success it displays the existing gray Mono or green Color/Crystal pass tile.
 
@@ -652,5 +658,7 @@ compares all saved CPU-written words on every model and both boots. Both begin
 with poisoned retained observations and a stale success marker. The browser
 checks real player persistence with ROM/save transport remaining browser-local
 and ROM identity based on content SHA-256, consistent with existing ownership
-policies. See [source reconciliation](../docs/conversion-flags.md) and
-[baseline failures and corrected validation](../docs/issue-55-validation.md).
+policies. See [source reconciliation](../docs/conversion-flags.md),
+[Issue #55 validation](../docs/issue-55-validation.md),
+[AAA/AAS reconciliation and literal oracle](../docs/ascii-adjust.md) and
+[Issue #57 baseline failures and corrected validation](../docs/issue-57-validation.md).

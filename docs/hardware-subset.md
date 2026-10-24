@@ -314,6 +314,12 @@ Implemented with generic operands, not ROM-specific dispatch:
   arithmetic flags from that final byte ADD. Control/fixed bits and zero-base
   AAM fault handling are preserved on all models and across supported graphics
   modes. See [conversion correction and evidence limits](conversion-flags.md).
+  AAA/AAS mask AL before independent byte adjustment, preserving AH byte wrapping.
+  PF is set, OF cleared, AF/CF/ZF equal the incoming-AF-or-nibble adjustment
+  condition, and SF is its inverse; these are not ordinary result SZP flags.
+  Both use nine execution clocks plus existing fetch/wait charges on every model
+  and supported graphics mode, preserving control/fixed flags. See
+  [AAA/AAS source reconciliation and limits](ascii-adjust.md).
 - PUSH/POP registers, segments, immediates and memory, PUSHA/POPA, PUSHF/POPF,
   LAHF/SAHF, ENTER/LEAVE. Both PUSH SP register encodings (54 and FF F4)
   store SP after the wrapping two-byte decrement, independently of model and

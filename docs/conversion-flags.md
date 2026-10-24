@@ -38,5 +38,5 @@ requirements. Applying these CPU rules to Mono/Color/Crystal and across graphics
 modes is an instruction-level inference from the experiment sources, not an
 independently inspected set of per-model silicon logs. Physical-console tests,
 commercial-title impact, broader exceptional arithmetic and exact prefetch timing
-remain unmeasured. The original [fixture and provenance](../fixtures/README.md#conversion-probe-issue-55)
+remain unmeasured. The original [fixture and provenance](../fixtures/README.md#conversion-probe-issues-55-and-57)
 and [actual validation record](issue-55-validation.md) describe automated evidence.
