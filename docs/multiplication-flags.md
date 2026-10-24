@@ -38,3 +38,8 @@ history for [successful byte DIV](byte-div-flags.md). Byte IMUL is directly
 demonstrated by that experiment; extending history production to the other
 explicit forms is an instruction-level inference. Live multiplication flags and
 products are unchanged. No claim is made about implicit conversion microcode.
+
+Issue #85 corrects the former 12/20 (immediate 12) residual-clock assumption to
+three for every explicit form, with transfers charged once. See the
+[multiplication accounting rationale](multiplication-timing.md); products,
+complete FLAGS, sampling and history behavior above remain required.

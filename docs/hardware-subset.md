@@ -306,6 +306,10 @@ Implemented with generic operands, not ROM-specific dispatch:
   models. Unsigned ZF clears on physical WonderSwan and sets on Color/Crystal,
   independently of graphics mode. Products, CF/OF and control flags retain their
   ordinary rules. See [source reconciliation and experimental limits](multiplication-flags.md).
+  All six multiplication forms use three residual clocks plus actual instruction
+  fetches and operand reads/waits once. Even internal-register F6/F7 totals are
+  five clocks; 69/6B total six. See [accounting, original probe and bounded
+  native/production-browser evidence](multiplication-timing.md).
   Successful word DIV/IDIV clear AF/CF/OF/PF/SF and set ZF only for an exact
   odd quotient on every emulated model, independently of graphics mode.
   Control flags and quotient/remainder remain unchanged by this correction.

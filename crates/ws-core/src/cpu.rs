@@ -963,7 +963,10 @@ impl Cpu {
                 // See docs/multiplication-flags.md, including immediate forms.
                 self.flags &= !(AF | PF | SF);
                 self.flag(ZF, true);
-                execution = 12;
+                // Appendix A gives 3 register / 4 memory decoded clocks.
+                // Operand transfers are already charged; retain 3 residual clocks.
+                // See docs/multiplication-timing.md for accounting and limits.
+                execution = 3;
             }
             0x86 | 0x87 => {
                 let m = self.byte(bus);
@@ -1178,7 +1181,9 @@ impl Cpu {
                         self.flags &= !(AF | PF | SF);
                         // Unsigned ZF follows the physical SOC, not video mode.
                         self.flag(ZF, signed || bus.model != Model::Mono);
-                        execution = if wide { 20 } else { 12 };
+                        // Same residual for both widths and signedness; the bus
+                        // already charges the source read. See multiplication-timing.md.
+                        execution = 3;
                     }
                     6 | 7 => {
                         let dividend = if wide {
@@ -2176,7 +2181,9 @@ mod compatibility_tests {
         }
         assert!(costs[0] < costs[1]);
         assert!(costs[1] < costs[2]);
-        assert!(costs[2] < costs[3]);
+        // F7 E0: two opcode/ModR/M fetches + three residual clocks.
+        // This now equals the preceding aligned memory MOV (five clocks).
+        assert_eq!(costs[3], 5);
         assert_eq!(c.step(&mut b).unwrap(), 1);
         let mut rom = crate::cartridge::tests::rom(131072, 0, 0);
         rom[65536] = 0x90;
