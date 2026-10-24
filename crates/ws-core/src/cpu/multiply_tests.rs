@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 // Products and complete status words are independent, hand-calculated literals.
+// Literal opcode checks use instruction_step to observe FLAGS before TF entry.
+// Ordinary delivery and saved arithmetic FLAGS are covered in trap_tests.
 use super::*;
 
 fn modes() -> [(Model, bool); 5] {
@@ -125,7 +127,7 @@ fn group(signed: bool) {
                     };
                     let access = if location == 0 { 2 } else { 5 + operand_cost };
                     let execution = if opcode == 0xf6 { 12 } else { 20 };
-                    let cost = c.step(&mut b).unwrap();
+                    let cost = c.instruction_step(&mut b).unwrap();
                     assert_eq!(
                         c.registers, expected,
                         "{model:?}/{color} {code:x?} {ax:x}*{source:x}"
@@ -150,7 +152,7 @@ fn group(signed: bool) {
                     assert_eq!(b.ports, ports);
                     assert!(b.ram == ram);
                     assert_eq!(b.cartridge.as_ref().unwrap().save, save);
-                    c.step(&mut b).unwrap();
+                    c.instruction_step(&mut b).unwrap();
                     expected[1] = 0xabcd;
                     assert_eq!(c.registers, expected);
                     assert_eq!(c.ip, 0x1000 + length as u16 + 3);
@@ -229,7 +231,7 @@ fn immediate_imul_full_flags_boundaries_sign_extension_and_aliases() {
                                 Some(0x800) => 1,
                                 Some(_) => 2,
                             };
-                        let cost = c.step(&mut b).unwrap();
+                        let cost = c.instruction_step(&mut b).unwrap();
                         assert_eq!(c.registers, expected, "{code:x?} source {source:x}");
                         assert_eq!(c.flags, control | status, "{model:?}/{color} {code:x?}");
                         assert_eq!(c.ip, 0x1000 + code.len() as u16);
@@ -271,7 +273,7 @@ fn mul_runtime_mode_changes_follow_physical_model_and_shared_clock_once() {
                 (15, 0x1007, 3, 0xf742),
             ] {
                 let before = m.bus.cycles;
-                let actual = m.cpu.step(&mut m.bus).unwrap();
+                let actual = m.cpu.instruction_step(&mut m.bus).unwrap();
                 assert_eq!(actual, cost);
                 assert_eq!(m.bus.accesses.get(), access);
                 assert_eq!(m.cpu.ip, ip);

@@ -4,6 +4,9 @@ use crate::{bus::Bus, Error, Model};
 mod buslock_tests;
 
 #[cfg(test)]
+mod trap_tests;
+
+#[cfg(test)]
 mod fpo1_poll_tests;
 
 #[cfg(test)]
@@ -303,6 +306,7 @@ impl Cpu {
         self.push(bus, self.ip);
         self.flags &= !(IF | TF);
         self.halted = false;
+        self.interrupt_shadow = 0;
         self.ip = target_ip;
         self.segments[1] = target_cs;
     }
@@ -371,6 +375,33 @@ impl Cpu {
         if self.halted {
             return Ok(1);
         }
+        let (mut cycles, trap) = self.execute_instruction(bus)?;
+        if trap {
+            // Synchronous entries and SS loads suppress their own TF boundary.
+            // Eligible external INT has priority over single-step (manual table 5-1).
+            if let Some(vector) = bus
+                .interrupt()
+                .filter(|_| self.interrupt_shadow == 0 && self.flags & IF != 0)
+            {
+                let accesses = bus.accesses.get();
+                self.interrupt(bus, vector);
+                cycles += 12 + bus.accesses.get() - accesses;
+            } else {
+                let accesses = bus.accesses.get();
+                self.interrupt(bus, 1);
+                // 25 total entry clocks: 20 plus five aligned internal word
+                // transfers. Actual bus charges retain odd/wait-state costs.
+                // See docs/single-step.md for reconciliation and timing limits.
+                cycles += 20 + bus.accesses.get() - accesses;
+            }
+        }
+        Ok(cycles)
+    }
+
+    // Separate execution from boundary arbitration so isolated arithmetic tests
+    // can inspect full FLAGS before interrupt entry clears live IF/TF.
+    fn execute_instruction(&mut self, bus: &mut Bus) -> Result<(u32, bool), Error> {
+        let mut trap = self.flags & TF != 0;
         let mut execution = 1u32;
         let start = self.ip;
         let mut segment = None;
@@ -432,6 +463,7 @@ impl Cpu {
             0x07 | 0x17 | 0x1f => {
                 self.segments[(opcode >> 3) as usize] = self.pop(bus);
                 if opcode == 0x17 {
+                    trap = false;
                     self.interrupt_shadow = 1;
                 }
             }
@@ -496,6 +528,7 @@ impl Cpu {
                 } else {
                     self.segments[s] = self.read(bus, rm, true);
                     if s == 2 {
+                        trap = false;
                         self.interrupt_shadow = 1;
                     }
                 }
@@ -821,6 +854,7 @@ impl Cpu {
                 let hi = self.read(bus, Operand::Memory(s, o.wrapping_add(2)), true) as i16;
                 if v < lo || v > hi {
                     self.ip = start;
+                    trap = false;
                     self.interrupt(bus, 5);
                 }
             }
@@ -963,6 +997,7 @@ impl Cpu {
                     4
                 };
                 if opcode != 0xce || self.flags & OF != 0 {
+                    trap = false;
                     self.interrupt(bus, vector);
                     execution = 12;
                 }
@@ -980,6 +1015,7 @@ impl Cpu {
             0xd4 => {
                 let base = self.byte(bus) as u16;
                 if base == 0 {
+                    trap = false;
                     self.divide_fault(bus, start);
                 } else {
                     let al = self.reg(0, false);
@@ -1126,6 +1162,7 @@ impl Cpu {
                                 self.set_reg(4, false, rem as u16);
                             }
                         } else {
+                            trap = false;
                             self.divide_fault(bus, start);
                         }
                         execution = if wide { 32 } else { 24 };
@@ -1141,7 +1178,15 @@ impl Cpu {
             }
         }
         bus.take_fault()?;
-        Ok(execution + bus.accesses.get())
+        Ok((execution + bus.accesses.get(), trap))
+    }
+
+    #[cfg(test)]
+    fn instruction_step(&mut self, bus: &mut Bus) -> Result<u32, Error> {
+        // Instruction semantics only: no DMA, IRQ, HALT idle or trap delivery.
+        // Ordinary step tests separately check delivery and saved arithmetic flags.
+        bus.accesses.set(0);
+        self.execute_instruction(bus).map(|(cycles, _)| cycles)
     }
 }
 
@@ -1468,11 +1513,11 @@ mod compatibility_tests {
         for (input, expected) in [(0, 0xf002), (0xffff, 0xffd7)] {
             let (mut c, mut b) = setup(&[0x9d, 0x9c, 0x58]);
             c.push(&mut b, input);
-            c.step(&mut b).unwrap();
+            c.instruction_step(&mut b).unwrap();
             assert_eq!(c.flags, expected);
-            c.step(&mut b).unwrap();
+            c.instruction_step(&mut b).unwrap();
             assert_eq!(word(&b, 0x1ffe), expected);
-            c.step(&mut b).unwrap();
+            c.instruction_step(&mut b).unwrap();
             assert_eq!(c.registers[0], expected);
             assert_eq!(c.registers[4], 0x2000);
         }
@@ -1618,7 +1663,7 @@ mod compatibility_tests {
                         c.registers[1] = count as u16;
                         let preserved = FIXED_FLAGS | CF | AF | OF | IF | DF | TF;
                         c.flags = preserved | ((SF | ZF | PF) ^ szp);
-                        c.step(&mut b).unwrap();
+                        c.instruction_step(&mut b).unwrap();
                         assert_eq!(c.registers[0], value);
                         let sign = if wide { 0x8000 } else { 0x80 };
                         let overflow = if op == 4 {

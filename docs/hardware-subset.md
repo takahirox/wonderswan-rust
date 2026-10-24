@@ -23,7 +23,7 @@ commercial software will run or that timing matches a physical console.
 | Nonvolatile browser saves | localStorage per SHA-256 of complete ROM bytes, automatic once/second, on pause/hide/pagehide, before replacing a ROM | Reset/model changes preserve in-memory saves. Reload/reopen requires reselecting local ROM. No ROM/save upload or server storage. Corrupt/size-mismatched slots are preserved and not overwritten; denied/full storage shows a notice. Browser profile clearing/private-session expiry removes browser data. No import/export UI. |
 | Console browser records | Separate `wonderswan:console:v1:mono`, `:color`, `:crystal` localStorage keys, base64 complete physical EEPROM bytes | Restored once per model before execution, independent of cartridge SHA-256 saves. Same periodic/lifecycle flushes as cartridge saves, including before model replacement. Corrupt/denied reads block overwriting that slot; quota failures report separately and leave emulation/cartridge saves usable. Browser-local only; no settings editor. |
 | CPU | Generic 8/16-bit register, ModR/M, segment, stack and string operations below; two-byte FPO1 NOP and nonblocking console POLL | Unsupported opcodes/group extensions/ports/prefix combinations stop execution visibly, with CS:IP for unknown opcodes. No silent NOP fallback. |
-| Interrupts | IF, vector table and stack entry, INT/INT3/INTO/IRET, divide faults, BOUND fault; hardware priority highest source first; B0 vector/request, B2 enable, B4 status, B6 acknowledgement | Enable gates request latching; changing enable does not clear latched status. Key edges, line match, VBlank and both timer sources generated. UART/cartridge IRQ sources, single-step trap and low-battery NMI not generated. STI and MOV/POP SS inhibit delivery for the next instruction; POPF/IRET do so when IF changes from 0 to 1. HLT wakes for a latched IRQ even with IF=0, resuming without vectoring in that case. |
+| Interrupts | IF/TF, vector table and stack entry, INT/INT3/INTO/IRET, divide faults, BOUND fault; vector-1 single-step with POPF/IRET activation and saved-FLAGS continuation; hardware priority highest source first; B0 vector/request, B2 enable, B4 status, B6 acknowledgement | Enable gates request latching; changing enable does not clear latched status. Key edges, line match, VBlank and both timer sources generated. UART/cartridge IRQ sources and low-battery NMI are not generated. MOV/POP SS suppress their TF boundary and defer external INT through the next instruction. STI and IF-enabling POPF/IRET delays apply to external INT. Synchronous interrupts and eligible external INT outrank TF; one selected entry clears live IF/TF. Prefixes are indivisible; REP element/final/zero-count and HALT-completion trap behavior follow the [source reconciliation and explicit inference limits](single-step.md). HLT wakes for a latched IRQ even with IF=0, resuming without vectoring in that case. |
 | Timers | A2 control, A4–A7 reload, A8–AB counter; HBlank and VBlank count sources, one-shot/repeat, reload-on-write and disabled-count-at-one IRQ quirk | Test modes at A3 unsupported. Word writes to A2 with high byte zero allowed. Programmable final line at 16; independent STN synchronization at 17. See [LCD policies](lcd-timing.md). |
 | Timing | Shared 3.072 MHz clock, 256 clocks/line, programmable T+1 lines/frame (159 by default), 144 visible; actual raster-wrap frame progression | Per-instruction execution cost + fetch/data/I/O transfers, live A0 ROM waits, SRAM/cartridge-I/O waits, aligned internal RAM/documented I/O word pairs and 16-bit ROM reads, branch/shift/multiply/divide/interrupt costs. Ordinary IN/OUT uses six decoded clocks including its normal transfer, plus explicit fetch and additional transfer/wait charges; see [reconciliation and limits](ordinary-io-timing.md). Internal byte/even-word/odd-word costs are 1/1/2; see [eligibility and evidence](internal-word-timing.md). Approximate, not cycle-table/prefetch accurate. Instructions and DMA words are atomic; events/raster output use that granularity. |
 | General DMA | Color/Crystal registers 40–42 source, 44–45 destination, 46–47 byte length, 48 control; increment/decrement word copies from RAM or mapped fast 16-bit ROM to internal RAM | Engine requires 60.7 color enable; mono rejects all GDMA register I/O. CPU and IRQ delivery stall for 5 + 2 × copied words on the existing clock. SRAM, byte-wide ROM, wait-state ROM and unmapped ROM stop at the first invalid source word; zero/initially invalid requests cost no DMA clocks. SDMA shares the clock and takes priority over the next GDMA word; see semantics below. |
@@ -354,7 +354,7 @@ Implemented with generic operands, not ROM-specific dispatch:
   non-string instructions still fail. See the source reconciliation below.
 
 Remaining gaps include electrical POLLB pin behavior, undocumented aliases
-(82, shift /6, SALC), single-step traps/NMI generation, other NEC undefined-flag behavior,
+(82, shift /6, SALC), NMI generation, exact REP/HALT trap phases, other NEC undefined-flag behavior,
 prefetch and exact instruction/bus cycle tables. Unknown instructions still fail.
 
 ### BUSLOCK source reconciliation (Issue #35)
@@ -377,9 +377,10 @@ step and restarts at the first prefix, including after interrupt return.
 CPU effects remain instruction-granular; GDMA words and SDMA stalls are serviced
 at the existing boundaries. This does not model BUSLOCKB transitions, fetch
 suppression, prefetch/pipeline timing or exact bus arbitration. The preliminary
-core manual does not establish console DMA wiring, POLL wiring or single-step
-delivery. The original CC0 BUSLOCK cartridge and independent native/browser
-literals exercise all three models and restart; commercial-title impact is unmeasured.
+core manual does not establish console DMA wiring or POLL wiring. Issue #67
+implements single-step using chapter 5 and separately records REP/HALT inferences
+and trap-entry accounting in [the reconciliation](single-step.md). The original
+CC0 BUSLOCK cartridge and independent native/browser literals exercise all three models and restart; commercial-title impact is unmeasured.
 
 The adjacent gap list also previously misclassified excluded older NEC operations
 and REPC/REPNC as required V30MZ features. §§1.3/3.6.1 exclude them, while retaining

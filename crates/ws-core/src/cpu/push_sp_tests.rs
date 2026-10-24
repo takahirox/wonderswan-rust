@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
+// Literal opcode checks use instruction_step to observe FLAGS before TF entry.
+// Ordinary delivery and saved arithmetic FLAGS are covered in trap_tests.
 use super::*;
 
 fn modes() -> [(Model, u8); 9] {
@@ -55,7 +57,10 @@ fn vectors(encoding: &[u8]) {
                     c.flags = flags;
                     let mut registers = c.registers;
                     let segments = c.segments;
-                    assert_eq!(c.step(&mut b).unwrap(), u32::from(length) + word_cost + 1);
+                    assert_eq!(
+                        c.instruction_step(&mut b).unwrap(),
+                        u32::from(length) + word_cost + 1
+                    );
                     registers[4] = result;
                     assert_eq!(c.registers, registers, "{model:?}/{mode:x}/{encoding:x?}");
                     assert_eq!(c.segments, segments);
@@ -68,12 +73,12 @@ fn vectors(encoding: &[u8]) {
                     expected[0x3000..0x3000 + code.len()].copy_from_slice(&code);
                     expected[address..address + 2].copy_from_slice(&bytes);
                     assert_eq!(&b.ram[..], &expected);
-                    assert_eq!(c.step(&mut b).unwrap(), 2 + word_cost);
+                    assert_eq!(c.instruction_step(&mut b).unwrap(), 2 + word_cost);
                     registers[0] = result;
                     registers[4] = sp;
                     assert_eq!(c.registers, registers);
                     assert_eq!((c.ip, c.flags), (0x2001 + length, flags));
-                    c.step(&mut b).unwrap();
+                    c.instruction_step(&mut b).unwrap();
                     registers[1] = 0xbeef;
                     assert_eq!(c.registers, registers);
                     assert_eq!(c.segments, segments);
@@ -130,7 +135,7 @@ fn other_push_sources_and_pusha_keep_entry_values() {
             };
             c.flags = 0xffd7;
             let mut registers = c.registers;
-            c.step(&mut b).unwrap();
+            c.instruction_step(&mut b).unwrap();
             registers[4] = 0x1ffe;
             assert_eq!(c.registers, registers);
             assert_eq!(&b.ram[0x21fe..0x2200], &value.to_le_bytes(), "{code:x?}");
@@ -138,12 +143,12 @@ fn other_push_sources_and_pusha_keep_entry_values() {
         }
         let (mut c, mut b) = setup(model, mode, &[0x60, 0x61]);
         let registers = c.registers;
-        c.step(&mut b).unwrap();
+        c.instruction_step(&mut b).unwrap();
         assert_eq!(c.registers[4], 0x1ff0);
         assert_eq!(&b.ram[0x21f6..0x21f8], &[0, 0x20]);
         // POPA must skip the saved SP slot.
         b.ram[0x21f6..0x21f8].copy_from_slice(&[0x34, 0x12]);
-        c.step(&mut b).unwrap();
+        c.instruction_step(&mut b).unwrap();
         assert_eq!(c.registers, registers);
         assert_eq!(c.ip, 0x2002);
     }
@@ -162,6 +167,7 @@ fn push_sp_runtime_modes_and_normal_machine_scheduler_advance_once() {
                 let mut m = crate::Machine::new(model);
                 m.cpu = c;
                 m.bus = b;
+                super::trap_tests::install_handler(&mut m.bus);
                 let modes: &[u8] = if model == Model::Mono {
                     &[0]
                 } else {
@@ -177,7 +183,10 @@ fn push_sp_runtime_modes_and_normal_machine_scheduler_advance_once() {
                     m.cpu.flags = 0xffd7;
                     let mut cpu = m.cpu.clone();
                     let returned = cpu.step(&mut m.bus).unwrap();
-                    assert_eq!(returned, encoding.len() as u32 + word_cost + 1);
+                    assert_eq!(
+                        returned,
+                        encoding.len() as u32 + word_cost + 1 + 22 + 3 * word_cost
+                    );
                     let remaining =
                         crate::CYCLES_PER_FRAME - m.bus.cycles % crate::CYCLES_PER_FRAME;
                     m.advance((remaining - u64::from(returned)) as u32);
@@ -189,7 +198,22 @@ fn push_sp_runtime_modes_and_normal_machine_scheduler_advance_once() {
                     assert_eq!(m.frame_number(), frame + 1);
                     assert_eq!(m.bus.raster_line, 0);
                     assert_eq!(m.audio_samples().len(), 2);
-                    assert_eq!(m.bus.accesses.get(), returned - 1);
+                    assert_eq!(m.bus.accesses.get(), returned - 21);
+                    super::trap_tests::finish_trap_at(
+                        &mut cpu,
+                        &mut m.bus,
+                        0x2000 + encoding.len() as u16,
+                        0x100,
+                        0xffd7,
+                    );
+                    let handler_cost = super::trap_tests::finish_trap_at(
+                        &mut m.cpu,
+                        &mut m.bus,
+                        0x2000 + encoding.len() as u16,
+                        0x100,
+                        0xffd7,
+                    );
+                    m.advance(handler_cost);
                     assert_eq!(m.cpu.ip, 0x2000 + encoding.len() as u16);
                     assert_eq!((m.cpu.registers[4], m.cpu.flags), (result, 0xffd7));
                     assert_eq!(m.cpu.registers, cpu.registers);

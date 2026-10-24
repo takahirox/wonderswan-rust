@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
+// Literal opcode checks use instruction_step to observe FLAGS before TF entry.
+// Ordinary delivery and saved arithmetic FLAGS are covered in trap_tests.
 use super::*;
 include!("shift_vectors.rs");
 
@@ -120,7 +122,7 @@ fn decoded_full_flags_results_memory_state_and_accounting() {
                             1
                         };
                         let access = length as u32 + 2 * transfer;
-                        let cost = c.step(&mut b).unwrap();
+                        let cost = c.instruction_step(&mut b).unwrap();
                         assert_eq!(
                             c.registers, registers,
                             "{model:?}/{mode:x} {code:x?} {value:x}/{count}"
@@ -139,7 +141,7 @@ fn decoded_full_flags_results_memory_state_and_accounting() {
                         assert_eq!(b.ports, ports);
                         assert!(b.ram == ram);
                         assert_eq!(b.cartridge.as_ref().unwrap().save, save);
-                        c.step(&mut b).unwrap();
+                        c.instruction_step(&mut b).unwrap();
                         registers[2] = 0xbeef;
                         assert_eq!(c.registers, registers);
                         assert_eq!(c.flags, flags[pattern]);
@@ -192,7 +194,7 @@ fn runtime_video_transitions_advance_shared_devices_once() {
                     (21, 0x1008, 3, 0x80, 0xf782),
                 ] {
                     let before = m.bus.cycles;
-                    let actual = m.cpu.step(&mut m.bus).unwrap();
+                    let actual = m.cpu.instruction_step(&mut m.bus).unwrap();
                     assert_eq!(actual, cost);
                     assert_eq!(m.cpu.ip, ip);
                     assert_eq!(m.bus.accesses.get(), access);

@@ -10,6 +10,7 @@ import { sweepChecks } from './sweep.mjs';
 import { startupChecks } from './startup.mjs';
 import { shiftRotateChecks } from './shift-rotate.mjs';
 import { divisionChecks } from './divide.mjs';
+import { trapChecks } from './trap.mjs';
 import { rtcCalendarChecks } from './rtc-calendar.mjs';
 import { rtcChecks } from './rtc.mjs';
 import { pushSpChecks } from './push-sp.mjs';
@@ -531,6 +532,7 @@ try {
   await conversionChecks(browser,base,errors);
   await multiplicationChecks(browser,base,errors);
   await divisionChecks(browser,base,errors);
+  await trapChecks(browser,base,errors);
   await shiftRotateChecks(browser,base,errors);
   await lcdChecks(browser,base,errors);
   await lcdOutputChecks(browser,base,errors);

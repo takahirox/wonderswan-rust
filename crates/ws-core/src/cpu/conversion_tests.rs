@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
+// Literal opcode checks use instruction_step to observe FLAGS before TF entry.
+// Ordinary delivery and saved arithmetic FLAGS are covered in trap_tests.
 use super::*;
 
 fn modes() -> [(Model, u8); 9] {
@@ -104,7 +106,7 @@ fn vectors(conversion: u8) {
                         let save = b.cartridge.as_ref().map(|cart| cart.save.clone());
                         let access = if location == 2 { 4 } else { 2 };
                         let execution = if opcode == 0xd4 { 16 } else { 1 };
-                        assert_eq!(c.step(&mut b).unwrap(), execution + access);
+                        assert_eq!(c.instruction_step(&mut b).unwrap(), execution + access);
                         registers[0] = result;
                         assert_eq!(
                             c.registers, registers,
@@ -119,7 +121,7 @@ fn vectors(conversion: u8) {
                         assert_eq!(b.ports, ports);
                         assert_eq!(b.ram, ram);
                         assert_eq!(b.cartridge.as_ref().map(|cart| &cart.save), save.as_ref());
-                        c.step(&mut b).unwrap();
+                        c.instruction_step(&mut b).unwrap();
                         registers[1] = 0xbeef;
                         assert_eq!(c.registers, registers);
                         assert_eq!(c.ip, start + 5);
@@ -224,7 +226,11 @@ fn aam_zero_base_keeps_existing_fault_stack_and_return_behavior() {
             (c.ip, c.flags, c.registers[0], c.registers[4]),
             (0x1002, 0xffd7, 0xa52a, 0x2000)
         );
+        // HLT completes with TF restored: observe vector 1 rather than
+        // assuming that TF remains inert during sustained standby.
+        super::trap_tests::install_handler(&mut b);
         c.step(&mut b).unwrap();
-        assert!(c.halted);
+        assert!(!c.halted);
+        super::trap_tests::finish_trap(&mut c, &mut b, 0x1003, 0xffd7);
     }
 }

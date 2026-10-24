@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
+// Literal opcode checks use instruction_step to observe FLAGS before TF entry.
+// Ordinary delivery and saved arithmetic FLAGS are covered in trap_tests.
 use super::*;
 
 fn modes() -> [(Model, u8); 9] {
@@ -94,7 +96,7 @@ fn literal_vectors(instruction: u8) {
                     let ports = b.ports;
                     let save = b.cartridge.as_ref().unwrap().save.clone();
                     let access = if location == 3 { 2 } else { 1 };
-                    let clocks = c.step(&mut b).unwrap();
+                    let clocks = c.instruction_step(&mut b).unwrap();
                     registers[0] = result;
                     assert_eq!(
                         c.registers, registers,
@@ -110,7 +112,7 @@ fn literal_vectors(instruction: u8) {
                     assert_eq!(b.ports, ports);
                     assert_eq!(b.ram, ram);
                     assert_eq!(b.cartridge.as_ref().unwrap().save, save);
-                    c.step(&mut b).unwrap();
+                    c.instruction_step(&mut b).unwrap();
                     registers[1] = 0xbeef;
                     assert_eq!(c.registers, registers);
                     assert_eq!(c.ip, start + 4);
@@ -165,7 +167,7 @@ fn decimal_adjust_all_al_af_cf_ah_and_opposing_flags_from_literal_tables() {
                         ..Cpu::default()
                     };
                     c.registers[0] = ah | al;
-                    assert_eq!(c.step(&mut b).unwrap(), 11);
+                    assert_eq!(c.instruction_step(&mut b).unwrap(), 11);
                     assert_eq!(c.registers[0], ah | result);
                     assert_eq!(
                         c.flags,
