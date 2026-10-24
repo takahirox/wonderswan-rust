@@ -37,7 +37,8 @@ This is the repository's bounded timing policy, not an exact prefetch/pipeline m
 
 This replaces the whole-word, AF/CF-only and default-cost assumptions. The Issue
 already requires the corrected behavior, so no specification or remote edit was
-needed. DAA/DAS, exceptional division and prefetch redesign remain separate work.
+needed. DAA/DAS are covered by the subsequent [Issue #59 correction](decimal-adjust.md);
+exceptional division and prefetch redesign remain separate work.
 Applying these CPU rules across Mono/Color/Crystal and supported graphics modes
 is an instruction-level inference. No independent per-model silicon logs were
 inspected; physical-console measurements, human gameplay and commercial-title
@@ -78,7 +79,7 @@ opposing arithmetic/control profiles on all nine static model/mode configuration
 Issue reproductions, adjusted nonzero AL, unadjusted zero AL and byte wrapping;
 these also check full unrelated state, continuation and fetch/wait charges.
 
-The extended original [conversion probe](../fixtures/README.md#conversion-probe-issues-55-and-57)
+The extended original [conversion probe](../fixtures/README.md#conversion-probe-issues-55-57-and-59)
 records actual AX, full PUSHF and five Jcc observations against independent
 literals on every model, all supported runtime round trips and fresh restart.
 The [validation record](issue-57-validation.md) distinguishes executed evidence

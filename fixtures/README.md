@@ -612,16 +612,23 @@ ROM identity and browser-local save handling use the existing player unchanged.
 See [source reconciliation and limits](../docs/rtc-transport.md) and
 [actual validation](../docs/issue-53-validation.md).
 
-## Conversion probe (Issues #55 and #57)
+## Conversion probe (Issues #55, #57 and #59)
 
 `conversion.asm` builds the original source-included CC0-1.0
 `generated/conversion.ws`, a 128 KiB firmware-free cartridge with 32 KiB SRAM.
 No proprietary ROM, firmware, external implementation code or assets are included.
 Build/reproduce with NASM through `python3 fixtures/build.py` / `--check`.
-SHA-256: `19f0cb8de32e02179dbbba86043275352780529761402820a102fc299de5ad9f`.
+SHA-256: `4fd104a7698ce2d9fcfa697610aecea4c2c3476dfffc91bfa46a2b9dcdc8b1ad`.
 
-Each phase executes 43 literal conversion vectors under contrasting incoming
-arithmetic flags (86 conversions). The 16 AAA/AAS vectors cover Issue #57
+Each phase executes 79 literal conversion vectors under contrasting incoming
+arithmetic flags (158 conversions). The 36 DAA/DAS vectors added for Issue #59
+cover all three reproductions, adjustment boundaries 09/0A, 79/7A, 7F/80, 99/9A,
+F9/FA/FF, incoming-CF-only, incoming-AF-only and combined adjustments. Their pairs
+contrast incoming OF/SZP and DF, and AH 00/AB (the exact OF-clearing reproduction
+uses AH 00 in both cases). Full FLAGS and actual branch masks distinguish
+recomputed OF and DAS CF without adjustment-borrow carry.
+
+The prior 43 vectors are unchanged. The 16 AAA/AAS vectors cover Issue #57
 reproductions, adjusted nonzero AL, unadjusted zero AL, ignored upper AL nibble,
 incoming AF adjustment and independent AH wrap in both directions. AAA/AAS
 pairs use F002/FCC7 or F012/FCD7, preserving DF while contrasting every
@@ -643,11 +650,11 @@ they neither parse the ROM expectations nor call production ALU/conversion helpe
 
 RAM 0400 holds 600D/0BAD, 0402 the fresh boot count, 0404 the physical A0 model
 bit (0/2), and 0406 the completed phase count. From 0408, each phase has a mode
-readback word followed by 86 triples of AX/full FLAGS/branch mask: 259 words.
+readback word followed by 158 triples of AX/full FLAGS/branch mask: 475 words.
 Mono executes one phase at 00. Color/Crystal execute seven phases at
 00 → 80 → 00 → C0 → 00 → E0 → 00. Mono avoids its unsupported port 60.
-The complete observation block is 1817 words (0400–1231), copied to SRAM at
-0000–0E31. Unused Mono phases remain zero. Every boot clears all volatile words
+The complete observation block is 3329 words (0400–1E01), copied to SRAM at
+0000–1A01. Unused Mono phases remain zero. Every boot clears all volatile words
 and invalidates saved completion before testing, retaining only the boot count.
 On success it displays the existing gray Mono or green Color/Crystal pass tile.
 
@@ -660,5 +667,7 @@ checks real player persistence with ROM/save transport remaining browser-local
 and ROM identity based on content SHA-256, consistent with existing ownership
 policies. See [source reconciliation](../docs/conversion-flags.md),
 [Issue #55 validation](../docs/issue-55-validation.md),
-[AAA/AAS reconciliation and literal oracle](../docs/ascii-adjust.md) and
-[Issue #57 baseline failures and corrected validation](../docs/issue-57-validation.md).
+[AAA/AAS reconciliation and literal oracle](../docs/ascii-adjust.md),
+[Issue #57 baseline failures and corrected validation](../docs/issue-57-validation.md),
+[DAA/DAS source reconciliation and independent oracle](../docs/decimal-adjust.md) and
+[Issue #59 executed validation](../docs/issue-59-validation.md).
