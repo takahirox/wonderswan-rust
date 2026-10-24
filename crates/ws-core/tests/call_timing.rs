@@ -29,7 +29,7 @@ fn absolute_call_budget_counts_destinations_modes_and_fresh_restart() {
             for pass in 0..passes {
                 // Literal absolute budgets, independent from CPU accounting helpers.
                 for (sample, low, high) in
-                    [(0, 464, 465), (1, 480, 481), (2, 576, 577), (3, 592, 593)]
+                    [(0, 480, 481), (1, 496, 497), (2, 608, 609), (3, 624, 625)]
                 {
                     let i = 4 + u32::from(pass) * 20 + sample * 5;
                     observations.push(word(i));

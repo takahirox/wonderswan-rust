@@ -435,7 +435,11 @@ fn call_wrapping_stacks_mapped_sram_waits_and_real_returns() {
                                 }
                             }
                             if sram || accessible || sp >= 4 {
-                                c.instruction_step(&mut b).unwrap();
+                                assert_eq!(
+                                    c.instruction_step(&mut b).unwrap(),
+                                    1 + writes + if far { 6 } else { 5 } + 1,
+                                    "return to odd saved continuation"
+                                );
                                 assert_eq!(
                                     (c.segments[1], c.ip, c.registers[4], c.flags),
                                     (0, next, sp, 0xfcd7)
@@ -758,8 +762,8 @@ fn real_retf_restores_nonzero_mapped_caller_segment() {
             assert_eq!(&b.ram[0x29fc..0x2a00], &[6, 0x10, 0, 0x20]);
             assert_eq!(
                 c.instruction_step(&mut b).unwrap(),
-                7,
-                "retained RETF approximation"
+                9,
+                "corrected RETF to even continuation"
             );
             assert_eq!(
                 (c.ip, c.segments, c.registers, c.flags),

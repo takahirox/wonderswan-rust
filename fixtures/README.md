@@ -837,7 +837,7 @@ fresh restart using literal absolute budgets, not parity differences alone.
 See [instruction sums and timer quantization](../docs/jcc-timing.md) and
 [actual validation and artifact identities](../docs/issue-75-validation.md).
 The existing IRQ bytes are unchanged; their odd taken JNZ gains 1023 clocks
-per interval. Its consumers now use 244–245/268–269 ticks while preserving entry
+per interval. At that revision its consumers use 244–245/268–269 ticks while preserving entry
 32/35 and counts 1024/0/0. Existing JMP/LOOP budgets and bytes remain unchanged.
 
 
@@ -881,3 +881,21 @@ See [every measured instruction and quantization](../docs/indirect-control-timin
 and [actual observations and validation](../docs/issue-79-validation.md).
 Reproduce using `python3 fixtures/build.py --check` (NASM required).
 Physical-console and commercial-title compatibility remain unestablished.
+
+
+## Absolute return probe (Issue #81)
+
+`return-timing.asm` and reproducible `generated/return-timing.ws` are original
+CC0-1.0 source and a 128 KiB cartridge with 32 KiB SRAM. No third-party code,
+assets, ROM, firmware or proprietary data is included. Ten samples cover
+C3/C2/CB/CA/CF and even/odd restored destinations. Independent native and
+production Chromium consumers require absolute budgets, CPU-written return and
+continuation counts, full FLAGS, stack/frame/adjustment integrity, completion
+invalidation, cleared records, all nine supported configurations with live mode
+round trips and two fresh boots. All 1024 observation bytes mirror to SRAM;
+ROM/save handling stays local. See [instruction sums](../docs/return-timing.md)
+and [actual validation](../docs/issue-81-validation.md). Reproduce with
+`python3 fixtures/build.py --check`. Existing CALL/indirect/IRQ cartridges remain
+byte-identical; their consumers now account for corrected return costs without
+widening quantization bounds. Historical reports remain unchanged.
+Physical-console and commercial-title compatibility are unestablished.

@@ -693,7 +693,7 @@ fn mapped_sram_pointer_and_stack_waits_wraps_and_actual_returns() {
                                         assert!(b.ram == ram);
                                         assert_eq!(b.cartridge.as_ref().unwrap().save, save);
                                         assert_eq!(b.ports, ports);
-                                        // Intact frames actually return, with retained timing (no odd-destination adjustment).
+                                        // Intact frames return to even 1004; charge corrected near/far residuals.
                                         if call
                                             && (ss != 0 || high_ram || sp >= 4)
                                             && loaded_target == target
@@ -702,7 +702,8 @@ fn mapped_sram_pointer_and_stack_waits_wraps_and_actual_returns() {
                                         {
                                             assert_eq!(
                                                 c.instruction_step(&mut b).unwrap(),
-                                                5 + per_write * if far { 2 } else { 1 }
+                                                if far { 7 } else { 6 }
+                                                    + per_write * if far { 2 } else { 1 }
                                             );
                                             assert_eq!(
                                                 (c.registers, c.segments, c.ip, c.flags),
@@ -777,7 +778,7 @@ fn physical_stack_wrap_and_mapped_nonzero_caller_retf() {
                 2 * lane + word + 2 + 2 + 8
             );
             assert_eq!(&b.ram[0x29fc..0x2a00], &[4, 0x10, 0, 0x20]);
-            assert_eq!(c.instruction_step(&mut b).unwrap(), 7);
+            assert_eq!(c.instruction_step(&mut b).unwrap(), 9);
             assert_eq!(
                 (c.registers, c.segments, c.ip, c.flags),
                 (regs, [0x10, 0x2000, 0x20, 0x30], 0x1004, 0xfcd7)

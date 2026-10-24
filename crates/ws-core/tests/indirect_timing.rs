@@ -29,12 +29,12 @@ fn absolute_indirect_budget_counts_destinations_modes_and_fresh_restart() {
             for pass in 0..passes {
                 // Literal absolute budgets, independent from CPU accounting helpers.
                 for (sample, low, high) in [
-                    (0, 464, 465),
-                    (1, 480, 481),
-                    (2, 512, 513),
-                    (3, 528, 529),
-                    (4, 624, 625),
-                    (5, 640, 641),
+                    (0, 496, 497),
+                    (1, 512, 513),
+                    (2, 544, 545),
+                    (3, 560, 561),
+                    (4, 672, 673),
+                    (5, 688, 689),
                     (6, 352, 353),
                     (7, 368, 369),
                     (8, 400, 401),
