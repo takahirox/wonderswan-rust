@@ -839,3 +839,24 @@ See [instruction sums and timer quantization](../docs/jcc-timing.md) and
 The existing IRQ bytes are unchanged; their odd taken JNZ gains 1023 clocks
 per interval. Its consumers now use 244–245/268–269 ticks while preserving entry
 32/35 and counts 1024/0/0. Existing JMP/LOOP budgets and bytes remain unchanged.
+
+
+## Absolute direct CALL probe (Issue #77)
+
+`call-timing.asm` and reproducible `generated/call-timing.ws` are original
+CC0-1.0 source and a 128 KiB cartridge with 32 KiB SRAM. No third-party code,
+assets, ROM, firmware or proprietary data is included. The NEC manual supplies
+hardware semantics only. Cartridge SHA-256:
+`f2d8d25bab282202fcb89c8ce5c839f106195ed91a8ba9475aa9bcca2ed82651`.
+
+Four RAM bodies measure E8/9A to even/odd destinations. Independent native and
+production Chromium consumers require absolute timer budgets, CPU-written
+call/destination counts 4096/4096, CX=0 and a continuation marker conditional
+on stack-pointer and saved return-word integrity. All nine model/mode
+configurations, live returns to mode 00, poisoned stale saves, completion
+invalidation, cleared unused records and fresh restart are covered. ROM/save
+handling stays local, through existing identity and persistence paths.
+See [every measured instruction and quantization](../docs/call-timing.md) and
+[actual observations and validation](../docs/issue-77-validation.md).
+Reproduce using `python3 fixtures/build.py --check` (NASM required).
+Physical-console and commercial-title compatibility are unestablished.

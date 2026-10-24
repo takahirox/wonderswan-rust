@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { lcdChecks } from './lcd.mjs';
 import { lcdOutputChecks } from './lcd-output.mjs';
 import { ordinaryIoChecks } from './ordinary-io.mjs';
+import { callTimingChecks } from './call-timing.mjs';
 import { jccTimingChecks } from './jcc-timing.mjs';
 import { jmpTimingChecks } from './jmp-timing.mjs';
 import { loopTimingChecks } from './loop-timing.mjs';
@@ -541,6 +542,7 @@ try {
   await lcdChecks(browser,base,errors);
   await lcdOutputChecks(browser,base,errors);
   await wordTimingChecks(browser,base,errors);
+  await callTimingChecks(browser,base,errors);
   await jccTimingChecks(browser,base,errors);
   await jmpTimingChecks(browser,base,errors);
   await loopTimingChecks(browser,base,errors);
