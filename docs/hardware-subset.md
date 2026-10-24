@@ -294,7 +294,12 @@ Implemented with generic operands, not ROM-specific dispatch:
   counts produce the last shifted bit. All counts set left OF to final CF XOR
   result MSB, and right OF to the XOR of the two highest result bits, on all
   three physical models independently of graphics mode. Shift /6 is rejected.
-  See [source reconciliation and experimental limits](shift-rotate-flags.md).
+  See [flag reconciliation and experimental limits](shift-rotate-flags.md).
+  Documented forms use count-independent decoded residuals 1/3/3 for
+  implicit-one/CL/immediate, plus actual fetches and operand transfers/waits once,
+  including memory writeback at masked zero. See [timing rationale and bounded
+  native/production-browser evidence](shift-rotate-timing.md). Full prefetch and
+  effective-address hazards remain gaps.
 - Unsigned/signed MUL/IMUL, immediate IMUL, DIV/IDIV with zero/quotient-overflow
   vector 0; AAM zero-base fault. Fault return points at the instruction start.
   Multiplication clears AF/PF/SF; signed forms (including 69/6B) set ZF on all

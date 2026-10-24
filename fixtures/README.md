@@ -899,3 +899,22 @@ and [actual validation](../docs/issue-81-validation.md). Reproduce with
 byte-identical; their consumers now account for corrected return costs without
 widening quantization bounds. Historical reports remain unchanged.
 Physical-console and commercial-title compatibility are unestablished.
+
+
+## Absolute shift/rotate timing (Issue #83)
+
+`shift-timing.asm` and `generated/shift-timing.ws` are original source-included
+CC0-1.0 work for this repository under [LICENSE](LICENSE). No external ROM,
+firmware, assets or implementation code is included. Existing images remain
+unchanged. The 128 KiB cartridge declares 32 KiB SRAM and runs firmware-free on
+all three emulated models, using all supported color modes and live returns to 00.
+
+Seventy samples cover all seven documented operations, both widths, implicit-one,
+CL=0/31 and immediate=32/255. CPU-written result/full FLAGS, execution and remaining
+counts, raw CX, stack/continuation marker and absolute HBlank intervals are checked
+by independent native and production Chromium consumers. All 7168 observation
+bytes mirror to SRAM. Both boots replace poisoned retained observations; startup
+invalidates stale completion before measurements. Timing errors accumulate across
+all modes and both boots. See [independent interval sums and layout](../docs/shift-rotate-timing.md)
+and [executed validation and identities](../docs/issue-83-validation.md).
+Physical-console measurements and commercial-catalog compatibility are unestablished.

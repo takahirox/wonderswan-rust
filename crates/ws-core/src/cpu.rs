@@ -1031,7 +1031,14 @@ impl Cpu {
                 };
                 let v = self.shift((m >> 3) & 7, self.read(bus, dest, wide), count, wide)?;
                 self.write(bus, dest, wide, v);
-                execution = 2 + (count & 31) as u32;
+                // Appendix A: decoded register 1/3/3, memory 3/5/5.
+                // The bus already charges the memory read and write once,
+                // including masked-zero counts. See docs/shift-rotate-timing.md.
+                execution = if opcode == 0xd0 || opcode == 0xd1 {
+                    1
+                } else {
+                    3
+                };
             }
             0xc4 | 0xc5 => {
                 let m = self.byte(bus);
