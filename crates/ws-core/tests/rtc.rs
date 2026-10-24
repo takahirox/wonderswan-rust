@@ -48,6 +48,7 @@ fn expected(model: Model, boot: u16) -> Vec<u16> {
 fn check(model: Model) {
     let mut m = Machine::new(model);
     m.load_rom(ROM).unwrap();
+    m.set_rtc_present(false).unwrap();
     let mut stale = vec![0x6d; 32768];
     stale[0..4].copy_from_slice(&[0x0d, 0x60, 0, 0]);
     m.load_save(&stale).unwrap();

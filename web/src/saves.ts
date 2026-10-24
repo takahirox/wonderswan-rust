@@ -44,3 +44,31 @@ export class Saves {
 
 // Version and physical model select the console slot, never a ROM identity.
 export const consoleKey = (model: string) => `wonderswan:console:v1:${model}`;
+
+// Independent envelope and key namespace. Failed decoding/import blocks writes
+// for that slot for this session, preserving evidence rather than replacing it.
+export const rtcKey = (saveKey: string) => saveKey.replace(":save:v1:", ":rtc:v1:");
+export class RtcRecords {
+  private blocked = new Set<string>();
+  constructor(private report: (message: string) => void) {}
+  restore(key: string, load: (bytes: Uint8Array) => void) {
+    try {
+      const text = localStorage.getItem(key);
+      if (text === null) return;
+      const record = JSON.parse(text);
+      if (record.version !== 1 || typeof record.data !== "string") throw new Error("Unsupported RTC record");
+      load(Uint8Array.from(atob(record.data), c => c.charCodeAt(0)));
+    } catch {
+      this.blocked.add(key);
+      this.report("This cartridge’s clock record could not be restored. Its stored record will be preserved.");
+    }
+  }
+  store(key: string, bytes: Uint8Array) {
+    if (!bytes.length || this.blocked.has(key)) return;
+    try {
+      localStorage.setItem(key, JSON.stringify({version: 1, data: btoa(String.fromCharCode(...bytes))}));
+    } catch {
+      this.report("Local clock storage is unavailable or full. Keep this page open to retain the clock.");
+    }
+  }
+}

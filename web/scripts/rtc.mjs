@@ -34,6 +34,9 @@ export async function rtcChecks(browser, base, errors) {
       await page.goto(base);
       await page.waitForFunction(() => !document.querySelector('#model').disabled);
       await page.locator('#model').selectOption(model);
+      await page.locator('#settings').click();
+      await page.locator('#rtc-mode').selectOption('absent');
+      await page.locator('#help-close').click();
       // Poison retained observations, including an old pass marker. The ROM
       // must clear them and complete a fresh boot to satisfy the assertions.
       await page.evaluate(key => {

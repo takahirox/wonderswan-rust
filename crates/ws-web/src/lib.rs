@@ -76,6 +76,39 @@ impl WebMachine {
             .load_save(data)
             .map_err(|e| JsError::new(&e.to_string()))
     }
+    pub fn configure_rtc(&mut self, mode: &str) -> Result<(), JsError> {
+        let present = match mode {
+            "auto" => self
+                .machine
+                .cartridge_header()
+                .is_some_and(|h| h.rtc_equipped),
+            "absent" => false,
+            _ => return Err(JsError::new("Unknown RTC attachment mode.")),
+        };
+        self.machine
+            .set_rtc_present(present)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+    pub fn rtc_data(&self) -> Vec<u8> {
+        self.machine.rtc_data()
+    }
+    pub fn load_rtc_data(&mut self, data: &[u8]) -> Result<(), JsError> {
+        self.machine
+            .load_rtc_data(data)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+    pub fn sync_rtc(&mut self, now_ms: f64) -> Result<(), JsError> {
+        if !now_ms.is_finite()
+            || !(0.0..=9_007_199_254_740_991.0).contains(&now_ms)
+            || now_ms.fract() != 0.0
+        {
+            return Err(JsError::new(
+                "RTC time must be a nonnegative safe integer of milliseconds.",
+            ));
+        }
+        self.machine.sync_rtc(now_ms as u64);
+        Ok(())
+    }
     pub fn audio_samples(&mut self) -> Vec<f32> {
         self.machine.audio_samples()
     }

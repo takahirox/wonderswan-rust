@@ -27,6 +27,8 @@ pub(crate) struct Bus {
     rtc_command: u8,
     rtc_wait: u32,
     rtc_ready: bool,
+    rtc_data: [u8; 7],
+    rtc_index: usize,
     gdma_started: bool,
     sdma: SoundDma,
     sound_stall: u32,
@@ -67,6 +69,8 @@ impl Bus {
             rtc_command: 0,
             rtc_wait: 0,
             rtc_ready: false,
+            rtc_data: [0xff; 7],
+            rtc_index: 0,
             gdma_started: false,
             sdma: SoundDma::default(),
             sound_stall: 0,
@@ -93,6 +97,14 @@ impl Bus {
             self.internal_eeprom
                 .handoff(c.header.internal_eeprom_write_protected);
         }
+    }
+    pub fn cancel_rtc(&mut self) {
+        self.rtc_remaining = 0;
+        self.rtc_command = 0;
+        self.rtc_wait = 0;
+        self.rtc_ready = false;
+        self.rtc_index = 0;
+        self.rtc_data = [0xff; 7];
     }
     pub fn color_mode(&self) -> bool {
         self.model != Model::Mono && self.ports[0x60] & 0x80 != 0
@@ -332,6 +344,13 @@ impl Bus {
                 if self.rtc_command & 1 != 0 {
                     self.rtc_remaining -= 1;
                 }
+                if let Some(rtc) = self.cartridge.as_mut().and_then(|c| c.rtc.as_mut()) {
+                    if self.rtc_command & 14 == 0 {
+                        rtc.reset();
+                    } else if self.rtc_command & 1 == 0 && self.rtc_remaining == 0 {
+                        rtc.write(self.rtc_command, &self.rtc_data);
+                    }
+                }
                 self.rtc_ready = true;
             }
         }
@@ -432,8 +451,15 @@ impl Bus {
                     if self.rtc_ready && self.rtc_remaining > 0 && self.rtc_command & 1 != 0 {
                         self.rtc_wait = 64;
                     }
+                    let value = if self.rtc_ready && self.rtc_command & 1 != 0 {
+                        let value = self.rtc_data[self.rtc_index];
+                        self.rtc_index = (self.rtc_index + 1).min(6);
+                        value
+                    } else {
+                        255
+                    };
                     self.rtc_ready = false;
-                    Ok(255) // No external RTC is attached: mapper's weak pull-up.
+                    Ok(value)
                 }
                 0xcd => Ok(self.ports[0xcd] & self.ports[0xcc] & 15),
                 _ => Ok(self.ports[port as usize]),
@@ -569,6 +595,17 @@ impl Bus {
                             )))
                         }
                     };
+                    self.rtc_data = self
+                        .cartridge
+                        .as_ref()
+                        .and_then(|c| c.rtc.as_ref())
+                        .map_or([0xff; 7], |rtc| rtc.snapshot(command));
+                    self.rtc_index = 0;
+                    if command & 1 == 0 {
+                        self.rtc_data = [0; 7];
+                        self.rtc_data[0] = self.ports[0xcb];
+                        self.rtc_index = 1;
+                    }
                     self.rtc_command = command;
                     self.rtc_remaining = length;
                     self.rtc_wait = 64;
@@ -579,6 +616,8 @@ impl Bus {
                 }
                 0xcb => {
                     if self.rtc_ready && self.rtc_remaining > 0 && self.rtc_command & 1 == 0 {
+                        self.rtc_data[self.rtc_index] = value;
+                        self.rtc_index += 1;
                         self.rtc_remaining -= 1;
                         self.rtc_wait = 64;
                     }
@@ -666,7 +705,9 @@ mod tests {
     use crate::cartridge::tests::rom;
     fn bus(save: u8, mapper: u8) -> Bus {
         let mut b = Bus::new(Model::Crystal);
-        b.cartridge = Some(Cartridge::parse(&rom(131072, save, mapper)).unwrap());
+        let mut cartridge = Cartridge::parse(&rom(131072, save, mapper)).unwrap();
+        cartridge.rtc = None; // Issue #53 transport vectors explicitly use an absent chip.
+        b.cartridge = Some(cartridge);
         b
     }
     fn out(b: &mut Bus, p: u16, v: u8) {
@@ -1028,6 +1069,7 @@ mod tests {
                     {
                         let mut m = Machine::new(model);
                         m.load_rom(&rom(131072, save, 1)).unwrap();
+                        m.set_rtc_present(false).unwrap();
                         let cart_save = vec![0x5a; m.save_data().len()];
                         m.load_save(&cart_save).unwrap();
                         for (i, data) in m.bus.console_data.iter_mut().enumerate() {

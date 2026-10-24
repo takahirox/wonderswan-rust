@@ -236,6 +236,13 @@ See [hardware milestone results](docs/issue-11-validation.md),
 [player UI pre-merge results](docs/issue-9-validation.md) and the
 [original cartridge results](docs/issue-7-validation.md).
 
+Equipped raw-01 cartridges also expose a retained S-3511A calendar/status through
+CA/CB. Settings provides an absent-clock override independent of mapper banking.
+The clock progresses while paused/offline and has its own versioned local record
+keyed by raw ROM SHA-256. See [RTC policy](docs/rtc-calendar.md) and
+[Issue #63 validation](docs/issue-63-validation.md). Retail-board detection and
+alarm/periodic IRQ delivery remain unsupported; commercial impact is unmeasured.
+
 ## GitHub Pages deployment
 
 The existing [Pages workflow](.github/workflows/deploy-pages.yml) builds and

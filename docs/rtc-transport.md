@@ -37,8 +37,10 @@ ACTIVE; on writes it acknowledges the previously supplied byte. Unsupported
 commands still fail explicitly after masking only READY. Mapper availability,
 command readback and absent-chip FF data are retained.
 
-This correction does not implement RTC attachment/detection, date/calendar
+Historically, Issue #53 did not implement RTC attachment/detection, date/calendar
 progression, RTC persistence, alarms or cartridge IRQ integration. No physical
 console measurements, human gameplay or commercial compatibility are claimed.
+Issue #63 adds an [optional retained calendar](rtc-calendar.md), with the original
+FF vectors preserved under explicit absent configuration.
 See [executed validation](issue-53-validation.md) and
 [original fixture provenance](../fixtures/README.md#rtc-transport-probe-issue-53).

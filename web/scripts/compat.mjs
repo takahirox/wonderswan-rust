@@ -10,6 +10,7 @@ import { sweepChecks } from './sweep.mjs';
 import { startupChecks } from './startup.mjs';
 import { shiftRotateChecks } from './shift-rotate.mjs';
 import { divisionChecks } from './divide.mjs';
+import { rtcCalendarChecks } from './rtc-calendar.mjs';
 import { rtcChecks } from './rtc.mjs';
 import { pushSpChecks } from './push-sp.mjs';
 import { conversionChecks } from './conversion.mjs';
@@ -525,6 +526,7 @@ try {
   await buslockChecks(browser,base,errors);
   await pushSpChecks(browser,base,errors);
   await rtcChecks(browser,base,errors);
+  await rtcCalendarChecks(browser,base,errors);
   await fpo1PollChecks(browser,base,errors);
   await conversionChecks(browser,base,errors);
   await multiplicationChecks(browser,base,errors);

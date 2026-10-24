@@ -49,6 +49,8 @@ pub struct Header {
     pub rom_word_bus: bool,
     pub rom_wait: bool,
     pub mapper: Mapper,
+    /// Supported raw 00/01 producer convention; independent of mapper policy.
+    pub rtc_equipped: bool,
     pub checksum: u16,
 }
 #[derive(Clone, Debug)]
@@ -56,6 +58,7 @@ pub struct Cartridge {
     pub bytes: Vec<u8>,
     pub header: Header,
     pub save: Vec<u8>,
+    pub rtc: Option<crate::rtc::Rtc>,
 }
 impl Cartridge {
     pub fn parse(bytes: &[u8]) -> Result<Self, Error> {
@@ -117,7 +120,7 @@ impl Cartridge {
             1 => Mapper::Bandai2003,
             n => {
                 return Err(Error::new(format!(
-                    "Unsupported mapper field {n:#04x}; expected 00 (common) or 01 (Bandai 2003)."
+                    "Unsupported mapper/RTC convention {n:#04x}; expected raw 00 (common, absent) or 01 (extended, equipped)."
                 )))
             }
         };
@@ -135,6 +138,7 @@ impl Cartridge {
         }
         Ok(Self {
             bytes: bytes.to_vec(),
+            rtc: (h[13] == 1).then(crate::rtc::Rtc::default),
             save: vec![0xff; save.len()],
             header: Header {
                 entry_offset: u16::from_le_bytes([h[1], h[2]]),
@@ -155,6 +159,7 @@ impl Cartridge {
                 rom_word_bus: h[12] & 4 != 0,
                 rom_wait: h[12] & 8 != 0,
                 mapper,
+                rtc_equipped: h[13] == 1,
                 checksum,
             },
         })

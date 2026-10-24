@@ -17,6 +17,9 @@ mod lcd_pipeline_tests;
 mod lcd_tests;
 #[cfg(test)]
 mod raw_rom_tests;
+mod rtc;
+#[cfg(test)]
+mod rtc_tests;
 mod sdma;
 #[cfg(test)]
 mod sound_tests;
@@ -192,6 +195,54 @@ impl Machine {
         self.bus.console_data[self.model().index()].copy_from_slice(data);
         self.bus.reset_internal_eeprom();
         Ok(())
+    }
+    /// Override attachment without changing ROM identity or mapper capability.
+    /// Intended for cartridge load configuration; detaching discards in-memory RTC.
+    pub fn set_rtc_present(&mut self, present: bool) -> Result<(), Error> {
+        let cart = self
+            .bus
+            .cartridge
+            .as_mut()
+            .ok_or_else(|| Error::new("Load a cartridge before configuring RTC."))?;
+        if present && cart.header.mapper != Mapper::Bandai2003 {
+            return Err(Error::new(
+                "RTC requires the supported extended mapper interface.",
+            ));
+        }
+        if present {
+            cart.rtc.get_or_insert_with(rtc::Rtc::default);
+        } else {
+            cart.rtc = None;
+        }
+        self.bus.cancel_rtc();
+        Ok(())
+    }
+    pub fn rtc_data(&self) -> Vec<u8> {
+        self.bus
+            .cartridge
+            .as_ref()
+            .and_then(|c| c.rtc.as_ref())
+            .map_or_else(Vec::new, rtc::Rtc::export)
+    }
+    /// Validate completely before mutation. Success cancels pending transport.
+    pub fn load_rtc_data(&mut self, data: &[u8]) -> Result<(), Error> {
+        let rtc = rtc::Rtc::import(data)?;
+        let cart = self
+            .bus
+            .cartridge
+            .as_mut()
+            .filter(|c| c.rtc.is_some())
+            .ok_or_else(|| Error::new("No attached RTC."))?;
+        cart.rtc = Some(rtc);
+        self.bus.cancel_rtc();
+        Ok(())
+    }
+    /// Inject an absolute millisecond clock. First sample anchors, backward samples
+    /// are ignored until the previous high-water mark is exceeded.
+    pub fn sync_rtc(&mut self, now_ms: u64) {
+        if let Some(rtc) = self.bus.cartridge.as_mut().and_then(|c| c.rtc.as_mut()) {
+            rtc.sync(now_ms);
+        }
     }
     pub fn save_data(&self) -> &[u8] {
         self.bus

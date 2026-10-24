@@ -56,6 +56,7 @@ if __name__ == '__main__':
     images.append(('conversion', build(2, 0, 0, 0, 'conversion.asm')))
     images.append(('multiply', build(2, 0, 0, 0, 'multiply.asm')))
     images.append(('fpo1-poll', build(2, 0, 0, 0, 'fpo1-poll.asm')))
+    images.append(('rtc-calendar', build(2, 1, 0, 0, 'rtc-calendar.asm')))
     images.append(('rtc', build(2, 1, 0, 0, 'rtc.asm')))
     images.append(('push-sp', build(2, 0, 0, 0, 'push-sp.asm')))
     images.append(('buslock', build(2, 0, 0, 0, 'buslock.asm')))
