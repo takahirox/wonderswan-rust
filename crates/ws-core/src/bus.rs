@@ -326,6 +326,12 @@ impl Bus {
         if self.rtc_wait > 0 {
             self.rtc_wait = self.rtc_wait.saturating_sub(cycles);
             if self.rtc_wait == 0 {
+                // Approximate scheduled stage, not measured silicon latency.
+                // Read completion exposes this byte, including the final byte
+                // with ACTIVE clear. Host consumption must not add a stage.
+                if self.rtc_command & 1 != 0 {
+                    self.rtc_remaining -= 1;
+                }
                 self.rtc_ready = true;
             }
         }
@@ -424,7 +430,6 @@ impl Bus {
                     | (self.rtc_command & 15)),
                 0xcb => {
                     if self.rtc_ready && self.rtc_remaining > 0 && self.rtc_command & 1 != 0 {
-                        self.rtc_remaining -= 1;
                         self.rtc_wait = 64;
                     }
                     self.rtc_ready = false;
@@ -550,9 +555,11 @@ impl Bus {
             }
             0xca..=0xd5 if self.extended() => match port {
                 0xca => {
-                    let length = match value {
-                        0x10 | 0x11 => 0,
-                        0x12 | 0x13 => 1,
+                    // READY is read-only; preserve explicit rejection of all
+                    // unsupported command/control bits other than READY.
+                    let command = value & !0x80;
+                    let length = match command {
+                        0x10..=0x13 => 1,
                         0x14 | 0x15 => 7,
                         0x16 | 0x17 => 3,
                         0x18..=0x1b => 2,
@@ -562,7 +569,7 @@ impl Bus {
                             )))
                         }
                     };
-                    self.rtc_command = value;
+                    self.rtc_command = command;
                     self.rtc_remaining = length;
                     self.rtc_wait = 64;
                     self.rtc_ready = false;
@@ -764,37 +771,290 @@ mod tests {
         assert_eq!(b.input(0xcd).unwrap(), 0);
         out(&mut b, 0xcc, 5);
         assert_eq!(b.input(0xcd).unwrap(), 5);
-        for (cmd, length) in [(0x13, 1), (0x15, 7), (0x17, 3), (0x19, 2), (0x1b, 2)] {
-            out(&mut b, 0xca, cmd);
-            b.tick(64);
-            assert_ne!(b.input(0xca).unwrap() & 16, 0);
-            for _ in 0..length {
-                assert_eq!(b.input(0xcb).unwrap(), 255);
-                assert_eq!(b.input(0xca).unwrap() & 128, 0);
-                b.tick(64);
-            }
-            assert_eq!(b.input(0xca).unwrap(), 0x80 | (cmd & 15));
-        }
-        for (cmd, length) in [
-            (0x10, 0),
-            (0x11, 0),
-            (0x12, 1),
-            (0x14, 7),
-            (0x16, 3),
-            (0x18, 2),
-            (0x1a, 2),
-        ] {
-            out(&mut b, 0xcb, 0);
-            out(&mut b, 0xca, cmd);
-            b.tick(64);
-            for _ in 1..length {
-                out(&mut b, 0xcb, 0);
-                b.tick(64);
-            }
-            assert_eq!(b.input(0xca).unwrap() & 16, 0);
-        }
         assert!(b.output(0xca, 0x1f).is_err());
         assert!(b.output(0xce, 2).is_err());
+    }
+    // Counts and polling order independently specified by the pinned mapper
+    // experiment and libws; do not use the production command-length match.
+    fn rtc_poll(b: &mut Bus, command: u8) -> (usize, Vec<u8>) {
+        out(b, 0xcb, 0x5a); // preloaded first write
+        out(b, 0xca, command);
+        let mut count = usize::from(command & 1 == 0);
+        let mut ready = Vec::new();
+        for _ in 0..4096 {
+            let status = b.input(0xca).unwrap();
+            if status & 0x90 == 0 {
+                return (count, ready);
+            }
+            if status & 0x80 != 0 {
+                ready.push(status);
+                if command & 1 != 0 {
+                    assert_eq!(b.input(0xcb).unwrap(), 0xff);
+                    count += 1;
+                } else {
+                    out(b, 0xcb, 0xa5);
+                    count += usize::from(status & 0x10 != 0);
+                }
+            }
+            if status & 0x10 == 0 {
+                return (count, ready);
+            }
+            b.tick(1);
+        }
+        panic!("RTC polling timed out: {command:02x}");
+    }
+    #[test]
+    fn rtc_polling_consumes_the_terminal_byte_once() {
+        let mut b = bus(2, 1);
+        let (count, ready) = rtc_poll(&mut b, 0x13);
+        assert_eq!(count, 1);
+        assert_eq!(ready, [0x83]);
+        assert_eq!(b.input(0xca).unwrap(), 3);
+        b.tick(4096);
+        assert_eq!(b.input(0xca).unwrap(), 3);
+    }
+    #[test]
+    fn rtc_ready_bit_is_read_only_on_command_start() {
+        let mut b = bus(2, 1);
+        out(&mut b, 0xca, 0x10);
+        b.tick(64);
+        assert_eq!(b.input(0xca).unwrap(), 0x80);
+        out(&mut b, 0xca, 0x93);
+        assert_eq!(b.input(0xca).unwrap(), 0x13);
+        b.tick(63);
+        assert_eq!(b.input(0xca).unwrap(), 0x13);
+        b.tick(1);
+        assert_eq!(b.input(0xca).unwrap(), 0x83);
+        assert_eq!(b.input(0xcb).unwrap(), 0xff);
+        b.tick(64);
+        assert_eq!(b.input(0xca).unwrap(), 3);
+    }
+    #[test]
+    fn rtc_all_commands_follow_independent_host_counts_and_status_vectors() {
+        // Includes both reset directions: a host byte does not imply chip data.
+        let vectors: &[(u8, usize, &[u8])] = &[
+            (0x10, 1, &[0x80]),
+            (0x11, 1, &[0x81]),
+            (0x12, 1, &[0x82]),
+            (0x13, 1, &[0x83]),
+            (0x14, 7, &[0x94, 0x94, 0x94, 0x94, 0x94, 0x94, 0x84]),
+            (0x15, 7, &[0x95, 0x95, 0x95, 0x95, 0x95, 0x95, 0x85]),
+            (0x16, 3, &[0x96, 0x96, 0x86]),
+            (0x17, 3, &[0x97, 0x97, 0x87]),
+            (0x18, 2, &[0x98, 0x88]),
+            (0x19, 2, &[0x99, 0x89]),
+            (0x1a, 2, &[0x9a, 0x8a]),
+            (0x1b, 2, &[0x9b, 0x8b]),
+        ];
+        for model in [Model::Mono, Model::Color, Model::Crystal] {
+            for mode in [0, 0x80, 0xc0, 0xe0] {
+                if model == Model::Mono && mode != 0 {
+                    continue;
+                }
+                let mut b = bus(2, 1);
+                b.model = model;
+                if model != Model::Mono {
+                    out(&mut b, 0x60, mode);
+                }
+                // Consecutive commands, then repeat with READY supplied by host.
+                for mask in [0, 0x80] {
+                    for &(command, expected, statuses) in vectors {
+                        let (count, ready) = rtc_poll(&mut b, command | mask);
+                        assert_eq!(count, expected, "{model:?}/{mode:02x}/{command:02x}");
+                        assert_eq!(ready, statuses);
+                        assert_eq!(b.input(0xca).unwrap(), command & 15);
+                        b.tick(128);
+                        assert_eq!(b.input(0xca).unwrap(), command & 15);
+                        assert_eq!(b.input(0xcb).unwrap(), 0xff);
+                    }
+                }
+                for command in [0, 0x0f, 0x1c, 0x1f, 0x33, 0x53, 0x9c, 0xff] {
+                    assert!(b.output(0xca, command).is_err());
+                }
+            }
+        }
+        assert!(bus(2, 0).output(0xca, 0x13).is_err());
+    }
+    #[test]
+    fn rtc_stage_boundary_partitioning_and_shared_devices() {
+        for model in [Model::Mono, Model::Color, Model::Crystal] {
+            let make = || {
+                let mut b = bus(2, 1);
+                b.model = model;
+                out(&mut b, 0xa4, 4);
+                out(&mut b, 0xa2, 3);
+                // Channel 2 voice output makes SDMA progression audible.
+                out(&mut b, 0x90, 0x22);
+                out(&mut b, 0x91, 0x0e);
+                out(&mut b, 0x94, 15);
+                out(&mut b, 0x89, 0xd0);
+                if model != Model::Mono {
+                    out(&mut b, 0x60, 0x80);
+                    b.ram[0x1000..0x1008]
+                        .copy_from_slice(&[0x10, 0xf0, 0x20, 0xe0, 0x30, 0xd0, 0x40, 0xc0]);
+                    for (p, v) in [
+                        (0x4a, 0),
+                        (0x4b, 0x10),
+                        (0x4c, 0),
+                        (0x4e, 8),
+                        (0x4f, 0),
+                        (0x50, 0),
+                        (0x52, 0x83),
+                    ] {
+                        out(&mut b, p, v);
+                    }
+                }
+                b
+            };
+            let mut whole = make();
+            let mut split = make();
+            let mut single = make();
+            for command in [0x15, 0x14] {
+                for b in [&mut whole, &mut split, &mut single] {
+                    out(b, 0xcb, 0x5a);
+                    out(b, 0xca, command);
+                }
+                // Every byte stage is delayed, and READY remains latched until
+                // consumption even when an advance crosses many stage periods.
+                for byte in 0..7 {
+                    whole.tick(63);
+                    for n in [17, 1, 45] {
+                        split.tick(n);
+                    }
+                    for _ in 0..63 {
+                        single.tick(1);
+                    }
+                    for b in [&mut whole, &mut split, &mut single] {
+                        assert_eq!(b.input(0xca).unwrap(), command);
+                        b.tick(1);
+                        assert_eq!(
+                            b.input(0xca).unwrap(),
+                            if byte == 6 {
+                                0x80 | (command & 15)
+                            } else {
+                                0x80 | command
+                            }
+                        );
+                    }
+                    whole.tick(4097);
+                    for n in [63, 1, 1, 57, 2, 3973] {
+                        split.tick(n);
+                    }
+                    for _ in 0..4097 {
+                        single.tick(1);
+                    }
+                    for b in [&mut whole, &mut split, &mut single] {
+                        if command & 1 != 0 {
+                            assert_eq!(b.input(0xcb).unwrap(), 255);
+                        } else {
+                            out(b, 0xcb, 0xa5);
+                        }
+                    }
+                    for b in [&split, &single] {
+                        assert_eq!(whole.cycles, b.cycles);
+                        assert_eq!(whole.ports, b.ports);
+                        assert_eq!(whole.timer, b.timer);
+                        assert_eq!(whole.ram, b.ram);
+                        assert_eq!(whole.raster_line, b.raster_line);
+                        assert_eq!(whole.completed_frames, b.completed_frames);
+                    }
+                    let pcm = whole.audio.drain();
+                    assert_eq!(pcm, split.audio.drain());
+                    assert_eq!(pcm, single.audio.drain());
+                    assert!(pcm.iter().any(|v| *v != 0.0));
+                    let stall = whole.sound_dma_stall();
+                    assert_eq!(stall, split.sound_dma_stall());
+                    assert_eq!(stall, single.sound_dma_stall());
+                }
+            }
+            assert_eq!(whole.cycles, 58254);
+            assert_eq!(whole.completed_frames, 1);
+            assert_eq!(whole.raster_line, 68);
+        }
+    }
+    #[test]
+    fn rtc_cpu_io_keeps_ordinary_bus_accounting() {
+        for model in [Model::Mono, Model::Color, Model::Crystal] {
+            for mode in [0, 0x80, 0xc0, 0xe0] {
+                if model == Model::Mono && mode != 0 {
+                    continue;
+                }
+                for wait in [0, 8] {
+                    if model == Model::Mono && wait != 0 {
+                        continue;
+                    }
+                    let mut b = bus(2, 1);
+                    b.model = model;
+                    if model != Model::Mono {
+                        out(&mut b, 0x60, mode | wait);
+                    }
+                    b.ram[0x300..0x306].copy_from_slice(&[0xe6, 0xca, 0xe4, 0xca, 0xe4, 0xcb]);
+                    let mut cpu = crate::Cpu::default();
+                    cpu.segments[1] = 0;
+                    cpu.ip = 0x300;
+                    cpu.registers[0] = 0x93;
+                    let cost = if wait == 0 { 4 } else { 5 };
+                    assert_eq!(cpu.step(&mut b).unwrap(), cost);
+                    assert_eq!(b.accesses.get(), cost - 1);
+                    b.tick(cost);
+                    assert_eq!(cpu.step(&mut b).unwrap(), cost);
+                    assert_eq!(cpu.registers[0], 0x13);
+                    b.tick(64 - cost);
+                    assert_eq!(b.input(0xca).unwrap(), 0x83);
+                    assert_eq!(cpu.step(&mut b).unwrap(), cost);
+                    assert_eq!(cpu.registers[0], 0xff);
+                    b.tick(cost);
+                    assert_eq!(b.input(0xca).unwrap(), 3);
+                    assert_eq!(cpu.ip, 0x306);
+                    assert_eq!(cpu.flags, 0xf002);
+                }
+            }
+        }
+    }
+    #[test]
+    fn rtc_restart_and_model_change_cancel_pending_transport_and_preserve_saves() {
+        use crate::Machine;
+        for save in [2, 0x10] {
+            // SRAM and cartridge EEPROM
+            for model in [Model::Mono, Model::Color, Model::Crystal] {
+                for target in [
+                    None,
+                    Some(Model::Mono),
+                    Some(Model::Color),
+                    Some(Model::Crystal),
+                ] {
+                    for (command, elapsed) in
+                        [(0x15, 0), (0x15, 63), (0x15, 64), (0x13, 64), (0x14, 63)]
+                    {
+                        let mut m = Machine::new(model);
+                        m.load_rom(&rom(131072, save, 1)).unwrap();
+                        let cart_save = vec![0x5a; m.save_data().len()];
+                        m.load_save(&cart_save).unwrap();
+                        for (i, data) in m.bus.console_data.iter_mut().enumerate() {
+                            data.fill(0x31 + i as u8);
+                        }
+                        let console = m.bus.console_data.clone();
+                        out(&mut m.bus, 0xca, command);
+                        m.advance(elapsed);
+                        if let Some(target) = target {
+                            m.change_model(target).unwrap();
+                        } else {
+                            m.restart();
+                        }
+                        assert_eq!(m.model(), target.unwrap_or(model));
+                        assert_eq!(m.save_data(), cart_save);
+                        assert_eq!(m.bus.console_data, console);
+                        assert_eq!(m.bus.input(0xca).unwrap(), 0);
+                        m.advance(4096);
+                        assert_eq!(m.bus.input(0xca).unwrap(), 0);
+                        assert_eq!(m.bus.input(0xcb).unwrap(), 255);
+                        assert_eq!(m.save_data(), cart_save);
+                        assert_eq!(m.bus.console_data, console);
+                        assert_eq!(rtc_poll(&mut m.bus, 0x13), (1, vec![0x83]));
+                    }
+                }
+            }
+        }
     }
     #[test]
     fn interrupt_priority_enable_latching_ack_and_key_edges() {
