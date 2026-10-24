@@ -21,6 +21,9 @@ mod multiply_tests;
 #[cfg(test)]
 mod shift_tests;
 
+#[cfg(test)]
+mod conversion_tests;
+
 const CF: u16 = 1;
 const PF: u16 = 4;
 const AF: u16 = 16;
@@ -947,15 +950,16 @@ impl Cpu {
                     let al = self.reg(0, false);
                     self.set_reg(4, false, al / base);
                     self.set_reg(0, false, al % base);
+                    self.flags &= !(AF | CF | OF);
                     self.szp(al % base, false);
                 }
                 execution = 16;
             }
             0xd5 => {
                 let base = self.byte(bus) as u16;
-                let al = (self.reg(0, false) + self.reg(4, false) * base) & 255;
-                self.registers[0] = al;
-                self.szp(al, false);
+                // Only the final byte addition determines the conversion flags.
+                let product = (self.reg(4, false) * base) & 255;
+                self.registers[0] = self.alu(0, self.reg(0, false), product, false)?;
             }
             0xd7 => {
                 let address = self.registers[3].wrapping_add(self.reg(0, false));

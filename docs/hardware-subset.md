@@ -309,6 +309,11 @@ Implemented with generic operands, not ROM-specific dispatch:
   remain unresolved. See [word-division source reconciliation](word-division-flags.md)
   and [byte-IDIV correction and limits](byte-idiv-flags.md).
 - DAA/DAS, AAA/AAS, AAM/AAD; CF/PF/AF/ZF/SF/OF arithmetic; logical AF cleared.
+  Successful AAM clears AF/CF/OF and derives SZP from remainder AL; AAD truncates
+  AH × immediate base to a byte, adds original AL, clears AH and takes all six
+  arithmetic flags from that final byte ADD. Control/fixed bits and zero-base
+  AAM fault handling are preserved on all models and across supported graphics
+  modes. See [conversion correction and evidence limits](conversion-flags.md).
 - PUSH/POP registers, segments, immediates and memory, PUSHA/POPA, PUSHF/POPF,
   LAHF/SAHF, ENTER/LEAVE. Both PUSH SP register encodings (54 and FF F4)
   store SP after the wrapping two-byte decrement, independently of model and
