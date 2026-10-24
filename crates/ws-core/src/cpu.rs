@@ -27,6 +27,9 @@ mod conversion_tests;
 #[cfg(test)]
 mod ascii_adjust_tests;
 
+#[cfg(test)]
+mod decimal_adjust_tests;
+
 const CF: u16 = 1;
 const PF: u16 = 4;
 const AF: u16 = 16;
@@ -750,8 +753,12 @@ impl Cpu {
                 al &= 255;
                 self.set_reg(0, false, al);
                 self.flag(AF, low);
-                self.flag(CF, high || (subtract && low && old < 6));
+                self.flag(CF, high);
                 self.szp(al, false);
+                // V30MZ OF follows byte CMP final AL, original AL, not the
+                // adjustment's add/subtract. See docs/decimal-adjust.md.
+                self.flag(OF, (al ^ old) & (al ^ al.wrapping_sub(old)) & 0x80 != 0);
+                execution = 10;
             }
             0x37 | 0x3f => {
                 let [mut al, mut ah] = self.registers[0].to_le_bytes();

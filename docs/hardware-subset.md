@@ -320,6 +320,11 @@ Implemented with generic operands, not ROM-specific dispatch:
   Both use nine execution clocks plus existing fetch/wait charges on every model
   and supported graphics mode, preserving control/fixed flags. See
   [AAA/AAS source reconciliation and limits](ascii-adjust.md).
+  DAA/DAS select 60/06 adjustments from original AL and incoming CF/AF, preserving
+  AH. CF/AF equal those conditions without extra adjustment carry/borrow; SZP
+  comes from final AL and OF from byte CMP final AL, original AL. Both use ten
+  execution clocks plus existing fetch/wait charges on every supported model/mode,
+  preserving control/fixed flags. See [DAA/DAS reconciliation and limits](decimal-adjust.md).
 - PUSH/POP registers, segments, immediates and memory, PUSHA/POPA, PUSHF/POPF,
   LAHF/SAHF, ENTER/LEAVE. Both PUSH SP register encodings (54 and FF F4)
   store SP after the wrapping two-byte decrement, independently of model and
