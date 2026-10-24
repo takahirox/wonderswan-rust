@@ -78,5 +78,7 @@ IRQ 62482/68626 (244–245/268–269 ticks), JMP 90120/94216/106504/110600,
 LOOP 45064/49161, 49160/53257 and 94216/98312, and Jcc
 106504/110600/94216. Ordinary I/O remains 11+2048*8/9/10, relative-word
 odd-minus-even remains 4096 clocks. No tolerance widening or historical rewrite.
-Indirect calls/jumps, return timing, effective-address hazards, full prefetch,
-external bus policy and commercial-title/physical-console validation remain separate.
+[Indirect CALL/JMP](indirect-control-timing.md) now uses residuals 4/8 plus
+loaded destination parity and actual transfers. Return timing, effective-address
+hazards, full prefetch, external bus policy and commercial-title/physical-console
+validation remain separate.

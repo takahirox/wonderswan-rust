@@ -386,8 +386,11 @@ use instruction-specific decoded costs plus explicit fetches and a taken odd-tar
 clock. [Direct E9/EB/EA JMP](jmp-timing.md) uses four/four/seven decoded
 execution clocks plus an odd-target clock and actual fetches.
 [Jcc/JCXZ](jcc-timing.md) use four/one decoded taken/fallthrough clocks,
-plus one for taken odd destinations and actual byte fetches. CALL, indirect
-JMP and general prefetch timing remain separate work. The original
+plus one for taken odd destinations and actual byte fetches.
+[Direct CALL](call-timing.md) and [indirect CALL/JMP](indirect-control-timing.md)
+use near/far residual execution 4/8 plus loaded destination parity and actual
+fetch/pointer/stack transfers once. Return timing, effective-address hazards
+and general prefetch timing remain separate work. The original
 CC0 BUSLOCK cartridge and independent native/browser literals exercise all three models and restart; commercial-title impact is unmeasured.
 
 The adjacent gap list also previously misclassified excluded older NEC operations

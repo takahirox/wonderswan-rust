@@ -16,6 +16,9 @@ mod jmp_tests;
 mod call_tests;
 
 #[cfg(test)]
+mod indirect_tests;
+
+#[cfg(test)]
 mod loop_tests;
 #[cfg(test)]
 mod trap_tests;
@@ -809,7 +812,11 @@ impl Cpu {
                             self.push(bus, self.ip);
                         }
                         self.ip = value;
-                        execution = 4;
+                        // Decoded near CALL/JMP includes normal operand/stack
+                        // transfers already charged above. Add their common
+                        // residual and the loaded destination's alignment.
+                        // Appendix A, pp. 73/76; docs/indirect-control-timing.md.
+                        execution = 4 + u32::from(self.ip & 1);
                     }
                     3 | 5 if wide => {
                         let Operand::Memory(s, o) = dest else {
@@ -825,7 +832,10 @@ impl Cpu {
                         let cs = self.read(bus, Operand::Memory(s, o.wrapping_add(2)), true);
                         self.segments[1] = cs;
                         self.ip = value;
-                        execution = 6;
+                        // Decoded far CALL/JMP costs 12/10, including four/two
+                        // normal stack/pointer transfers already charged here.
+                        // Both leave eight, plus an odd-address clock for loaded IP.
+                        execution = 8 + u32::from(self.ip & 1);
                     }
                     6 if wide => {
                         self.push_operand(bus, dest);

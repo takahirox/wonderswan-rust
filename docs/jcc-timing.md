@@ -12,7 +12,8 @@ The two actual byte fetches remain separate. Internal totals are **6 even,
 emulator expectations, not physical-console measurements. No destination read,
 fetch consolidation, external-bus policy or prefetch implementation is added.
 [Direct CALL](call-timing.md) now uses its reconciled residual execution costs;
-indirect CALL/JMP and other instruction execution costs remain separate.
+[indirect CALL/JMP](indirect-control-timing.md) uses residuals 4/8 plus loaded
+destination parity and actual transfers. Other instruction costs remain separate.
 
 Before production costs change, literal state vectors at IP 1000 with
 00/02/03/FC/FD/80/7F displacements give taken destinations

@@ -59,8 +59,11 @@ mapped accesses and costs. [Direct JMP](jmp-timing.md) uses E9/EB four and EA
 seven decoded execution clocks plus odd-target adjustment, with actual opcode
 and immediate fetches retained separately. [Direct CALL](call-timing.md) uses
 near/far residual execution 4/8 plus destination parity, retaining actual fetches
-and one/two stack writes. Firmware-free startup, live A0 controls, interrupts,
-bounded REP, LCD/audio/device scheduling and browser-local ownership remain in
+and one/two stack writes. [Indirect CALL/JMP](indirect-control-timing.md) uses
+residuals 4/8 plus loaded destination parity, retaining actual pointer reads
+and CALL stack writes with these transfer rules. Firmware-free startup, live A0
+controls, interrupts, bounded REP, LCD/audio/device scheduling and browser-local
+ownership remain in
 their existing paths. Commercial games and physical consoles are untested.
 
 Validation and the primary-specification correction to the browser audio

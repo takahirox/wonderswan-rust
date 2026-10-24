@@ -38,13 +38,16 @@ EA loads its literal CS:IP, including FFFF:0010 -> physical 00000.
 All full FLAGS (including reserved bits), registers, stack, other segments,
 memory and ports are preserved. Issue #77 corrects shared E8 CALL to four
 residual execution clocks plus target parity and actual fetches/stack writes;
-see [direct CALL timing](call-timing.md). Indirect JMP retains its existing timing.
+see [direct CALL timing](call-timing.md). Issue #79 corrects
+[indirect CALL/JMP](indirect-control-timing.md) to residuals 4/8 plus loaded
+destination parity and actual pointer/stack transfers.
 Issue #75 now applies the taken odd-target clock to
 [Jcc/JCXZ](jcc-timing.md). REP remains rejected. IRQ/TF entry and DMA
 reservations remain separate.
 
 These are serialized emulator expectations, not console measurements. Full
-prefetch, external bus policy and indirect JMP remain separate work.
+prefetch, effective-address hazards, return timing and external bus policy remain
+separate work.
 
 ## Original absolute cartridge interval
 

@@ -860,3 +860,24 @@ See [every measured instruction and quantization](../docs/call-timing.md) and
 [actual observations and validation](../docs/issue-77-validation.md).
 Reproduce using `python3 fixtures/build.py --check` (NASM required).
 Physical-console and commercial-title compatibility are unestablished.
+
+
+## Absolute indirect CALL/JMP probe (Issue #79)
+
+`indirect-timing.asm` and reproducible `generated/indirect-timing.ws` are
+original CC0-1.0 source and a 128 KiB cartridge with 32 KiB SRAM. No third-party
+code, assets, ROM, firmware or proprietary data is included. The NEC manual
+supplies hardware semantics only. Cartridge SHA-256:
+`e072516d32eb71541878f30670960bdcbdbb29325b76ffc585e62f63c4a2af83`.
+
+Twelve RAM bodies measure register/near-memory/far-memory CALL/JMP to even/odd
+destinations. Independent native and production Chromium consumers require
+absolute HBlank budgets, CPU-written execution/destination counts 4096/4096,
+CX=0, actual CALL return frames/SP and continuation markers. All nine model/mode
+configurations, live returns to 00, poisoned stale saves, completion invalidation,
+cleared unused records and two fresh boots are covered. The 1024-byte RAM
+0400–07FF result block mirrors to SRAM 0000–03FF. ROM/save handling stays local.
+See [every measured instruction and quantization](../docs/indirect-control-timing.md)
+and [actual observations and validation](../docs/issue-79-validation.md).
+Reproduce using `python3 fixtures/build.py --check` (NASM required).
+Physical-console and commercial-title compatibility remain unestablished.
