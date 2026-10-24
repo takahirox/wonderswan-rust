@@ -939,3 +939,24 @@ and collect timing failures across every mode/pass before rejecting. See
 [executed checks and identities](../docs/issue-85-validation.md). Reproduce with
 `python3 fixtures/build.py --check`. Physical-console measurements and
 commercial-title compatibility remain unestablished.
+
+
+## Absolute successful division timing (Issue #87)
+
+`divide-timing.asm` and reproducible `generated/divide-timing.ws` are original
+source-included CC0-1.0 work under [LICENSE](LICENSE), with no third-party
+implementation, ROM, firmware, assets or device identity. The 128 KiB cartridge
+uses 32 KiB SRAM and boots firmware-free on all three emulated models.
+
+Twelve samples cover byte/word DIV/IDIV with register and even/odd RAM sources.
+Each repetition reloads valid operands and FLAGS. CPU-written quotient/remainder,
+complete FLAGS, execution/remaining counts, source and stack/continuation accompany
+absolute HBlank observations. Independent native and production Chromium consumers
+re-poison retained observations before each of two boots, require early stale
+completion invalidation and fresh completion, and accumulate timing failures
+across all model/mode/boot records before rejecting. Mono runs 00; Color and
+SwanCrystal run 00/80/00/C0/00/E0/00. All 7168 RAM observation bytes mirror to SRAM.
+See [emitted instruction sums, bounds and layout](../docs/division-timing.md) and
+[executed validation and identities](../docs/issue-87-validation.md). Reproduce
+with `python3 fixtures/build.py --check`. Prior fixture/demo bytes are unchanged.
+Physical-console measurements and commercial-title compatibility remain unestablished.

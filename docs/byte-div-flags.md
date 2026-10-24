@@ -1,5 +1,12 @@
 # Successful byte DIV and multiplication history (Issue #65)
 
+**Timing update (Issue #87):** The unchanged timing statements below describe
+this earlier FLAGS correction. [Successful division timing](division-timing.md)
+supersedes its width-only residuals with 15/17/23/24 clocks and updates the
+current scheduler/trap assertions. Arithmetic, full FLAGS and history acceptance
+remain applicable; historical validation reports remain unchanged.
+
+
 At baseline `144eaef001109cf79d42f5b8426156fe2a6145ec`, successful unsigned
 byte division (`F6 /6`) cleared OF and preserved the other incoming arithmetic
 flags. There was no multiplication history. Both the preservation assumption

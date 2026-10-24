@@ -310,6 +310,10 @@ Implemented with generic operands, not ROM-specific dispatch:
   fetches and operand reads/waits once. Even internal-register F6/F7 totals are
   five clocks; 69/6B total six. See [accounting, original probe and bounded
   native/production-browser evidence](multiplication-timing.md).
+  Successful byte DIV/IDIV and word DIV/IDIV use 15/17/23/24 residual clocks,
+  plus actual fetch/source transfers once. Faults retain separate baseline
+  24/32 residuals without a hardware-accuracy claim. See [division accounting,
+  original probe and bounded native/browser evidence](division-timing.md).
   Successful word DIV/IDIV clear AF/CF/OF/PF/SF and set ZF only for an exact
   odd quotient on every emulated model, independently of graphics mode.
   Control flags and quotient/remainder remain unchanged by this correction.
