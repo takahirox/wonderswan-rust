@@ -379,7 +379,9 @@ at the existing boundaries. This does not model BUSLOCKB transitions, fetch
 suppression, prefetch/pipeline timing or exact bus arbitration. The preliminary
 core manual does not establish console DMA wiring or POLL wiring. Issue #67
 implements single-step using chapter 5 and separately records REP/HALT inferences
-and trap-entry accounting in [the reconciliation](single-step.md). The original
+and trap-entry accounting in [the reconciliation](single-step.md). External
+IRQ entry uses [32 aligned internal clocks](external-irq-timing.md) plus existing
+odd-stack and wait penalties in both delivery paths. The original
 CC0 BUSLOCK cartridge and independent native/browser literals exercise all three models and restart; commercial-title impact is unmeasured.
 
 The adjacent gap list also previously misclassified excluded older NEC operations

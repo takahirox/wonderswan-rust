@@ -4,6 +4,8 @@ use crate::{bus::Bus, Error, Model};
 mod buslock_tests;
 
 #[cfg(test)]
+mod irq_timing_tests;
+#[cfg(test)]
 mod trap_tests;
 
 #[cfg(test)]
@@ -35,6 +37,11 @@ mod ascii_adjust_tests;
 
 #[cfg(test)]
 mod decimal_adjust_tests;
+
+// Table 5-1 includes five normal vector/stack transfers in the 32-clock
+// external INT entry. Add their actual charges once, retaining odd/wait costs.
+// See docs/external-irq-timing.md. Instruction and DMA clocks stay separate.
+const EXTERNAL_IRQ_EXECUTION_CLOCKS: u32 = 27;
 
 const CF: u16 = 1;
 const PF: u16 = 4;
@@ -368,7 +375,7 @@ impl Cpu {
             self.halted = false;
             if self.interrupt_shadow == 0 && self.flags & IF != 0 {
                 self.interrupt(bus, vector);
-                return Ok(12 + bus.accesses.get());
+                return Ok(EXTERNAL_IRQ_EXECUTION_CLOCKS + bus.accesses.get());
             }
         }
         self.interrupt_shadow = self.interrupt_shadow.saturating_sub(1);
@@ -385,7 +392,7 @@ impl Cpu {
             {
                 let accesses = bus.accesses.get();
                 self.interrupt(bus, vector);
-                cycles += 12 + bus.accesses.get() - accesses;
+                cycles += EXTERNAL_IRQ_EXECUTION_CLOCKS + bus.accesses.get() - accesses;
             } else {
                 let accesses = bus.accesses.get();
                 self.interrupt(bus, 1);
