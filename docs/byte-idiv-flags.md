@@ -1,5 +1,12 @@
 # Successful byte IDIV flags (Issue #49)
 
+**Timing update (Issue #87):** The unchanged timing statements below describe
+this earlier FLAGS correction. [Successful division timing](division-timing.md)
+supersedes its width-only residuals with 15/17/23/24 clocks and updates the
+current scheduler/trap assertions. Arithmetic, full FLAGS and history acceptance
+remain applicable; historical validation reports remain unchanged.
+
+
 At baseline `f9464ad5f50dfc5f362fe6c1ea0cf3846394690b`, successful F6 /7
 cleared only OF. Retaining the other incoming arithmetic flags was an
 unsupported assumption. The corrected rule clears AF, CF and OF, sets SF from

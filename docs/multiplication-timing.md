@@ -33,8 +33,9 @@ actual costs. No test expectation invokes production timing/address helpers.
 Tests assert charged accesses as well as complete state and unchanged source
 memory, so duplicate reads and source writes are rejected.
 
-Full prefetch/pipeline fidelity, effective-address dependencies, division timing
-and unrelated bus policies remain separate gaps. The pinned
+Full prefetch/pipeline fidelity, effective-address dependencies and unrelated bus
+policies remain separate gaps. Issue #87 subsequently corrects
+[successful division timing](division-timing.md), retaining separate fault costs. The pinned
 [WSTimingTest report](https://github.com/FluBBaOfWard/WSTimingTest/blob/025e606fc3b6615160ffdae485d992ffcad0c024/README.md)
 describes aggregate instruction-loop measurements with their own fetch/loop
 conditions; those totals are not isolated decoded costs.

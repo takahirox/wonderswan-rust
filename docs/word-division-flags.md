@@ -1,5 +1,12 @@
 # Successful word DIV and IDIV flags (Issue #47)
 
+**Timing update (Issue #87):** The unchanged timing statements below describe
+this earlier FLAGS correction. [Successful division timing](division-timing.md)
+supersedes its width-only residuals with 15/17/23/24 clocks and updates the
+current scheduler/trap assertions. Arithmetic, full FLAGS and history acceptance
+remain applicable; historical validation reports remain unchanged.
+
+
 At evaluation baseline `2669967f37dbbb65410ce8dcc496c1d1689a1693`, the
 successful F7 /6 and /7 path cleared OF and retained every other arithmetic
 flag. Retention was an unsupported assumption. The corrected word operation

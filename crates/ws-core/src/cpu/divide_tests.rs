@@ -2,20 +2,24 @@
 // Literal opcode checks use instruction_step to observe FLAGS before TF entry.
 // Ordinary delivery and saved arithmetic FLAGS are covered in trap_tests.
 use super::*;
-fn modes() -> [(Model, bool); 5] {
+fn modes() -> [(Model, u8); 9] {
     [
-        (Model::Mono, false),
-        (Model::Color, false),
-        (Model::Color, true),
-        (Model::Crystal, false),
-        (Model::Crystal, true),
+        (Model::Mono, 0),
+        (Model::Color, 0),
+        (Model::Color, 0x80),
+        (Model::Color, 0xc0),
+        (Model::Color, 0xe0),
+        (Model::Crystal, 0),
+        (Model::Crystal, 0x80),
+        (Model::Crystal, 0xc0),
+        (Model::Crystal, 0xe0),
     ]
 }
 
-fn setup(model: Model, color: bool, code: &[u8]) -> (Cpu, Bus) {
+fn setup(model: Model, color: u8, code: &[u8]) -> (Cpu, Bus) {
     let mut b = Bus::new(model);
     if model != Model::Mono {
-        b.output(0x60, if color { 0x80 } else { 0 }).unwrap();
+        b.output(0x60, color).unwrap();
     }
     b.ram.fill(0xa5);
     b.ram[0x1000..0x1000 + code.len()].copy_from_slice(code);
@@ -332,7 +336,7 @@ fn word_division_full_flags_results_mapped_sources_and_branches() {
                         2
                     };
                     let access = if location == 0 { 2 } else { 5 + operand_cost };
-                    let execution = 32;
+                    let execution = if signed { 24 } else { 23 };
                     let cost = c.instruction_step(&mut b).unwrap();
                     assert_eq!(
                         c.registers, expected,
@@ -380,7 +384,7 @@ fn word_division_full_flags_results_mapped_sources_and_branches() {
 
 #[test]
 fn issue_47_reproduction() {
-    let (mut c, mut b) = setup(Model::Mono, false, &[0xf7, 0xf3]);
+    let (mut c, mut b) = setup(Model::Mono, 0, &[0xf7, 0xf3]);
     c.registers[0] = 6;
     c.registers[2] = 0;
     c.registers[3] = 2;
@@ -405,7 +409,10 @@ fn accumulator_and_high_divisor_aliases_sample_before_writeback() {
             let mut registers = c.registers;
             registers[0] = quotient;
             registers[2] = remainder;
-            assert_eq!(c.instruction_step(&mut b).unwrap(), 34);
+            assert_eq!(
+                c.instruction_step(&mut b).unwrap(),
+                if modrm == 0xf0 { 25 } else { 26 }
+            );
             assert_eq!(c.registers, registers);
             assert_eq!(c.flags, flags);
             assert_eq!(c.ip, 0x1002);
@@ -424,7 +431,7 @@ fn accumulator_and_high_divisor_aliases_sample_before_writeback() {
 #[test]
 fn runtime_modes_and_normal_machine_scheduler_advance_division_once() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
-        let (c, mut b) = setup(model, false, &[0xf7, 0xf3, 0xf7, 0xfb]);
+        let (c, mut b) = setup(model, 0, &[0xf7, 0xf3, 0xf7, 0xfb]);
         b.insert_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
@@ -432,7 +439,7 @@ fn runtime_modes_and_normal_machine_scheduler_advance_division_once() {
         let mut m = crate::Machine::new(model);
         m.cpu = c;
         m.bus = b;
-        for mode in [0, 0x80, 0, 0xc0, 0] {
+        for mode in [0, 0x80, 0, 0xc0, 0, 0xe0, 0] {
             if model != Model::Mono {
                 m.bus.output(0x60, mode).unwrap();
             }
@@ -442,13 +449,14 @@ fn runtime_modes_and_normal_machine_scheduler_advance_division_once() {
                 m.cpu.registers[2] = dx;
                 m.cpu.registers[3] = 2;
                 m.cpu.flags = 0xfed7;
-                // One DIV's unchanged 32 execution + 2 fetch costs ends the frame.
+                // Word DIV/IDIV costs include two instruction fetches.
+                let cost = if ip == 0x1000 { 25 } else { 26 };
                 let remaining = crate::CYCLES_PER_FRAME - m.bus.cycles % crate::CYCLES_PER_FRAME;
-                m.advance((remaining - 34) as u32);
+                m.advance((remaining - cost) as u32);
                 let before = m.bus.cycles;
                 let frame = m.frame_number();
                 m.run_frame().unwrap();
-                assert_eq!(m.bus.cycles, before + 34);
+                assert_eq!(m.bus.cycles, before + cost);
                 assert_eq!(m.frame_number(), frame + 1);
                 assert_eq!(m.bus.raster_line, 0);
                 assert_eq!(m.bus.accesses.get(), 2);
@@ -547,7 +555,7 @@ fn byte_vectors(vectors: &[ByteVector], signed: bool, seed: u16) {
                     // One charge per byte: 2 fetches, or prefix + opcode +
                     // ModR/M + odd displacement word (5 fetches) + operand (1).
                     let access = if location == 0 { 2 } else { 6 };
-                    let execution = 24;
+                    let execution = if signed { 17 } else { 15 };
                     let cost = c.instruction_step(&mut b).unwrap();
                     assert_eq!(
                         c.registers, expected,
@@ -595,7 +603,7 @@ fn byte_vectors(vectors: &[ByteVector], signed: bool, seed: u16) {
 
 #[test]
 fn issue_49_reproduction() {
-    let (mut c, mut b) = setup(Model::Mono, false, &[0xf6, 0xfb]);
+    let (mut c, mut b) = setup(Model::Mono, 0, &[0xf6, 0xfb]);
     c.registers[0] = 6;
     c.registers[3] = 2;
     c.flags = 0xf002;
@@ -624,7 +632,10 @@ fn byte_division_aliases_sample_before_writeback() {
             registers[0] = result;
             let segments = c.segments;
             let ram = b.ram.clone();
-            assert_eq!(c.instruction_step(&mut b).unwrap(), 26);
+            assert_eq!(
+                c.instruction_step(&mut b).unwrap(),
+                if modrm < 0xf8 { 17 } else { 19 }
+            );
             assert_eq!(c.registers, registers);
             assert_eq!(c.segments, segments);
             assert!(b.ram == ram);
@@ -639,7 +650,7 @@ fn byte_division_aliases_sample_before_writeback() {
 #[test]
 fn byte_idiv_runtime_modes_and_normal_machine_scheduler_advance_once() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
-        let (c, mut b) = setup(model, false, &[0xf6, 0xfb, 0x90]);
+        let (c, mut b) = setup(model, 0, &[0xf6, 0xfb, 0x90]);
         b.insert_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
@@ -667,7 +678,7 @@ fn byte_idiv_runtime_modes_and_normal_machine_scheduler_advance_once() {
                 // Compare the actual returned CPU cost with the normal scheduler.
                 let mut cpu = m.cpu.clone();
                 let returned = cpu.step(&mut m.bus).unwrap();
-                assert_eq!(returned, 51); // 24 execution + 2 fetch + 25 trap
+                assert_eq!(returned, 44); // 17 execution + 2 fetch + 25 trap
                 let remaining = crate::CYCLES_PER_FRAME - m.bus.cycles % crate::CYCLES_PER_FRAME;
                 m.advance((remaining - returned as u64) as u32);
                 let before = m.bus.cycles;
@@ -705,7 +716,7 @@ fn seed_history(c: &mut Cpu, b: &mut Bus, al: u16) {
 
 #[test]
 fn issue_65_reproduction() {
-    let (mut c, mut b) = setup(Model::Mono, false, &[0xf6, 0xf3]);
+    let (mut c, mut b) = setup(Model::Mono, 0, &[0xf6, 0xf3]);
     seed_history(&mut c, &mut b, 0x10);
     c.registers[0] = 6;
     c.registers[3] = 2;
@@ -923,7 +934,7 @@ fn explicit_multiplication_producers_replace_history_without_changing_products()
 #[test]
 fn byte_div_history_runtime_modes_and_normal_machine_scheduler_advance_once() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
-        let (c, mut b) = setup(model, false, &[0xf6, 0xf3, 0x90]);
+        let (c, mut b) = setup(model, 0, &[0xf6, 0xf3, 0x90]);
         b.insert_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
@@ -945,7 +956,7 @@ fn byte_div_history_runtime_modes_and_normal_machine_scheduler_advance_once() {
                 m.cpu.flags = 0xffd7;
                 let mut cpu = m.cpu.clone();
                 let returned = cpu.step(&mut m.bus).unwrap();
-                assert_eq!(returned, 51); // 24 execution + 2 fetch + 25 trap
+                assert_eq!(returned, 42); // 15 execution + 2 fetch + 25 trap
                 let remaining = crate::CYCLES_PER_FRAME - m.bus.cycles % crate::CYCLES_PER_FRAME;
                 m.advance((remaining - returned as u64) as u32);
                 let before = m.bus.cycles;

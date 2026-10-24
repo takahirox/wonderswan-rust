@@ -40,6 +40,8 @@ mod push_sp_tests;
 
 #[cfg(test)]
 mod divide_tests;
+#[cfg(test)]
+mod divide_timing_tests;
 
 #[cfg(test)]
 mod multiply_tests;
@@ -1227,6 +1229,14 @@ impl Cpu {
                             0..=255
                         };
                         if let Some(q) = quotient.filter(|q| range.contains(q)) {
+                            // Decoded successful register costs; the bus already
+                            // charges the source transfer. See division-timing.md.
+                            execution = match (wide, signed) {
+                                (false, false) => 15,
+                                (false, true) => 17,
+                                (true, false) => 23,
+                                (true, true) => 24,
+                            };
                             self.flags &= !OF;
                             let rem = numerator % denominator;
                             if wide {
@@ -1256,8 +1266,10 @@ impl Cpu {
                         } else {
                             trap = false;
                             self.divide_fault(bus, start);
+                            // Preserve the baseline fault policy independently;
+                            // exact exceptional timing remains unresolved.
+                            execution = if wide { 32 } else { 24 };
                         }
-                        execution = if wide { 32 } else { 24 };
                     }
                     _ => return Err(Error::new(format!("Unsupported F6/F7 extension /{op}."))),
                 }
