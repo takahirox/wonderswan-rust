@@ -104,7 +104,7 @@ fn literal_instruction_totals_mov_rmw_stack_calls_interrupts_and_strings() {
             assert_eq!(&b.ram[address as usize..address as usize + 2], &[0, 1]);
         }
         for (sp, push_cost, call_cost, ret_cost, irq_cost) in
-            [(0x2000, 3, 9, 6, 32), (0x2001, 4, 10, 7, 35)]
+            [(0x2000, 3, 9, 8, 32), (0x2001, 4, 10, 9, 35)]
         {
             let (mut c, mut b) = setup(model, color, &[0x50, 0x58, 0xe8, 0, 0, 0xc3]);
             c.registers[4] = sp;

@@ -38,8 +38,8 @@ pointer words can change both CS and IP. Parity comes from that loaded IP.
 Full FLAGS, other registers/segments, ports and unrelated memory are preserved.
 SS selects stack writes despite overrides. Offset and physical addresses wrap
 at 16/20 bits, retaining existing mapping/consolidation/ignored-ROM-write policy.
-Real RET/RETF must restore the saved continuation; their approximate four-clock
-execution residual remains unchanged.
+Real RET/RETF must restore the saved continuation; [Issue #81](return-timing.md)
+corrects their execution residuals to 5/6 plus restored destination parity.
 
 ROM byte costs at live A0 00/04/08/0C are 1/1/2/2, aligned word costs 2/1/4/2,
 odd words 2/2/4/4. SRAM words cost 2 (4 with existing live SRAM wait bit).
@@ -58,15 +58,15 @@ Register forms encode FF D6/E6; near memory FF 16/26 00 09; far memory
 FF 1E/2E 00 09. Copied even/odd target offsets are CALL register 2032/2033,
 CALL near memory 2034/2035, CALL far memory 2032/2033, JMP register 200A/200B,
 JMP near/far memory 200C/200D. Source NASM listings establish these offsets.
-Destination LEA BP,[BP+1] costs 4. Calls actually RET/RETF (6/7 including
-fetch and stack reads, retained approximations). DEC CX costs 2; JNZ to even
+Destination LEA BP,[BP+1] costs 4. Calls actually RET/RETF to odd 2009/200B
+(8/10 including fetch, stack reads and restored destination parity). DEC CX costs 2; JNZ to even
 2004 costs 6, final fallthrough 3. Terminal IN samples before its own clocks.
 
 | Form | Even/odd loop clocks | Even/odd total clocks | Even/odd HBlank ticks |
 | --- | --- | --- | --- |
-| CALL register | 29 / 30 | 118792 / 122888 | 464–465 / 480–481 |
-| CALL near memory | 32 / 33 | 131080 / 135176 | 512–513 / 528–529 |
-| CALL far memory | 39 / 40 | 159752 / 163848 | 624–625 / 640–641 |
+| CALL register | 31 / 32 | 126984 / 131080 | 496–497 / 512–513 |
+| CALL near memory | 34 / 35 | 139272 / 143368 | 544–545 / 560–561 |
+| CALL far memory | 42 / 43 | 172040 / 176136 | 672–673 / 688–689 |
 | JMP register | 22 / 23 | 90120 / 94216 | 352–353 / 368–369 |
 | JMP near memory | 25 / 26 | 102408 / 106504 | 400–401 / 416–417 |
 | JMP far memory | 30 / 31 | 122888 / 126984 | 480–481 / 496–497 |
@@ -86,8 +86,9 @@ sampling. Mono runs 00; Color/Crystal 00/80/00/C0/00/E0/00. Both independent
 consumers require poisoned-save invalidation and two fresh boots.
 
 Existing IRQ, direct CALL/JMP, Jcc/JCXZ, LOOP, ordinary-I/O and word fixture
-intervals contain no indirect dispatch. Their instructions, budgets and bounds
-remain unchanged, including IRQ entry 32/35 and former-charge rejection.
-Historical observations remain historical. Return timing, full prefetch,
+intervals contain no indirect dispatch. Dispatch instructions remain unchanged.
+Issue #81 recalculates direct CALL and IRQ intervals for corrected returns; IRQ entry 32/35 and former-charge rejection
+remain covered. Other measured bounds stay unchanged.
+Historical observations remain historical. Full prefetch,
 effective-address hazards, unrelated bus policies, commercial-title and physical
 console validation remain separate gaps.

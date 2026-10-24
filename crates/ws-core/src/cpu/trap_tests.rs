@@ -87,7 +87,10 @@ fn activation_iret_handler_stop_and_if_are_independent_on_every_configuration() 
                 c.step(&mut b).unwrap();
                 assert_eq!(c.registers[4], 0x1ffa);
                 assert_eq!(c.registers[3], 0);
-                assert_eq!(finish_trap(&mut c, &mut b, ip, flags), 10);
+                assert_eq!(
+                    finish_trap(&mut c, &mut b, ip, flags),
+                    11 + u32::from(ip & 1)
+                );
                 assert_eq!(c.registers[4], 0x2000);
             }
             // Real handler clears stacked TF, preserving the other flag bits.

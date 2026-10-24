@@ -46,7 +46,7 @@ Issue #75 now applies the taken odd-target clock to
 reservations remain separate.
 
 These are serialized emulator expectations, not console measurements. Full
-prefetch, effective-address hazards, return timing and external bus policy remain
+prefetch, effective-address hazards and external bus policy remain
 separate work.
 
 ## Original absolute cartridge interval

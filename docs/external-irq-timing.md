@@ -54,15 +54,16 @@ The measured interval begins at the first IN's timer observation and ends at the
 second IN's observation. The first IN contributes 8 clocks, MOV DX,AX 3, STI 2,
 and final CLI 2. The second IN and result publication are outside the interval.
 Each of 1024 iterations includes entry 32, INC BX 2, DEC SI 2, taken JNZ 7,
-IRET 10 and taken LOOP 8 = **61** clocks. The LOOP target is odd RAM 2005;
+IRET 12 (odd restored 2005) and taken LOOP 8 = **63** clocks. The LOOP target
+is odd RAM 2005;
 JNZ at 2011 targets odd 2017 (handler bytes 43 4E 75 04 B0 80 E6 B6 CF at 200F).
 The final JNZ falls through at 3 instead of 7 (subtract 4); final LOOP falls
 through at 4 instead of 8 (subtract 4). Final MOV AL,80 + OUT B6,AL adds 3 + 8 = 11.
-Total: **1024 × 61 + 15 − 4 − 4 + 11 = 62482** clocks. An odd stack adds three
-split pushes and three split pops per iteration: **68626** clocks. The counter
-changes once per 256 clocks, so independent consumers require **244–245** and
-**268–269** ticks respectively. The former IRQ entry charge gives **184–185**
-and **208–209** ticks, well outside the ranges. Harness instruction costs are
+Total: **1024 × 63 + 15 − 4 − 4 + 11 = 64530** clocks. An odd stack adds three
+split pushes and three split pops per iteration: **70674** clocks. The counter
+changes once per 256 clocks, so independent consumers require **252–253** and
+**276–277** ticks respectively. The former IRQ entry charge gives **192–193**
+and **216–217** ticks, well outside the ranges. Harness instruction costs are
 the existing serialized fetch/execution policy, not full silicon timing.
 
 Issue #71 corrects the old AI assumption of LOOP 6/3 totals to **8/4** for
@@ -95,5 +96,11 @@ and 240–241/264–265-tick ranges and 1024/0/0 assertions were unchanged.
 Those observations and the former-entry negative control remain historical in
 [Issue #73 validation](issue-73-validation.md). Issue #75 keeps fixture bytes,
 32/35-clock entry, 1024/0/0 results and restart checks, and corrects only the
-JNZ-dependent absolute bounds above. Current observations and a repeated
+JNZ-dependent absolute bounds at that revision. Its observations and a repeated
 former-entry negative control are in [Issue #75 validation](issue-75-validation.md).
+
+Issue #81 corrects the old IRET 10/no-destination-adjustment assumption to 12
+for restored odd 2005. Unchanged cartridge bytes gain 2048 clocks per sample.
+The current bounds above and repeated former-entry control are recorded in
+[Issue #81 validation](issue-81-validation.md). Earlier reports retain their
+actual historical observations.

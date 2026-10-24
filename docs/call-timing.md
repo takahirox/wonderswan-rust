@@ -34,26 +34,28 @@ including FFFF:0010 (physical 00000), and saves old CS before post-immediate
 IP. Near saves only post-immediate IP. SS selects the stack even with segment
 prefixes. SP subtraction and stack offsets wrap at 16 bits, physical addresses
 at 20 bits. All other registers, full FLAGS and unrelated memory are preserved.
-RET/RETF execution retains its existing approximate four clocks.
+[Issue #81 return accounting](return-timing.md) corrects RET/RETF residuals to
+5/6 plus restored destination parity.
 
 ## Original absolute cartridge interval
 
 Original CC0 `fixtures/call-timing.asm` copies four measured bodies to RAM 2000.
 IN AX,A8 at 2000 costs 8; MOV DX,AX at 2002 costs 3. Loop 2004 executes
 LEA BX,[BX+1] (4), CALL at odd 2007 (E8 7/8, 9A 13/14), destination
-LEA BP,[BP+1] (4), RET/RETF (6/7 including fetch and stack reads), DEC CX (2),
+LEA BP,[BP+1] (4), RET/RETF (7/9 including fetch and stack reads), DEC CX (2),
 JNZ even 2004 (6, final 3). The aligned stack is 2FFA before each measured
 CALL. The copied targets are near 202A/202B and far 2034/2035; measured bytes
 at 2007 are E8 20 00 / E8 21 00 / 9A 34 20 00 00 / 9A 35 20 00 00.
-RET/RETF costs are retained emulator approximations, not a new hardware
-claim. Terminal IN reads before its own clocks advance. Each interval is:
+Returns restore even 200A/200C; their Issue #81 correction adds 1/2
+clocks per iteration. Other harness costs retain existing approximations.
+Terminal IN reads before its own clocks advance. Each interval is:
 
 | Form / destination | Clocks | HBlank ticks (256 clocks) |
 | --- | ---: | ---: |
-| Near even | 11 + 4096*29 - 3 = 118792 | 464–465 |
-| Near odd | 11 + 4096*30 - 3 = 122888 | 480–481 |
-| Far even | 11 + 4096*36 - 3 = 147464 | 576–577 |
-| Far odd | 11 + 4096*37 - 3 = 151560 | 592–593 |
+| Near even | 11 + 4096*30 - 3 = 122888 | 480–481 |
+| Near odd | 11 + 4096*31 - 3 = 126984 | 496–497 |
+| Far even | 11 + 4096*38 - 3 = 155656 | 608–609 |
+| Far odd | 11 + 4096*39 - 3 = 159752 | 624–625 |
 
 Only unknown timer phase allows floor/ceil quantization. Outside the interval,
 SUB DX,AX / MOV AX,DX publish elapsed ticks; comparisons require SP=2FFA,
@@ -74,11 +76,11 @@ check invalidation after one frame, all absolute results and fresh restart.
 
 IRQ/JMP/LOOP/Jcc measured bytes contain no direct CALL inside their sampled
 intervals. Their outer/setup calls change elapsed setup only. Preserve absolute
-IRQ 62482/68626 (244–245/268–269 ticks), JMP 90120/94216/106504/110600,
+IRQ 64530/70674 (252–253/276–277 ticks, corrected IRET), JMP 90120/94216/106504/110600,
 LOOP 45064/49161, 49160/53257 and 94216/98312, and Jcc
 106504/110600/94216. Ordinary I/O remains 11+2048*8/9/10, relative-word
 odd-minus-even remains 4096 clocks. No tolerance widening or historical rewrite.
 [Indirect CALL/JMP](indirect-control-timing.md) now uses residuals 4/8 plus
-loaded destination parity and actual transfers. Return timing, effective-address
+loaded destination parity and actual transfers. Effective-address
 hazards, full prefetch, external bus policy and commercial-title/physical-console
 validation remain separate.

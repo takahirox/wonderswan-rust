@@ -44,7 +44,7 @@ export async function irqTimingChecks(browser, base, errors) {
         assert.equal(word(3),passes);
         const observations = [];
         for (let pass=0;pass<passes;pass++) {
-          for (const [sample,low,high] of [[0,244,245],[1,268,269]]) {
+          for (const [sample,low,high] of [[0,252,253],[1,276,277]]) {
             const i = 4+pass*8+sample*4;
             observations.push(word(i));
             assert.ok(word(i)>=low && word(i)<=high,`${model} boot ${boot} pass ${pass} sample ${sample}: ${word(i)} ticks`);
@@ -56,5 +56,5 @@ export async function irqTimingChecks(browser, base, errors) {
       assert.equal(requests.length,0,'ROM/save handling stays local');
     } finally { await context.close(); }
   }
-  console.log('Absolute IRQ budget: 1024 deliveries, 244/268 HBlank ticks (+1 quantization), counts/continuation, all nine configurations, live modes and fresh restart passed');
+  console.log('Absolute IRQ budget: 1024 deliveries, 252/276 HBlank ticks (+1 quantization), counts/continuation, all nine configurations, live modes and fresh restart passed');
 }

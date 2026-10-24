@@ -63,8 +63,8 @@ export async function indirectTimingChecks(browser, base, errors) {
         assert.equal(word(3),passes);
         const observations = [];
         for (let pass=0;pass<passes;pass++) {
-          for (const [sample,low,high] of [[0,464,465],[1,480,481],[2,512,513],[3,528,529],
-            [4,624,625],[5,640,641],[6,352,353],[7,368,369],
+          for (const [sample,low,high] of [[0,496,497],[1,512,513],[2,544,545],[3,560,561],
+            [4,672,673],[5,688,689],[6,352,353],[7,368,369],
             [8,400,401],[9,416,417],[10,480,481],[11,496,497]]) {
             const i = 4+pass*60+sample*5;
             observations.push(word(i));

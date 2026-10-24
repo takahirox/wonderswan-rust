@@ -16,6 +16,9 @@ mod jmp_tests;
 mod call_tests;
 
 #[cfg(test)]
+mod return_tests;
+
+#[cfg(test)]
 mod indirect_tests;
 
 #[cfg(test)]
@@ -670,7 +673,14 @@ impl Cpu {
                     self.segments[1] = self.pop(bus);
                 }
                 self.registers[4] = self.registers[4].wrapping_add(adjust);
-                execution = 4;
+                // Appendix A decoded costs minus the aligned stack reads
+                // already charged by the bus. See docs/return-timing.md.
+                execution = match opcode {
+                    0xc2 | 0xc3 => 5,
+                    0xcb => 6,
+                    0xca => 7,
+                    _ => unreachable!(),
+                } + u32::from(self.ip & 1);
             }
             0xc6 | 0xc7 => {
                 let m = self.byte(bus);
@@ -1079,7 +1089,8 @@ impl Cpu {
                 if previous_if == 0 && self.flags & IF != 0 {
                     self.interrupt_shadow = 1;
                 }
-                execution = 6;
+                // Ten decoded clocks less three aligned stack transfers.
+                execution = 7 + u32::from(self.ip & 1);
             }
             0xd4 => {
                 let base = self.byte(bus) as u16;

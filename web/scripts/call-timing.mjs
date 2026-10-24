@@ -63,7 +63,7 @@ export async function callTimingChecks(browser, base, errors) {
         assert.equal(word(3),passes);
         const observations = [];
         for (let pass=0;pass<passes;pass++) {
-          for (const [sample,low,high] of [[0,464,465],[1,480,481],[2,576,577],[3,592,593]]) {
+          for (const [sample,low,high] of [[0,480,481],[1,496,497],[2,608,609],[3,624,625]]) {
             const i = 4+pass*20+sample*5;
             observations.push(word(i));
             assert.ok(word(i)>=low && word(i)<=high,`${model} boot ${boot} pass ${pass} sample ${sample}: ${word(i)} ticks`);
