@@ -47,11 +47,20 @@ async function expectTile(x, y, expected) {
   }
   assert.deepEqual(await tile(x,y), expected, `tile ${x},${y}`);
 }
+// Wait for two rendering opportunities with the input held/released. A wall
+// timeout can expire without a tick under load, leaving a tap unobserved or a
+// prior tile redraw pending. Two callbacks also stay within the player's
+// eight-frame repeat delay, even with the scheduler's four-frame catch-up bound.
+async function inputFrames() {
+  await page.evaluate(() => new Promise(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+}
 async function tap(key) {
   await page.keyboard.down(key);
-  await page.waitForTimeout(45);
+  await inputFrames();
   await page.keyboard.up(key);
-  await page.waitForTimeout(45);
+  await inputFrames();
 }
 async function initial() {
   await expectTile(3,8,player);
@@ -400,9 +409,9 @@ try {
   }
   async function touchTap(button) {
     await touch(button,'touchStart');
-    await page.waitForTimeout(45);
+    await inputFrames();
     await touch(button,'touchEnd');
-    await page.waitForTimeout(45);
+    await inputFrames();
   }
   await touchTap(32);
   await expectTile(4,8,player);
@@ -416,6 +425,7 @@ try {
   await page.waitForTimeout(300);
   await touch(32,'touchEnd');
   assert.notDeepEqual(await tile(4,8), player, 'holding repeats movement');
+  await inputFrames();
   const touchReleased = await frame();
   await page.waitForTimeout(200);
   assert.equal(await frame(), touchReleased);
@@ -435,6 +445,7 @@ try {
   await touch(32,'touchStart');
   await page.waitForTimeout(45);
   await touch(32,'touchCancel');
+  await inputFrames();
   const canceled = await frame();
   await page.waitForTimeout(200);
   assert.equal(await frame(), canceled, 'pointer cancel releases');
@@ -444,6 +455,7 @@ try {
   await page.waitForTimeout(45);
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await touch(32,'touchEnd');
+  await inputFrames();
   const blurred = await frame();
   await page.waitForTimeout(200);
   assert.equal(await frame(), blurred, 'blur releases touch');

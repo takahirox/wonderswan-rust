@@ -39,7 +39,7 @@ remain in force. Full prefetch and instruction-wide timing remain separate work.
 ## Absolute cartridge budget
 
 The source-included CC0 `irq-timing.asm` probe and its native/browser consumers
-will measure a bounded latched interrupt sequence against the HBlank timer. Its
+measures a bounded latched interrupt sequence against the HBlank timer. Its
 harness, independent totals, quantization and actual validation are recorded here
 and in [Issue #69 validation](issue-69-validation.md).
 
@@ -54,14 +54,23 @@ The measured interval begins at the first IN's timer observation and ends at the
 second IN's observation. The first IN contributes 8 clocks, MOV DX,AX 3, STI 2,
 and final CLI 2. The second IN and result publication are outside the interval.
 Each of 1024 iterations includes entry 32, INC BX 2, DEC SI 2, taken JNZ 6,
-IRET 10 and taken LOOP 6 = **58** clocks. Both final branches fall through at
-3 clocks instead of 6 (subtract 6); final MOV AL,80 + OUT B6,AL adds 3 + 8 = 11.
-Total: **1024 × 58 + 15 − 6 + 11 = 59412** clocks. An odd stack adds three split
-pushes and three split pops per iteration: **65556** clocks. The counter changes
-once per 256 clocks, so independent consumers require **232–233** and **256–257**
-ticks respectively. The old entry timing gives **172–173** and **196–197** ticks,
-well outside the ranges. Harness instruction costs are the existing serialized
-fetch/execution policy, not a claim of full silicon instruction timing.
+IRET 10 and taken LOOP 8 = **60** clocks. The LOOP target is odd RAM 2005.
+The final JNZ falls through at 3 instead of 6 (subtract 3); final LOOP falls
+through at 4 instead of 8 (subtract 4). Final MOV AL,80 + OUT B6,AL adds 3 + 8 = 11.
+Total: **1024 × 60 + 15 − 3 − 4 + 11 = 61459** clocks. An odd stack adds three
+split pushes and three split pops per iteration: **67603** clocks. The counter
+changes once per 256 clocks, so independent consumers require **240–241** and
+**264–265** ticks respectively. The former IRQ entry charge gives **180–181**
+and **204–205** ticks, well outside the ranges. Harness instruction costs are
+the existing serialized fetch/execution policy, not full silicon timing.
+
+Issue #71 corrects the old AI assumption of LOOP 6/3 totals to **8/4** for
+this odd target, using Appendix A's instruction-specific DBNZ costs and Note 5.
+With fixture layout and bytes unchanged, 1023 taken iterations gain two clocks
+each and the final fallthrough gains one: **2047** extra clocks. The prior
+59412/65556 budgets and observed 232/256 ticks in [Issue #69 validation](issue-69-validation.md)
+remain historical evidence under that old LOOP implementation. Current actual
+observations and tested identities are in [Issue #71 validation](issue-71-validation.md).
 
 During harness development an initial calculation counted taken JNZ as 3 instead
 of 6 clocks. Inspecting the existing branch execution path corrected the harness

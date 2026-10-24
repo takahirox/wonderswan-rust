@@ -5,6 +5,9 @@ mod buslock_tests;
 
 #[cfg(test)]
 mod irq_timing_tests;
+
+#[cfg(test)]
+mod loop_tests;
 #[cfg(test)]
 mod trap_tests;
 
@@ -682,8 +685,35 @@ impl Cpu {
                 };
                 if take {
                     self.ip = self.ip.wrapping_add(displacement);
-                    execution = 4;
                 }
+                // Appendix A: DBNZ is 5/2 decoded clocks; DBNZE/DBNZNE
+                // are 6/3, with +1 for a taken odd destination. These have
+                // no operand transfers; the two actual byte fetches are
+                // already charged by the bus. Keep JCXZ's existing policy.
+                // See docs/loop-timing.md for independent literal vectors.
+                execution = match opcode {
+                    0xe2 => {
+                        if take {
+                            5 + u32::from(self.ip & 1)
+                        } else {
+                            2
+                        }
+                    }
+                    0xe0 | 0xe1 => {
+                        if take {
+                            6 + u32::from(self.ip & 1)
+                        } else {
+                            3
+                        }
+                    }
+                    _ => {
+                        if take {
+                            4
+                        } else {
+                            1
+                        }
+                    }
+                };
             }
             0xe4..=0xe7 | 0xec..=0xef => {
                 // Appendix A's six decoded clocks include the normal I/O

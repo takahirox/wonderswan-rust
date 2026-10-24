@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { lcdChecks } from './lcd.mjs';
 import { lcdOutputChecks } from './lcd-output.mjs';
 import { ordinaryIoChecks } from './ordinary-io.mjs';
+import { loopTimingChecks } from './loop-timing.mjs';
 import { irqTimingChecks } from './irq-timing.mjs';
 import { wordTimingChecks } from './word-timing.mjs';
 import { keypadChecks } from './keypad.mjs';
@@ -538,6 +539,7 @@ try {
   await lcdChecks(browser,base,errors);
   await lcdOutputChecks(browser,base,errors);
   await wordTimingChecks(browser,base,errors);
+  await loopTimingChecks(browser,base,errors);
   await irqTimingChecks(browser,base,errors);
   await ordinaryIoChecks(browser,base,errors);
   await keypadChecks(browser,base,errors);
