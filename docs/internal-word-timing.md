@@ -55,7 +55,9 @@ absolute instruction-cycle accuracy is claimed. Ordinary IN/OUT now uses the
 already charged normal I/O transfer, while preserving this raw transfer table. CPU steps return execution plus
 bus costs to the existing shared clock once. External IRQ entry uses the
 [32-clock baseline with actual transfer penalties](external-irq-timing.md). DMA continues to use its separate
-mapped accesses and costs. Firmware-free startup, live A0 controls, interrupts,
+mapped accesses and costs. [Direct JMP](jmp-timing.md) uses E9/EB four and EA
+seven decoded execution clocks plus odd-target adjustment, with actual opcode
+and immediate fetches retained separately. Firmware-free startup, live A0 controls, interrupts,
 bounded REP, LCD/audio/device scheduling and browser-local ownership remain in
 their existing paths. Commercial games and physical consoles are untested.
 

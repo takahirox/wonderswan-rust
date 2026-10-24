@@ -7,6 +7,9 @@ mod buslock_tests;
 mod irq_timing_tests;
 
 #[cfg(test)]
+mod jmp_tests;
+
+#[cfg(test)]
 mod loop_tests;
 #[cfg(test)]
 mod trap_tests;
@@ -747,15 +750,23 @@ impl Cpu {
                     self.push(bus, self.ip);
                 }
                 self.ip = self.ip.wrapping_add(displacement);
+                if opcode == 0xe9 {
+                    // BR near: decoded execution plus odd-target adjustment.
+                    // Actual fetch charges stay separate; E8 CALL is unchanged.
+                    execution = 4 + u32::from(self.ip & 1);
+                }
             }
             0xea => {
                 let offset = self.word(bus);
                 self.segments[1] = self.word(bus);
                 self.ip = offset;
+                execution = 7 + u32::from(self.ip & 1);
             }
             0xeb => {
                 let displacement = self.byte(bus) as i8 as u16;
                 self.ip = self.ip.wrapping_add(displacement);
+                // Appendix A, Table A-1 and Note 5; see docs/jmp-timing.md.
+                execution = 4 + u32::from(self.ip & 1);
             }
             0xf4 => self.halted = true,
             0xf8 => self.flags &= !CF,

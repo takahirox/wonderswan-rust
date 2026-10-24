@@ -80,3 +80,8 @@ Historical Issue #69 observations remain historical.
 Actual negative controls, native/browser observations, artifact identities,
 checks and unperformed optional experiments are recorded in
 [Issue #71 validation](issue-71-validation.md).
+
+Issue #73 changes direct JMP setup/idle costs outside these measured intervals.
+The LOOP source/cartridge, absolute ranges, counts, CX and continuation assertions
+remain unchanged. Actual current observations are recorded separately in
+[Issue #73 validation](issue-73-validation.md); earlier passes remain historical.
