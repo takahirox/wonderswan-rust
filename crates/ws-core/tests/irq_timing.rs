@@ -27,7 +27,7 @@ fn absolute_irq_budget_counts_modes_and_fresh_restart() {
             assert_eq!(word(3), passes);
             let mut observations = Vec::new();
             for pass in 0..passes {
-                for (sample, low, high) in [(0, 240, 241), (1, 264, 265)] {
+                for (sample, low, high) in [(0, 244, 245), (1, 268, 269)] {
                     let i = 4 + pass as u32 * 8 + sample * 4;
                     observations.push(word(i));
                     assert!(

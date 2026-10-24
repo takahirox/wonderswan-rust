@@ -33,7 +33,8 @@ Mapped ROM fetch vectors use live A0 controls 00/04/08/0C: two distinct byte
 fetches cost 2/2/4/4 regardless of ROM word width. E2 taken-even totals therefore
 7/7/9/9; conditional taken-even 8/8/10/10. Mode/SRAM wait controls do not add
 waits to internal fetches or register-only execution. Prefix bytes retain their
-ordinary fetch charges; REP rejection and E3 JCXZ retain existing behavior.
+ordinary fetch charges; REP rejection is unchanged. Issue #75 applies the
+[Jcc/JCXZ](jcc-timing.md) taken odd-target clock.
 Interrupt entry (32/35 internal), TF entry, DMA stalls and device advancement
 remain outside the instruction execution component and must each occur once.
 
@@ -72,8 +73,10 @@ count 1/7. Each pass has nine four-word samples: ticks, independent LEA count
 continuation marker 51A7. All 512 bytes are mirrored to SRAM. Startup invalidates
 retained success before measurement; consumers poison saves and restart freshly.
 
-The unchanged IRQ fixture's odd LOOP target 2005 adds 1023×2 + 1 = 2047 clocks:
-61459/67603 clocks, or 240–241/264–265 ticks. See
+Issue #71’s correction for the unchanged IRQ fixture's odd LOOP target 2005
+added 1023×2 + 1 = 2047 clocks, yielding 61459/67603 clocks under the old JNZ
+policy. Issue #75 adds 1023 for odd JNZ destinations: **62482/68626** clocks,
+or **244–245/268–269** ticks. See
 [external IRQ timing](external-irq-timing.md) for the updated independent sum.
 Historical Issue #69 observations remain historical.
 
@@ -85,3 +88,7 @@ Issue #73 changes direct JMP setup/idle costs outside these measured intervals.
 The LOOP source/cartridge, absolute ranges, counts, CX and continuation assertions
 remain unchanged. Actual current observations are recorded separately in
 [Issue #73 validation](issue-73-validation.md); earlier passes remain historical.
+
+Issue #75 rechecks the unchanged LOOP bytes and absolute budgets: measured
+harness JNZ targets are even. Current results are recorded in
+[Issue #75 validation](issue-75-validation.md).
