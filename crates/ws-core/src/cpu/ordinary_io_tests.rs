@@ -407,7 +407,7 @@ fn ordinary_io_normal_scheduler_burst_crosses_line_frame_timer_irq_and_pcm_once(
             m.bus.ports[0xb4] = 0x80;
             m.bus.ram[28..32].copy_from_slice(&[0, 3, 0, 0]);
             m.bus.ram[0x300] = 0xcf;
-            assert_eq!(m.cpu.step(&mut m.bus).unwrap(), 17);
+            assert_eq!(m.cpu.step(&mut m.bus).unwrap(), 32);
             assert_eq!((m.cpu.ip, m.cpu.halted), (0x300, false));
             m.bus.output(0xb6, 0xff).unwrap();
             m.cpu.step(&mut m.bus).unwrap();

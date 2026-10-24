@@ -89,7 +89,9 @@ returns 27. Mixed F0/26/F3 MOVSB costs 3 execution + 4 fetch + 2 data + 25 entry
 = 34. Zero-count mixed REP costs 1 + 4 + 25 = 30. HLT plus aligned trap is
 1 + 1 + 25 = 27 under the existing approximate HLT instruction model.
 
-Keep existing external-IRQ/synchronous costs outside this task. Machine advances
+Issue #67 left external-IRQ/synchronous costs separate. Issue #69 corrects
+[external IRQ entry to 32 aligned clocks plus extra transfer costs](external-irq-timing.md);
+synchronous and single-step-only costs remain unchanged. Machine advances
 all returned instruction/entry costs once through its normal scheduler. DMA
 retains precedence and consumes only its own cost. Per-bus-phase IRQ arrival,
 prefetch, general timing accuracy and exact HLT clock phases remain unmeasured.
