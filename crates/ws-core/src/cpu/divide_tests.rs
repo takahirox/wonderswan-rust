@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
+// Literal opcode checks use instruction_step to observe FLAGS before TF entry.
+// Ordinary delivery and saved arithmetic FLAGS are covered in trap_tests.
 use super::*;
 fn modes() -> [(Model, bool); 5] {
     [
@@ -331,7 +333,7 @@ fn word_division_full_flags_results_mapped_sources_and_branches() {
                     };
                     let access = if location == 0 { 2 } else { 5 + operand_cost };
                     let execution = 32;
-                    let cost = c.step(&mut b).unwrap();
+                    let cost = c.instruction_step(&mut b).unwrap();
                     assert_eq!(
                         c.registers, expected,
                         "{model:?}/{color} {code:x?} {dx:04x}:{ax:04x}/{source:x}"
@@ -351,7 +353,7 @@ fn word_division_full_flags_results_mapped_sources_and_branches() {
                     assert_eq!(b.ports, ports);
                     assert!(b.ram == ram);
                     assert_eq!(b.cartridge.as_ref().unwrap().save, save);
-                    c.step(&mut b).unwrap();
+                    c.instruction_step(&mut b).unwrap();
                     expected[1] = 0xabcd;
                     assert_eq!(c.registers, expected);
                     assert_eq!(c.ip, 0x1000 + length as u16 + 3);
@@ -366,7 +368,7 @@ fn word_division_full_flags_results_mapped_sources_and_branches() {
                     ] {
                         c.ip = 0x1000 + length as u16 + 3;
                         b.ram[c.ip as usize] = jcc;
-                        c.step(&mut b).unwrap();
+                        c.instruction_step(&mut b).unwrap();
                         assert_eq!(c.ip, 0x1000 + length as u16 + if taken { 7 } else { 5 });
                         assert_eq!(c.flags, saved_flags);
                     }
@@ -403,7 +405,7 @@ fn accumulator_and_high_divisor_aliases_sample_before_writeback() {
             let mut registers = c.registers;
             registers[0] = quotient;
             registers[2] = remainder;
-            assert_eq!(c.step(&mut b).unwrap(), 34);
+            assert_eq!(c.instruction_step(&mut b).unwrap(), 34);
             assert_eq!(c.registers, registers);
             assert_eq!(c.flags, flags);
             assert_eq!(c.ip, 0x1002);
@@ -414,7 +416,7 @@ fn accumulator_and_high_divisor_aliases_sample_before_writeback() {
         c.registers[0] = 0xfffa;
         c.registers[2] = 0xffff;
         c.flags = 0xffd7;
-        c.step(&mut b).unwrap();
+        c.instruction_step(&mut b).unwrap();
         assert_eq!((c.registers[0], c.registers[2], c.flags), (6, 0, 0xf702));
     }
 }
@@ -546,7 +548,7 @@ fn byte_vectors(vectors: &[ByteVector], signed: bool, seed: u16) {
                     // ModR/M + odd displacement word (5 fetches) + operand (1).
                     let access = if location == 0 { 2 } else { 6 };
                     let execution = 24;
-                    let cost = c.step(&mut b).unwrap();
+                    let cost = c.instruction_step(&mut b).unwrap();
                     assert_eq!(
                         c.registers, expected,
                         "{model:?}/{color} {code:x?} {dx:04x}:{ax:04x}/{source:x}"
@@ -566,7 +568,7 @@ fn byte_vectors(vectors: &[ByteVector], signed: bool, seed: u16) {
                     assert_eq!(b.ports, ports);
                     assert!(b.ram == ram);
                     assert_eq!(b.cartridge.as_ref().unwrap().save, save);
-                    c.step(&mut b).unwrap();
+                    c.instruction_step(&mut b).unwrap();
                     expected[1] = 0xabcd;
                     assert_eq!(c.registers, expected);
                     assert_eq!(c.ip, 0x1000 + length as u16 + 3);
@@ -581,7 +583,7 @@ fn byte_vectors(vectors: &[ByteVector], signed: bool, seed: u16) {
                     ] {
                         c.ip = 0x1000 + length as u16 + 3;
                         b.ram[c.ip as usize] = jcc;
-                        c.step(&mut b).unwrap();
+                        c.instruction_step(&mut b).unwrap();
                         assert_eq!(c.ip, 0x1000 + length as u16 + if taken { 7 } else { 5 });
                         assert_eq!(c.flags, saved_flags);
                     }
@@ -622,13 +624,13 @@ fn byte_division_aliases_sample_before_writeback() {
             registers[0] = result;
             let segments = c.segments;
             let ram = b.ram.clone();
-            assert_eq!(c.step(&mut b).unwrap(), 26);
+            assert_eq!(c.instruction_step(&mut b).unwrap(), 26);
             assert_eq!(c.registers, registers);
             assert_eq!(c.segments, segments);
             assert!(b.ram == ram);
             assert_eq!(c.flags, flags);
             assert_eq!(c.ip, 0x1002);
-            c.step(&mut b).unwrap();
+            c.instruction_step(&mut b).unwrap();
             assert_eq!(c.ip, 0x1003);
         }
     }
@@ -645,6 +647,7 @@ fn byte_idiv_runtime_modes_and_normal_machine_scheduler_advance_once() {
         let mut m = crate::Machine::new(model);
         m.cpu = c;
         m.bus = b;
+        super::trap_tests::install_handler(&mut m.bus);
         // Mono, planar 2bpp, planar 4bpp and packed 4bpp, returning to
         // mono after each color mode. Mono never writes the color register.
         for mode in [0, 0x80, 0, 0xc0, 0, 0xe0, 0] {
@@ -664,7 +667,7 @@ fn byte_idiv_runtime_modes_and_normal_machine_scheduler_advance_once() {
                 // Compare the actual returned CPU cost with the normal scheduler.
                 let mut cpu = m.cpu.clone();
                 let returned = cpu.step(&mut m.bus).unwrap();
-                assert_eq!(returned, 26); // unchanged 24 execution + 2 fetch
+                assert_eq!(returned, 51); // 24 execution + 2 fetch + 25 trap
                 let remaining = crate::CYCLES_PER_FRAME - m.bus.cycles % crate::CYCLES_PER_FRAME;
                 m.advance((remaining - returned as u64) as u32);
                 let before = m.bus.cycles;
@@ -675,7 +678,11 @@ fn byte_idiv_runtime_modes_and_normal_machine_scheduler_advance_once() {
                 assert_eq!(m.bus.cycles, before + returned as u64);
                 assert_eq!(m.frame_number(), frame + 1);
                 assert_eq!(m.bus.raster_line, 0);
-                assert_eq!(m.bus.accesses.get(), 2);
+                assert_eq!(m.bus.accesses.get(), 7);
+                super::trap_tests::finish_trap(&mut cpu, &mut m.bus, 0x1002, flags);
+                let handler_cost =
+                    super::trap_tests::finish_trap(&mut m.cpu, &mut m.bus, 0x1002, flags);
+                m.advance(handler_cost);
                 assert_eq!(m.cpu.ip, 0x1002);
                 assert_eq!((m.cpu.registers[0], m.cpu.flags), (result, flags));
                 assert_eq!(m.cpu.registers, cpu.registers);
@@ -691,7 +698,7 @@ fn seed_history(c: &mut Cpu, b: &mut Bus, al: u16) {
     b.ram[0x1200..0x1202].copy_from_slice(&[0xf6, 0xe8]); // IMUL AL (alias)
     c.ip = 0x1200;
     c.registers[0] = al;
-    c.step(b).unwrap();
+    c.instruction_step(b).unwrap();
     c.ip = ip;
     c.registers = registers;
 }
@@ -853,6 +860,7 @@ fn explicit_multiplication_producers_replace_history_without_changing_products()
     for (model, color) in modes() {
         for &(code, ax, bx, product, high, dest, flags, div_flags) in cases {
             let (mut c, mut b) = setup(model, color, code);
+            super::trap_tests::install_handler(&mut b);
             // A later producer must replace even the opposite history value.
             seed_history(&mut c, &mut b, if div_flags == 0xf042 { 0x10 } else { 0 });
             c.registers[0] = ax;
@@ -872,17 +880,31 @@ fn explicit_multiplication_producers_replace_history_without_changing_products()
             for _ in 0..6 {
                 c.step(&mut b).unwrap();
             }
+            // NOP is the first instruction after POPF enabled TF. Observe
+            // the saved frame and execute IRET before continuing the history test.
+            super::trap_tests::finish_trap(&mut c, &mut b, (offset + tail.len()) as u16, 0xffd7);
             assert_eq!(c.ip as usize, offset + tail.len());
             // Clone after intervening arithmetic; consuming DIV must not clear
             // history, and word DIV / byte IDIV must not replace it either.
             for mut copy in [c.clone(), c] {
-                for intervening in [&[0x90][..], &[0xf7, 0xf3][..], &[0xf6, 0xfb][..]] {
+                for (intervening, saved_flags) in [
+                    (&[0x90][..], 0xffd7),
+                    (&[0xf7, 0xf3][..], 0xf742),
+                    (&[0xf6, 0xfb][..], 0xf706),
+                ] {
                     copy.ip = 0x1300;
                     b.ram[0x1300..0x1300 + intervening.len()].copy_from_slice(intervening);
                     copy.registers[0] = 6;
                     copy.registers[2] = 0;
                     copy.registers[3] = 2;
+                    copy.flags = 0xffd7;
                     copy.step(&mut b).unwrap();
+                    super::trap_tests::finish_trap(
+                        &mut copy,
+                        &mut b,
+                        0x1300 + intervening.len() as u16,
+                        saved_flags,
+                    );
                     for _ in 0..2 {
                         copy.ip = 0x1400;
                         b.ram[0x1400..0x1402].copy_from_slice(&[0xf6, 0xf3]);
@@ -909,6 +931,7 @@ fn byte_div_history_runtime_modes_and_normal_machine_scheduler_advance_once() {
         let mut m = crate::Machine::new(model);
         m.cpu = c;
         m.bus = b;
+        super::trap_tests::install_handler(&mut m.bus);
         for (seed, flags) in [(0, 0xf742), (0x10, 0xff43)] {
             seed_history(&mut m.cpu, &mut m.bus, seed);
             for mode in [0, 0x80, 0, 0xc0, 0, 0xe0, 0] {
@@ -922,7 +945,7 @@ fn byte_div_history_runtime_modes_and_normal_machine_scheduler_advance_once() {
                 m.cpu.flags = 0xffd7;
                 let mut cpu = m.cpu.clone();
                 let returned = cpu.step(&mut m.bus).unwrap();
-                assert_eq!(returned, 26); // 24 execution + 2 fetch
+                assert_eq!(returned, 51); // 24 execution + 2 fetch + 25 trap
                 let remaining = crate::CYCLES_PER_FRAME - m.bus.cycles % crate::CYCLES_PER_FRAME;
                 m.advance((remaining - returned as u64) as u32);
                 let before = m.bus.cycles;
@@ -933,7 +956,11 @@ fn byte_div_history_runtime_modes_and_normal_machine_scheduler_advance_once() {
                 assert_eq!(m.bus.cycles, before + returned as u64);
                 assert_eq!(m.frame_number(), frame + 1);
                 assert_eq!(m.bus.raster_line, 0);
-                assert_eq!(m.bus.accesses.get(), 2);
+                assert_eq!(m.bus.accesses.get(), 7);
+                super::trap_tests::finish_trap(&mut cpu, &mut m.bus, 0x1002, flags);
+                let handler_cost =
+                    super::trap_tests::finish_trap(&mut m.cpu, &mut m.bus, 0x1002, flags);
+                m.advance(handler_cost);
                 assert_eq!(m.cpu.ip, 0x1002);
                 assert_eq!((m.cpu.registers[0], m.cpu.flags), (3, flags));
                 assert_eq!(m.cpu.registers, cpu.registers);

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 // Independent literal bytes/state and separate fetch/execution expectations.
+// Literal opcode checks use instruction_step to observe FLAGS before TF entry.
+// Ordinary delivery and saved arithmetic FLAGS are covered in trap_tests.
 use super::*;
 
 fn modes() -> [(Model, bool); 5] {
@@ -49,7 +51,7 @@ fn fpo1_every_opcode_and_second_byte_preserve_state_and_alignment() {
                     let ram = b.ram.clone();
                     let ports = b.ports;
                     assert_eq!(
-                        c.step(&mut b).unwrap(),
+                        c.instruction_step(&mut b).unwrap(),
                         3,
                         "{model:?}/{color}: {opcode:02x} {second:02x}"
                     );
@@ -68,7 +70,7 @@ fn fpo1_every_opcode_and_second_byte_preserve_state_and_alignment() {
                     assert!(b.ram == ram);
                     assert_eq!(b.ports, ports);
                     assert_eq!(b.cycles, 0, "CPU returns cost; caller advances devices");
-                    c.step(&mut b).unwrap();
+                    c.instruction_step(&mut b).unwrap();
                     let mut next = registers;
                     next[1] = 0xabcd;
                     assert_eq!(c.registers, next);
@@ -93,7 +95,7 @@ fn poll_preserves_literal_patterns_and_carry_for_following_adc() {
             let registers = c.registers;
             let ram = b.ram.clone();
             let ports = b.ports;
-            assert_eq!(c.step(&mut b).unwrap(), 10);
+            assert_eq!(c.instruction_step(&mut b).unwrap(), 10);
             assert_eq!(b.accesses.get(), 1);
             assert_eq!(10 - b.accesses.get(), 9);
             assert_eq!(c.ip, 0x1001);
@@ -104,7 +106,7 @@ fn poll_preserves_literal_patterns_and_carry_for_following_adc() {
             assert!(b.ram == ram);
             assert_eq!(b.ports, ports);
             assert_eq!(b.cycles, 0);
-            c.step(&mut b).unwrap();
+            c.instruction_step(&mut b).unwrap();
             assert_eq!(c.ip, 0x1003);
             assert_eq!(c.registers[0], result);
             assert_eq!(c.flags, next_flags);
