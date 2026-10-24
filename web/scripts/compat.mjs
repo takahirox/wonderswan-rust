@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { lcdChecks } from './lcd.mjs';
 import { lcdOutputChecks } from './lcd-output.mjs';
+import { ordinaryIoChecks } from './ordinary-io.mjs';
 import { wordTimingChecks } from './word-timing.mjs';
 import { keypadChecks } from './keypad.mjs';
 import { sweepChecks } from './sweep.mjs';
@@ -532,6 +533,7 @@ try {
   await lcdChecks(browser,base,errors);
   await lcdOutputChecks(browser,base,errors);
   await wordTimingChecks(browser,base,errors);
+  await ordinaryIoChecks(browser,base,errors);
   await keypadChecks(browser,base,errors);
   await rawRomChecks(browser,base,errors);
   await consoleChecks(browser,base,errors);

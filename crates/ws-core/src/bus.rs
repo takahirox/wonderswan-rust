@@ -993,9 +993,9 @@ mod tests {
                     cpu.segments[1] = 0;
                     cpu.ip = 0x300;
                     cpu.registers[0] = 0x93;
-                    let cost = if wait == 0 { 4 } else { 5 };
+                    let cost = if wait == 0 { 8 } else { 9 };
                     assert_eq!(cpu.step(&mut b).unwrap(), cost);
-                    assert_eq!(b.accesses.get(), cost - 1);
+                    assert_eq!(b.accesses.get(), cost - 5);
                     b.tick(cost);
                     assert_eq!(cpu.step(&mut b).unwrap(), cost);
                     assert_eq!(cpu.registers[0], 0x13);

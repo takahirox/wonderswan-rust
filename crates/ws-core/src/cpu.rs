@@ -10,6 +10,9 @@ mod fpo1_poll_tests;
 mod word_transfer_tests;
 
 #[cfg(test)]
+mod ordinary_io_tests;
+
+#[cfg(test)]
 mod push_sp_tests;
 
 #[cfg(test)]
@@ -638,6 +641,11 @@ impl Cpu {
                 }
             }
             0xe4..=0xe7 | 0xec..=0xef => {
+                // Appendix A's six decoded clocks include the normal I/O
+                // transfer already charged by the bus. Add five here, keeping
+                // explicit fetches and each extra lane/wait exactly once.
+                // See docs/ordinary-io-timing.md for the bounded timing policy.
+                execution = 5;
                 let port = if opcode & 8 == 0 {
                     self.byte(bus) as u16
                 } else {

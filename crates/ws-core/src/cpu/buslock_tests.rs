@@ -294,7 +294,11 @@ fn buslock_literal_memory_stack_io_and_ineffective_vectors() {
             };
             assert_eq!(
                 c.step(&mut b).unwrap(),
-                1 + accesses,
+                if matches!(code[1], 0xe4..=0xe7 | 0xec..=0xef) {
+                    5
+                } else {
+                    1
+                } + accesses,
                 "{model:?}: {code:02x?}"
             );
             assert_eq!(b.accesses.get(), accesses);
