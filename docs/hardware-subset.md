@@ -19,7 +19,7 @@ commercial software will run or that timing matches a physical console.
 | SRAM | Codes 01/02: 32 KiB; 03: 128 KiB; 04: 256 KiB; 05: 512 KiB; FF initialization, byte reads/writes and C1 banking | Cartridge SRAM is battery-backed, separate from zero-initialized internal volatile RAM. Code 01 follows the current hardware survey (32 KiB), not older 8 KiB descriptions. No-save region reads FF and ignores writes. |
 | External EEPROM | 10: 128 B, 50: 1024 B, 20: 2048 B; C4/C5 data, C6/C7 command, C8/C9 control/status | Word organization, separate read/write buffers, WEN/WDS, READ/WRITE/ERASE, WRAL/ERAL, abort/invalid controller combinations, write latch and busy/done status. Fixed 32-clock read / 3072-clock programming latency, not analogue-accurate. Writes start disabled. 2001's stale read-done quirk is retained. Internal EEPROM uses a separate controller below. |
 | Internal EEPROM | Mono 128 B; Color and Crystal independently 2048 B, retained in mono mode; BA/BB data, BC/BD command, BE status/control; ordinary READ/WRITE, WEN/WDS and sticky settings protection | Six-bit mono / ten-bit Color command addresses follow active mode. BF reads zero and ignores writes. Direct ERASE, WRAL/ERAL and silicon edge cases remain unsupported; see detailed policies below. |
-| Bandai 2003 | CA/CB RTC transport with no attached RTC; CC/CD four GPO directions/data; CE read-only ROM mapping into save area; CF alias of C0; D0/D2/D4 low banks alias C1/C2/C3; D1/D3/D5 high two bits | RTC commands 10–1B use host byte counts 1,1,1,1,7,7,3,3,2,2,2,2, including reset. Terminal READY contains the final read byte with ACTIVE clear; writes preload their first byte; command start ignores READY. The 64-clock scheduled stage is an approximation. Absent RTC reads FF. See [source reconciliation](rtc-transport.md). RTC attachment/detection, calendar progression, persistence, alarms and cartridge IRQ integration remain unavailable, as do attached GPO peripherals, flash programming and lockout handshake. Invalid commands/control values and self-flash writes fail explicitly. |
+| Bandai 2003 | CA/CB RTC transport with independent optional S-3511A attachment; CC/CD four GPO directions/data; CE read-only ROM mapping into save area; CF alias of C0; D0/D2/D4 low banks alias C1/C2/C3; D1/D3/D5 high two bits | RTC commands 10–1B use host byte counts 1,1,1,1,7,7,3,3,2,2,2,2, including reset. Terminal READY contains the final read byte with ACTIVE clear; writes preload their first byte; command start ignores READY. The 64-clock scheduled stage is an approximation. Absent RTC reads FF. See [source reconciliation](rtc-transport.md). Equipped clocks implement retained BCD calendar/status/reset and host-injected time; see [attachment/time/storage policy](rtc-calendar.md). Retail detection, alarm/periodic IRQ delivery and cartridge IRQ wiring remain unavailable, as do attached GPO peripherals, flash programming and lockout handshake. Invalid commands/control values and self-flash writes fail explicitly. |
 | Nonvolatile browser saves | localStorage per SHA-256 of complete ROM bytes, automatic once/second, on pause/hide/pagehide, before replacing a ROM | Reset/model changes preserve in-memory saves. Reload/reopen requires reselecting local ROM. No ROM/save upload or server storage. Corrupt/size-mismatched slots are preserved and not overwritten; denied/full storage shows a notice. Browser profile clearing/private-session expiry removes browser data. No import/export UI. |
 | Console browser records | Separate `wonderswan:console:v1:mono`, `:color`, `:crystal` localStorage keys, base64 complete physical EEPROM bytes | Restored once per model before execution, independent of cartridge SHA-256 saves. Same periodic/lifecycle flushes as cartridge saves, including before model replacement. Corrupt/denied reads block overwriting that slot; quota failures report separately and leave emulation/cartridge saves usable. Browser-local only; no settings editor. |
 | CPU | Generic 8/16-bit register, ModR/M, segment, stack and string operations below; two-byte FPO1 NOP and nonblocking console POLL | Unsupported opcodes/group extensions/ports/prefix combinations stop execution visibly, with CS:IP for unknown opcodes. No silent NOP fallback. |
@@ -218,7 +218,8 @@ CPU access-accounting charges. Disabled/zero-length transfers incur no new
 reservation. The global 128-clock phase continues through disable and frames.
 
 Clock advancement splits at every SDMA event, so scanlines, interrupts/timers,
-EEPROM, RTC and audio advance on the same clock. Each event records a CPU stall;
+EEPROM, RTC transport and audio advance on the same clock. The RTC calendar
+advances only through injected host time. Each event records a CPU stall;
 stalls are serviced before another CPU instruction, IRQ entry or GDMA word.
 Their own elapsed clocks also advance devices. A clock slice cannot recursively
 execute a CPU instruction, and the 7/8-clock reservation leaves CPU time between
@@ -421,8 +422,8 @@ This is a reproducible firmware-free handoff with the bounded SP/DS observations
 above; all other deterministic defaults remain synthetic unless separately
 documented. DS points at the reported boot-ROM base, but no firmware bytes or
 services exist there. Full authentic post-BIOS state is not implemented.
-Internal EEPROM uses the minimal handoff described below. Authentication,
-RTC and broader boot-firmware services are unavailable. `restart`/`change_model`
+Internal EEPROM uses the minimal handoff described below. Authentication and
+broader boot-firmware services are unavailable. `restart`/`change_model`
 reset volatile hardware while preserving the cartridge and completed nonvolatile
 writes; a model incompatibility fails before replacing state. `reset` unloads the cartridge and clears volatile
 state but retains all three console EEPROM records; browser ordinary Restart/model

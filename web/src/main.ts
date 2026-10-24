@@ -1,4 +1,4 @@
-import { Saves, romIdentity, consoleKey } from "./saves";
+import { Saves, romIdentity, consoleKey, RtcRecords, rtcKey } from "./saves";
 import { Sound } from "./audio";
 import init, { WebMachine } from "../pkg/ws_web.js";
 
@@ -39,6 +39,14 @@ async function main() {
   let loaded: { name: string; key: string } | null = null;
   const report = (message: string) => { element("notice").textContent = message; };
   const saves = new Saves(report);
+  const rtcMode = element<HTMLSelectElement>("rtc-mode");
+  const clocks = new RtcRecords(message => { element("rtc-notice").textContent = message; });
+  function syncClock() { if (loaded) machine.sync_rtc(Date.now()); }
+  function restoreClock() {
+    if (!loaded || !machine.rtc_data().length) return;
+    clocks.restore(rtcKey(loaded.key), data => machine.load_rtc_data(data));
+    syncClock();
+  }
   const consoles = new Saves(message => { element("console-notice").textContent = `${machine.model_name()}: ${message}`; }, true);
   const restoredConsoles = new Set<string>();
   function restoreConsole() {
@@ -61,7 +69,11 @@ async function main() {
     enableAudio.hidden = !sound.needsUnlock;
   }
   function persist() {
-    if (loaded) saves.store(loaded.key, machine.save_data());
+    syncClock();
+    if (loaded) {
+      saves.store(loaded.key, machine.save_data());
+      clocks.store(rtcKey(loaded.key), machine.rtc_data());
+    }
     consoles.store(consoleKey(machine.model()), machine.console_data());
   }
   let readRevision = 0;
@@ -146,6 +158,7 @@ async function main() {
     if (!running) return;
     if (lastTime !== null) elapsed += Math.min(time - lastTime, 100);
     lastTime = time;
+    syncClock();
     try {
       // Bounded catch-up. Never run an unbounded loop after suspension.
       let frames = 0;
@@ -169,7 +182,10 @@ async function main() {
   function load(name: string, bytes: Uint8Array, key: string, autoplay = true) {
     persist();
     machine.load_rom(bytes); // Validation errors preserve the previous machine.
+    machine.configure_rtc(rtcMode.value);
     loaded = { name, key };
+    element("rtc-notice").textContent = "";
+    restoreClock();
     element("notice").textContent = "";
     const restored = saves.restore(key, machine.save_data().length);
     if (restored) machine.load_save(restored);
@@ -242,6 +258,12 @@ async function main() {
     sound.setVolume(Number(volume.value));
     // Raising the level does not override an explicit mute preference.
     if (sound.volume > 0 && sound.needsUnlock) sound.unlock();
+  });
+  rtcMode.addEventListener("change", () => {
+    if (!loaded) return;
+    persist();
+    machine.configure_rtc(rtcMode.value);
+    restoreClock();
   });
   window.setInterval(persist, 1000);
   window.addEventListener("pagehide", () => { resumeAfterDialog = false; visibilityRevision++; setRunning(false); });

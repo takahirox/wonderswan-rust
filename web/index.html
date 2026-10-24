@@ -68,6 +68,7 @@
             <p id="error" role="alert"></p>
             <button id="retry" type="button" hidden>Retry initialization</button>
             <p id="console-notice" role="status"></p>
+            <p id="rtc-notice" role="status"></p>
             <p id="notice" role="status"></p>
           </div>
           <div id="touch-controls" role="group" aria-label="Touch controller">
@@ -119,6 +120,11 @@
         <p>X and Y are independent hardware groups; both can be held with A/B/Start. Portrait cartridges rotate the screen counterclockwise. Key and touch labels always select the same raw buttons; they do not rotate with the image. Beacon Trail uses the X group.</p>
         <p>Click the screen to use the keyboard. Touch controls appear on small or touch screens. Hiding the tab pauses; choose Resume when you return.</p>
         <p>Changing the console restarts the current cartridge. Local ROM files stay in your browser and are never uploaded.</p>
+        <label for="rtc-mode">Cartridge clock</label>
+        <select id="rtc-mode">
+          <option value="auto">Use cartridge clock indication</option>
+          <option value="absent">No clock attached</option>
+        </select>
         <h3>Compatibility</h3><p>The original demo is silent and uses monochrome tiles on all three models. The core also supports color layers/sprites, cartridge saves, interrupts/timers, four-channel sound, and Sound DMA/Hyper Voice PCM on Color and Crystal. Compatibility is limited; unsupported instructions or hardware operations stop execution. Saves stay in this browser, keyed by ROM content.</p>
         <h3>Sound</h3><p>Sound defaults to on at 70% after you choose Play demo or Load ROM. Browsers may require another click or tap on Enable audio to allow playback. Mute / Unmute keeps your volume level; the 0–100% slider adjusts output live (0% is silent). Raising the slider while muted keeps it muted. Sound preferences stay in this browser, separately from cartridge saves. Unavailable audio does not stop gameplay. Beacon Trail is deliberately silent.</p>
         <h3>Original demo · CC0-1.0</h3><p>Beacon Trail’s code, lettering, and graphics were created for this project in 2026 and dedicated to the public domain under CC0-1.0. No commercial ROM or proprietary firmware is included.</p>

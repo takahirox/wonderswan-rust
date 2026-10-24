@@ -24,6 +24,7 @@ fn original_cartridges_execute_mapper_save_cpu_interrupt_input_video_and_audio_p
         for model in [Model::Mono, Model::Color, Model::Crystal] {
             let mut m = Machine::new(model);
             m.load_rom(rom).unwrap();
+            m.set_rtc_present(false).unwrap(); // Preserve the original absent-chip probe.
             frames(&mut m, 4);
             assert_eq!(m.frame_number(), 4);
             assert_eq!(word(&m, 0x400), 1, "probe {i}");
@@ -61,6 +62,7 @@ fn original_cartridges_execute_mapper_save_cpu_interrupt_input_video_and_audio_p
             assert_eq!(m.save_data()[0], 2);
             let mut reopened = Machine::new(model);
             reopened.load_rom(rom).unwrap();
+            reopened.set_rtc_present(false).unwrap();
             reopened.load_save(m.save_data()).unwrap();
             frames(&mut reopened, 4);
             assert_eq!(reopened.save_data()[0], 3);
