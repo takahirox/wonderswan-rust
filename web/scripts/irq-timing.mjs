@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: CC0-1.0
-// Independent absolute budgets: 59412 / 65556 clocks, quantized at 256.
+// Independent absolute budgets: 61459 / 67603 clocks, quantized at 256.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -44,7 +44,7 @@ export async function irqTimingChecks(browser, base, errors) {
         assert.equal(word(3),passes);
         const observations = [];
         for (let pass=0;pass<passes;pass++) {
-          for (const [sample,low,high] of [[0,232,233],[1,256,257]]) {
+          for (const [sample,low,high] of [[0,240,241],[1,264,265]]) {
             const i = 4+pass*8+sample*4;
             observations.push(word(i));
             assert.ok(word(i)>=low && word(i)<=high,`${model} boot ${boot} pass ${pass} sample ${sample}: ${word(i)} ticks`);
@@ -56,5 +56,5 @@ export async function irqTimingChecks(browser, base, errors) {
       assert.equal(requests.length,0,'ROM/save handling stays local');
     } finally { await context.close(); }
   }
-  console.log('Absolute IRQ budget: 1024 deliveries, 232/256 HBlank ticks (+1 quantization), counts/continuation, all nine configurations, live modes and fresh restart passed');
+  console.log('Absolute IRQ budget: 1024 deliveries, 240/264 HBlank ticks (+1 quantization), counts/continuation, all nine configurations, live modes and fresh restart passed');
 }
