@@ -11,6 +11,7 @@ import { shiftRotateChecks } from './shift-rotate.mjs';
 import { divisionChecks } from './divide.mjs';
 import { rtcChecks } from './rtc.mjs';
 import { pushSpChecks } from './push-sp.mjs';
+import { conversionChecks } from './conversion.mjs';
 import { multiplicationChecks } from './multiply.mjs';
 import { fpo1PollChecks } from './fpo1-poll.mjs';
 import { buslockChecks } from './buslock.mjs';
@@ -524,6 +525,7 @@ try {
   await pushSpChecks(browser,base,errors);
   await rtcChecks(browser,base,errors);
   await fpo1PollChecks(browser,base,errors);
+  await conversionChecks(browser,base,errors);
   await multiplicationChecks(browser,base,errors);
   await divisionChecks(browser,base,errors);
   await shiftRotateChecks(browser,base,errors);

@@ -52,6 +52,7 @@ if __name__ == '__main__':
     images.append(('sweep', build(2, 0, 0, 0, 'sweep.asm')))
     images.append(('shift-rotate', build(2, 0, 0, 0, 'shift-rotate.asm')))
     images.append(('divide', build(2, 0, 0, 0, 'divide.asm')))
+    images.append(('conversion', build(2, 0, 0, 0, 'conversion.asm')))
     images.append(('multiply', build(2, 0, 0, 0, 'multiply.asm')))
     images.append(('fpo1-poll', build(2, 0, 0, 0, 'fpo1-poll.asm')))
     images.append(('rtc', build(2, 1, 0, 0, 'rtc.asm')))
