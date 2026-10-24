@@ -1,6 +1,6 @@
 # Original hardware compatibility probes
 
-All source (`compat.asm`, `gdma.asm`, `sound.asm`, `sweep.asm`, `startup.asm`, `buslock.asm`, `fpo1-poll.asm`, `multiply.asm`, `conversion.asm`, `divide.asm`, `push-sp.asm`, `rtc.asm`, `shift-rotate.asm`, `internal-eeprom.asm`, `a0.asm`, `raw-rom.asm`, `lcd.asm`, `lcd-output.asm`, `word-timing.asm`, `keypad.asm`, `build.py`), generated cartridges in `generated/`,
+All source (`compat.asm`, `gdma.asm`, `sound.asm`, `sweep.asm`, `startup.asm`, `buslock.asm`, `fpo1-poll.asm`, `multiply.asm`, `conversion.asm`, `divide.asm`, `push-sp.asm`, `rtc.asm`, `shift-rotate.asm`, `internal-eeprom.asm`, `a0.asm`, `raw-rom.asm`, `lcd.asm`, `lcd-output.asm`, `word-timing.asm`, `ordinary-io.asm`, `keypad.asm`, `build.py`), generated cartridges in `generated/`,
 and test graphics/sound data in this directory are original work authored for
 this repository for Issues #11, #13, #19, #21, #23, #25, #27, #29, #31, #33, #35, #37, #39, #41, #43, #45, #47, #51, #53 and #55, dedicated to the public domain under **CC0-1.0**
 ([full license](LICENSE)). No downloaded ROM, BIOS, emulator implementation,
@@ -671,3 +671,41 @@ policies. See [source reconciliation](../docs/conversion-flags.md),
 [Issue #57 baseline failures and corrected validation](../docs/issue-57-validation.md),
 [DAA/DAS source reconciliation and independent oracle](../docs/decimal-adjust.md) and
 [Issue #59 executed validation](../docs/issue-59-validation.md).
+
+## Absolute ordinary IN/OUT timing probe (Issue #61)
+
+`ordinary-io.asm` and `generated/ordinary-io.ws` are original CC0-1.0 source/data,
+128 KiB with 32 KiB SRAM, normal reset/footer banking and checksum, built by
+`python3 fixtures/build.py`. No firmware, proprietary ROM or third-party code
+is included. The existing relative word-timing probe is preserved byte for byte.
+
+Each phase executes twelve 2048-transfer unrolled bursts in internal RAM:
+immediate IN byte/even-word/odd-word, immediate OUT byte/even-word/odd-word,
+then the same DX forms. Ports BC/BD and BB/BC provide valid even/odd internal
+lanes without writing EEPROM control or starting a device operation. DX forms
+include a two-clock NOP after each transfer to keep patched code two bytes wide.
+A8 HBlank timer readings bracket each burst. Under the documented emulator policy,
+the interval includes the starting IN AX,A8 (8 clocks), MOV BP,AX (3 clocks),
+and the burst. The terminal IN samples before its returned clocks are scheduled.
+Thus 11 + 2048 × 8/9/10 clocks gives independent floor/ceil bounds 64–65,
+72–73 and 80–81 line ticks. The possible one-tick variation comes only from the
+unknown timer phase at the first observation. These are bounded-policy tests,
+not physical-console pipeline measurements. Expected bounds are written separately
+in cartridge self-checks, native Rust tests and production Chromium tests.
+
+Mono executes mode 00 once. Color and Crystal execute the full runtime round trip
+00→80→00→C0→00→E0→00. Each boot clears 0400–04FF, increments the retained boot
+counter and invalidates saved success before measuring. RAM 0400 is the boot
+count, 0402 is 600D/0BAD on completion, and 0404 is phase count (1/7). Starting
+at 0406, each 26-byte phase record holds a mode word and twelve elapsed-tick
+observations in the order above. The complete 256-byte result block mirrors to
+SRAM 0000–00FF; unused bytes must be zero. Both hosts poison retained success
+before first boot and verify its invalidation after one frame, then check all
+observations and a second fresh boot after Restart. Chromium exercises the actual
+production player with controlled host RAF delivery and real pause/save flushing;
+cartridge and save bytes remain local. Native tests also compare every RAM/SRAM
+byte. The baseline fails the first absolute observation (32 versus 64–65 ticks).
+
+SHA-256: `2876e7c63b4609285f805f3b24ba898cc7930138244f66282e0274f3a473fac1`.
+See [timing reconciliation](../docs/ordinary-io-timing.md) and
+[executed validation](../docs/issue-61-validation.md).

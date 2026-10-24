@@ -50,7 +50,9 @@ or an incompatible/inaccessible region.
 
 The existing explicit fetch approximation remains: opcode/prefix bytes are charged
 separately; only existing operand-word helpers consolidate. No prefetch queue or
-absolute instruction-cycle accuracy is claimed. CPU steps return execution plus
+absolute instruction-cycle accuracy is claimed. Ordinary IN/OUT now uses the
+[reconciled six-clock decoded interval](ordinary-io-timing.md), including its
+already charged normal I/O transfer, while preserving this raw transfer table. CPU steps return execution plus
 bus costs to the existing shared clock once. DMA continues to use its separate
 mapped accesses and costs. Firmware-free startup, live A0 controls, interrupts,
 bounded REP, LCD/audio/device scheduling and browser-local ownership remain in

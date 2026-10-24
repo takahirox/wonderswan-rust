@@ -134,10 +134,10 @@ fn cpu_byte_io_to_reserved_port_preserves_ax_high_byte_and_gdma_registers() {
             cpu.registers[2] = 0x43;
             // Original code: OUT DX, AL; IN AL, DX; INC BX.
             b.ram[0x300..0x303].copy_from_slice(&[0xee, 0xec, 0x43]);
-            assert_eq!(cpu.step(&mut b).unwrap(), 3);
+            assert_eq!(cpu.step(&mut b).unwrap(), 7);
             assert_eq!(cpu.ip, 0x301);
             assert_eq!(cpu.registers[0], 0xa500 | value);
-            assert_eq!(cpu.step(&mut b).unwrap(), 3);
+            assert_eq!(cpu.step(&mut b).unwrap(), 7);
             assert_eq!(cpu.ip, 0x302);
             assert_eq!(cpu.registers[0], 0xa500);
             assert_eq!(cpu.registers[2], 0x43);
@@ -168,11 +168,11 @@ fn cpu_word_io_masks_source_segment_and_continues_through_real_transfer() {
             // Original code: OUT DX, AX; IN AX, DX; INC BX; OUT 48, AL; INC BX.
             b.ram[0x300..0x306].copy_from_slice(&[0xef, 0xed, 0x43, 0xe6, 0x48, 0x43]);
             let source = 0x1234 | (u32::from(value & 0xf) << 16);
-            assert_eq!(cpu.step(&mut b).unwrap(), 4);
+            assert_eq!(cpu.step(&mut b).unwrap(), 8);
             assert_eq!(cpu.ip, 0x301);
             assert_eq!(cpu.registers[0], value);
             assert_eq!(state(&mut b), (source, 0x1400, 4, 0x40));
-            assert_eq!(cpu.step(&mut b).unwrap(), 4);
+            assert_eq!(cpu.step(&mut b).unwrap(), 8);
             assert_eq!(cpu.ip, 0x302);
             assert_eq!(cpu.registers[0], value & 0xf);
             assert_eq!(cpu.registers[2], 0x42);
@@ -181,7 +181,7 @@ fn cpu_word_io_masks_source_segment_and_continues_through_real_transfer() {
             assert_eq!(cpu.ip, 0x303);
             assert_eq!(cpu.registers[3], 1);
             cpu.registers[0] = 0x80;
-            assert_eq!(cpu.step(&mut b).unwrap(), 4);
+            assert_eq!(cpu.step(&mut b).unwrap(), 8);
             for cycles in [7, 2] {
                 assert_eq!(cpu.step(&mut b).unwrap(), cycles);
                 assert_eq!(cpu.ip, 0x305);
@@ -433,7 +433,7 @@ fn enabling_out_keeps_its_normal_cost_and_dma_finishes_before_the_next_instructi
     cpu.registers[0] = 0x80;
     b.ram[0x300..0x303].copy_from_slice(&[0xe6, 0x48, 0x43]); // OUT 48, AL; INC BX
     program(&mut b, 0x20000, 0x100, 4, 0);
-    assert_eq!(cpu.step(&mut b).unwrap(), 4); // instruction + 2 fetches + OUT
+    assert_eq!(cpu.step(&mut b).unwrap(), 8); // decoded interval + 2 fetches
     assert_eq!(cpu.ip, 0x302);
     assert_eq!(cpu.step(&mut b).unwrap(), 7);
     assert_eq!(&b.ram[0x100..0x104], &[0x33, 0x33, 0, 0]);

@@ -225,7 +225,7 @@ fn literal_io_costs_immediate_dx_strings_and_byte_lanes() {
                 } else {
                     assert_eq!(
                         result.unwrap(),
-                        if opcode & 8 == 0 { 4 } else { 3 },
+                        if opcode & 8 == 0 { 8 } else { 7 },
                         "{port:x}/{opcode:x}"
                     );
                     if !output {
@@ -254,11 +254,11 @@ fn literal_io_costs_immediate_dx_strings_and_byte_lanes() {
                 assert!(c.step(&mut b).is_err());
                 continue;
             }
-            assert_eq!(c.step(&mut b).unwrap(), if eligible { 3 } else { 4 });
-            assert_eq!(c.step(&mut b).unwrap(), if eligible { 3 } else { 4 });
+            assert_eq!(c.step(&mut b).unwrap(), if eligible { 7 } else { 8 });
+            assert_eq!(c.step(&mut b).unwrap(), if eligible { 7 } else { 8 });
             assert_eq!(c.registers[0], data);
         }
-        for (port, value, cost) in [(0xa5, 0x3412, 4), (0xbe, 0, 4), (0x16, 0, 4), (0xc0, 0, 4)] {
+        for (port, value, cost) in [(0xa5, 0x3412, 8), (0xbe, 0, 8), (0x16, 0, 8), (0xc0, 0, 8)] {
             let (mut c, mut b) = setup(model, color, &[0xef]);
             c.registers[2] = port;
             c.registers[0] = value;
@@ -268,7 +268,7 @@ fn literal_io_costs_immediate_dx_strings_and_byte_lanes() {
         let (mut c, mut b) = setup(model, color, &[0xee, 0xee, 0xec, 0xec]);
         c.registers[2] = 0xa4;
         for _ in 0..4 {
-            assert_eq!(c.step(&mut b).unwrap(), 3);
+            assert_eq!(c.step(&mut b).unwrap(), 7);
         }
         for opcode in [0x6d, 0x6f] {
             for reverse in [false, true] {
