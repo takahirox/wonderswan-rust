@@ -799,3 +799,26 @@ negative controls, observations and identities. The existing IRQ fixture bytes
 are unchanged; its consumers now use the corrected LOOP budget documented in
 [external IRQ timing](../docs/external-irq-timing.md). No third-party code or
 assets, proprietary ROM or firmware are included.
+
+
+## Absolute direct JMP probe (Issue #73)
+
+`jmp-timing.asm` builds the original CC0-1.0 `generated/jmp-timing.ws`, a
+128 KiB cartridge with 32 KiB SRAM and ordinary firmware-free reset/footer/checksum.
+SHA-256: `a609ec18fda97aa419338cf98905eaf8d2ab04097d305b38d6cec7172d192123`.
+No third-party implementation, ROM, firmware, code or assets are incorporated.
+The NEC manual informs timing semantics only; the source and cartridge are original.
+
+Six internal-RAM bodies measure EB/E9/EA and even/odd destinations with absolute
+HBlank timer budgets, independent execution/destination counts (4096 each),
+final CX=0 and continuation marker 51A7. The 512-byte RAM 0400–05FF block
+is mirrored to SRAM; completion/boot/model/pass words precede six five-word
+records per mode pass. Mono uses 00 and Color/Crystal use 00/80/00/C0/00/E0/00.
+Every boot invalidates retained success and clears volatile observations.
+Independent native and production Chromium consumers poison stale saves,
+inspect startup invalidation, require all absolute results, check unused cleared
+records and restart freshly. Browser cartridge/save bytes stay local and use
+the existing SHA-256 identity and persistence paths. Reproduce using
+`python3 fixtures/build.py --check`. See [interval derivation](../docs/jmp-timing.md)
+and [actual validation](../docs/issue-73-validation.md). This bounded emulator
+oracle does not establish physical-console or commercial-title compatibility.

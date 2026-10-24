@@ -84,3 +84,10 @@ handler count 1024, final LOOP count 0 and final handler countdown 0. The CPU
 clears RAM and invalidates SRAM completion before sampling, then publishes all
 128 words to SRAM. Consumers poison retained saves and check both fresh runs;
 old completion alone cannot fabricate timing, count or continuation observations.
+
+Issue #73 changes direct JMP costs outside this measured interval and handler.
+Reinspection of assembled bytes finds IN/MOV/STI/LOOP/CLI and
+INC/DEC/JNZ/MOV/OUT/IRET, with no direct JMP. The 61459/67603-clock
+and 240–241/264–265-tick ranges and 1024/0/0 assertions remain unchanged.
+See [Issue #73 validation](issue-73-validation.md) for current observations and
+the repeated former-IRQ-charge negative control.
