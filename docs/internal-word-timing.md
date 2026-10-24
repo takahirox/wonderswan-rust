@@ -57,7 +57,9 @@ bus costs to the existing shared clock once. External IRQ entry uses the
 [32-clock baseline with actual transfer penalties](external-irq-timing.md). DMA continues to use its separate
 mapped accesses and costs. [Direct JMP](jmp-timing.md) uses E9/EB four and EA
 seven decoded execution clocks plus odd-target adjustment, with actual opcode
-and immediate fetches retained separately. Firmware-free startup, live A0 controls, interrupts,
+and immediate fetches retained separately. [Direct CALL](call-timing.md) uses
+near/far residual execution 4/8 plus destination parity, retaining actual fetches
+and one/two stack writes. Firmware-free startup, live A0 controls, interrupts,
 bounded REP, LCD/audio/device scheduling and browser-local ownership remain in
 their existing paths. Commercial games and physical consoles are untested.
 

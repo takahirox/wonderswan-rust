@@ -461,8 +461,8 @@ fn literal_internal_prefix_fetch_alignment_and_rep_rejection() {
 fn shared_call_indirect_jmp_and_corrected_jcc_jcxz_cost_and_state() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         for (code, flags, cx, target, cost, call) in [
-            (&[0xe8, 2, 0][..], 0xfcd7, 0, 0x1005, 5, true),
-            (&[0xe8, 3, 0][..], 0xf002, 1, 0x1006, 5, true),
+            (&[0xe8, 2, 0][..], 0xfcd7, 0, 0x1005, 9, true),
+            (&[0xe8, 3, 0][..], 0xf002, 1, 0x1006, 8, true),
             (&[0xff, 0xe0][..], 0xfcd7, 0, 0x1234, 6, false),
             (&[0xff, 0xe0][..], 0xf002, 1, 0x1234, 6, false),
             (&[0xff, 0x26, 0, 8][..], 0xf002, 1, 0x1041, 8, false),

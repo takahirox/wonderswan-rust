@@ -13,6 +13,9 @@ mod jcc_tests;
 mod jmp_tests;
 
 #[cfg(test)]
+mod call_tests;
+
+#[cfg(test)]
 mod loop_tests;
 #[cfg(test)]
 mod trap_tests;
@@ -757,11 +760,11 @@ impl Cpu {
                     self.push(bus, self.ip);
                 }
                 self.ip = self.ip.wrapping_add(displacement);
-                if opcode == 0xe9 {
-                    // BR near: decoded execution plus odd-target adjustment.
-                    // Actual fetch charges stay separate; E8 CALL is unchanged.
-                    execution = 4 + u32::from(self.ip & 1);
-                }
+                // BR near uses four decoded clocks; CALL near uses five
+                // including its normal stack write, already charged by push.
+                // Actual fetches/writes and waits stay separate, counted once.
+                // Appendix A, Table A-1/Note 5; see docs/call-timing.md.
+                execution = 4 + u32::from(self.ip & 1);
             }
             0xea => {
                 let offset = self.word(bus);
@@ -982,7 +985,8 @@ impl Cpu {
                 self.push(bus, self.ip);
                 self.ip = ip;
                 self.segments[1] = cs;
-                execution = 6;
+                // Ten decoded clocks include two aligned stack writes.
+                execution = 8 + u32::from(self.ip & 1);
             }
             0x9c => self.push(bus, normalize_flags(self.flags)),
             0x9d => {
