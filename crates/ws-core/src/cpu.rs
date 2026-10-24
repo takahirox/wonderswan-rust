@@ -24,6 +24,9 @@ mod shift_tests;
 #[cfg(test)]
 mod conversion_tests;
 
+#[cfg(test)]
+mod ascii_adjust_tests;
+
 const CF: u16 = 1;
 const PF: u16 = 4;
 const AF: u16 = 16;
@@ -751,17 +754,28 @@ impl Cpu {
                 self.szp(al, false);
             }
             0x37 | 0x3f => {
-                let adjust = self.reg(0, false) & 15 > 9 || self.flags & AF != 0;
+                let [mut al, mut ah] = self.registers[0].to_le_bytes();
+                let adjust = al & 15 > 9 || self.flags & AF != 0;
+                al &= 15;
                 if adjust {
-                    self.registers[0] = if opcode == 0x37 {
-                        self.registers[0].wrapping_add(0x106)
+                    if opcode == 0x37 {
+                        al = al.wrapping_add(6);
+                        ah = ah.wrapping_add(1);
                     } else {
-                        self.registers[0].wrapping_sub(0x106)
-                    };
+                        al = al.wrapping_sub(6);
+                        ah = ah.wrapping_sub(1);
+                    }
                 }
-                self.set_reg(0, false, self.reg(0, false) & 15);
+                self.registers[0] = u16::from_le_bytes([al & 15, ah]);
+                // V30MZ adjustment flags are independent of result SZP.
+                // See docs/ascii-adjust.md for experiment and timing evidence.
                 self.flag(AF, adjust);
                 self.flag(CF, adjust);
+                self.flag(ZF, adjust);
+                self.flag(SF, !adjust);
+                self.flag(PF, true);
+                self.flag(OF, false);
+                execution = 9;
             }
             0x60 => {
                 let sp = self.registers[4];
