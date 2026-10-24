@@ -306,9 +306,15 @@ Implemented with generic operands, not ROM-specific dispatch:
   Control flags and quotient/remainder remain unchanged by this correction.
   Successful byte IDIV clears AF/CF/OF and derives SF/ZF/PF from quotient AL,
   preserving unrelated FLAGS on every model and across graphics-mode changes.
-  Byte DIV multiplication-history flags and exceptional-result refinements
-  remain unresolved. See [word-division source reconciliation](word-division-flags.md)
-  and [byte-IDIV correction and limits](byte-idiv-flags.md).
+  Successful byte DIV clears AF/PF/SF, sets ZF for an exact odd quotient and
+  restores CF/OF from private explicit-multiplication history, independently of
+  live FLAGS and graphics mode on every model. Synthetic startup clears history;
+  clones preserve it, successful lifecycle changes replace it and rejected changes
+  preserve it. This startup value is policy, not a measured firmware handoff.
+  Exceptional-result refinements and implicit conversion-history effects remain
+  unresolved. See [word-division source reconciliation](word-division-flags.md),
+  [byte-IDIV correction](byte-idiv-flags.md) and
+  [byte-DIV evidence, inferences and limits](byte-div-flags.md).
 - DAA/DAS, AAA/AAS, AAM/AAD; CF/PF/AF/ZF/SF/OF arithmetic; logical AF cleared.
   Successful AAM clears AF/CF/OF and derives SZP from remainder AL; AAD truncates
   AH × immediate base to a byte, adds original AL, clears AH and takes all six

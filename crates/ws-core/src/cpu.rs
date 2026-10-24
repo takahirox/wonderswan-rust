@@ -60,6 +60,9 @@ pub struct Cpu {
     pub flags: u16,
     pub halted: bool,
     interrupt_shadow: u8,
+    // Successful byte DIV restores CF/OF from the last explicit multiplication.
+    // This is independent of architectural FLAGS; see docs/byte-div-flags.md.
+    multiplication_overflow: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -78,6 +81,8 @@ impl Default for Cpu {
             flags: FIXED_FLAGS,
             halted: false,
             interrupt_shadow: 0,
+            // Synthetic startup policy, not a measured firmware-handoff value.
+            multiplication_overflow: false,
         }
     }
 }
@@ -839,6 +844,7 @@ impl Cpu {
                 let result = source * imm;
                 self.registers[((m >> 3) & 7) as usize] = result as u16;
                 let overflow = result != result as i16 as i32;
+                self.multiplication_overflow = overflow;
                 self.flag(CF, overflow);
                 self.flag(OF, overflow);
                 // Console experiments define these otherwise undefined flags.
@@ -1045,6 +1051,7 @@ impl Cpu {
                         }
                         self.flag(CF, overflow);
                         self.flag(OF, overflow);
+                        self.multiplication_overflow = overflow;
                         self.flags &= !(AF | PF | SF);
                         // Unsigned ZF follows the physical SOC, not video mode.
                         self.flag(ZF, signed || bus.model != Model::Mono);
@@ -1107,6 +1114,13 @@ impl Cpu {
                                     // quotient AL, independently of remainder AH.
                                     self.flags &= !(AF | CF);
                                     self.szp(q as u8 as u16, false);
+                                } else {
+                                    // WSCPUTest: exact odd quotient sets ZF;
+                                    // CF/OF come from multiplication, not FLAGS.
+                                    self.flags &= !(AF | PF | SF);
+                                    self.flag(ZF, rem == 0 && q & 1 != 0);
+                                    self.flag(CF, self.multiplication_overflow);
+                                    self.flag(OF, self.multiplication_overflow);
                                 }
                                 self.set_reg(0, false, q as u16);
                                 self.set_reg(4, false, rem as u16);
@@ -1690,9 +1704,13 @@ mod compatibility_tests {
         }
     }
     #[test]
-    fn successful_division_clears_overflow_for_byte_word_signed_and_unsigned_forms() {
+    fn successful_word_division_and_byte_idiv_clear_overflow() {
         for wide in [false, true] {
             for signed in [false, true] {
+                // Byte DIV restores multiplication history (Issue #65).
+                if !wide && !signed {
+                    continue;
+                }
                 for initial_of in [0, OF] {
                     let opcode = if wide { 0xf7 } else { 0xf6 };
                     let operand = if signed { 0xfb } else { 0xf3 }; // IDIV/DIV BX or BL

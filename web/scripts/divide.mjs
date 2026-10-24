@@ -7,8 +7,9 @@ import { createHash } from 'node:crypto';
 // Independent literals, not imported from the core or generated from assembly.
 function expected(model,boot) {
   const mono = model === 'mono';
-  const words = [0x600d,boot,mono ? 0 : 2,mono ? 1 : 3];
+  const words = [0x600d,boot,mono ? 0 : 2,mono ? 1 : 7];
   // Literal quotient, remainder, full FLAGS and Z/C/O/S/P/LT branches.
+  words.push(0x0003,0x5aa5,0xf442,1); // cleared startup history
   const results = [
         0x0000, 0x0000, 0xf002, 0x0000, 0x0000, 0x0000, 0xf402, 0x0000,
         0x0003, 0x0000, 0xf042, 0x0001, 0x0003, 0x0000, 0xf442, 0x0001,
@@ -52,9 +53,19 @@ function expected(model,boot) {
         0x0081, 0x5aa5, 0xf086, 0x0038, 0x0081, 0x5aa5, 0xf486, 0x0038,
         0x00fc, 0x5aa5, 0xf086, 0x0038, 0x00fc, 0x5aa5, 0xf486, 0x0038,
         0x007e, 0x5aa5, 0xf006, 0x0010, 0x007e, 0x5aa5, 0xf406, 0x0010,
+
+        // Byte DIV: AX, preserved DX, full FLAGS, history-sensitive branches.
+        0x0000,0x5aa5,0xf002,0, 0x0100,0x5aa5,0xf402,0,
+        0x0003,0x5aa5,0xf042,1, 0x0004,0x5aa5,0xf402,0,
+        0x0103,0x5aa5,0xf402,0, 0x0104,0x5aa5,0xf002,0,
+        0x00ff,0x5aa5,0xf042,1, 0x01ff,0x5aa5,0xf402,0,
+        0x0000,0x5aa5,0xf803,38, 0x0100,0x5aa5,0xfc03,38,
+        0x0003,0x5aa5,0xf843,39, 0x0004,0x5aa5,0xfc03,38,
+        0x0103,0x5aa5,0xfc03,38, 0x0104,0x5aa5,0xf803,38,
+        0x00ff,0x5aa5,0xf843,39, 0x01ff,0x5aa5,0xfc03,38,
   ];
-  for (let i=0;i<(mono ? 1 : 3);i++) words.push(...results);
-  while (words.length < 988) words.push(0);
+  for (let i=0;i<(mono ? 1 : 7);i++) words.push(...results);
+  while (words.length < 2752) words.push(0);
   return words;
 }
 
@@ -103,5 +114,5 @@ export async function divisionChecks(browser, base, errors) {
       assert.equal(requests.length,0,'ROM and save data stay browser-local');
     } finally { await context.close(); }
   }
-  console.log('Word DIV/IDIV and byte IDIV CPU probe: literal results, full flags, branches, mode transitions and fresh restart passed on all three production Wasm models');
+  console.log('DIV/IDIV and byte DIV multiplication-history CPU probe: literal results, full flags, branches, mode transitions and fresh restart passed on all three production Wasm models');
 }
