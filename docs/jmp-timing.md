@@ -37,13 +37,13 @@ within CS at IP FFFF; physical addresses wrap at 20 bits independently.
 EA loads its literal CS:IP, including FFFF:0010 -> physical 00000.
 All full FLAGS (including reserved bits), registers, stack, other segments,
 memory and ports are preserved. Shared E8 CALL retains its current one-clock
-execution plus actual fetches and stack writes; indirect JMP and Jcc/JCXZ
-retain their existing timing. REP remains rejected. IRQ/TF entry and DMA
+execution plus actual fetches and stack writes; indirect JMP retains its
+existing timing. Issue #75 now applies the taken odd-target clock to
+[Jcc/JCXZ](jcc-timing.md). REP remains rejected. IRQ/TF entry and DMA
 reservations remain separate.
 
 These are serialized emulator expectations, not console measurements. Full
-prefetch, external bus policy, CALL, indirect JMP and conditional branches are
-separate work.
+prefetch, external bus policy, CALL and indirect JMP remain separate work.
 
 ## Original absolute cartridge interval
 
@@ -72,8 +72,9 @@ count 1/7. Each pass has six five-word records (ticks, BX, BP, CX, marker).
 All 512 bytes are cleared on boot and mirrored to SRAM. Startup invalidates
 retained success before measurement. Consumers poison saves and restart.
 
-The LOOP and IRQ measured intervals contain no E9/EA/EB; their fixture bytes
-and absolute assertions must stay unchanged. LOOP retains 45064/49161,
-49160/53257 and 94216/98312 clocks. IRQ retains 61459/67603 clocks,
-240–241/264–265 ticks and counts 1024/0/0. Unmeasured setup, reset and
+The LOOP and IRQ measured intervals contain no E9/EA/EB. Issue #73 left
+their fixture bytes and absolute assertions unchanged. LOOP retains 45064/49161,
+49160/53257 and 94216/98312 clocks. Issue #75 corrects IRQ’s odd JNZ
+from six to seven clocks on 1023 iterations: 62482/68626 clocks,
+244–245/268–269 ticks and unchanged counts 1024/0/0. Unmeasured setup, reset and
 post-HALT jumps now cost more without changing these intervals.

@@ -384,8 +384,10 @@ IRQ entry uses [32 aligned internal clocks](external-irq-timing.md) plus existin
 odd-stack and wait penalties in both delivery paths. [LOOP/LOOPE/LOOPNE](loop-timing.md)
 use instruction-specific decoded costs plus explicit fetches and a taken odd-target
 clock. [Direct E9/EB/EA JMP](jmp-timing.md) uses four/four/seven decoded
-execution clocks plus an odd-target clock and actual fetches. CALL, indirect
-JMP, Jcc/JCXZ and general prefetch timing remain separate work. The original
+execution clocks plus an odd-target clock and actual fetches.
+[Jcc/JCXZ](jcc-timing.md) use four/one decoded taken/fallthrough clocks,
+plus one for taken odd destinations and actual byte fetches. CALL, indirect
+JMP and general prefetch timing remain separate work. The original
 CC0 BUSLOCK cartridge and independent native/browser literals exercise all three models and restart; commercial-title impact is unmeasured.
 
 The adjacent gap list also previously misclassified excluded older NEC operations

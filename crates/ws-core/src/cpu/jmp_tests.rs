@@ -458,7 +458,7 @@ fn literal_internal_prefix_fetch_alignment_and_rep_rejection() {
 }
 
 #[test]
-fn shared_call_indirect_jmp_jcc_and_jcxz_retain_existing_cost_and_state() {
+fn shared_call_indirect_jmp_and_corrected_jcc_jcxz_cost_and_state() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         for (code, flags, cx, target, cost, call) in [
             (&[0xe8, 2, 0][..], 0xfcd7, 0, 0x1005, 5, true),
@@ -467,9 +467,9 @@ fn shared_call_indirect_jmp_jcc_and_jcxz_retain_existing_cost_and_state() {
             (&[0xff, 0xe0][..], 0xf002, 1, 0x1234, 6, false),
             (&[0xff, 0x26, 0, 8][..], 0xf002, 1, 0x1041, 8, false),
             (&[0xff, 0x2e, 0, 8][..], 0xf002, 1, 0x1041, 11, false),
-            (&[0x74, 3][..], 0xf042, 0, 0x1005, 6, false),
+            (&[0x74, 3][..], 0xf042, 0, 0x1005, 7, false),
             (&[0x74, 3][..], 0xf002, 1, 0x1002, 3, false),
-            (&[0xe3, 3][..], 0xfcd7, 0, 0x1005, 6, false),
+            (&[0xe3, 3][..], 0xfcd7, 0, 0x1005, 7, false),
             (&[0xe3, 3][..], 0xf002, 1, 0x1002, 3, false),
         ] {
             let (mut c, mut b) = setup(model);

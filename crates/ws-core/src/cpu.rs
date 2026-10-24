@@ -7,6 +7,9 @@ mod buslock_tests;
 mod irq_timing_tests;
 
 #[cfg(test)]
+mod jcc_tests;
+
+#[cfg(test)]
 mod jmp_tests;
 
 #[cfg(test)]
@@ -498,7 +501,10 @@ impl Cpu {
                 let displacement = self.byte(bus) as i8 as u16;
                 if self.condition(opcode & 15) {
                     self.ip = self.ip.wrapping_add(displacement);
-                    execution = 4;
+                    // Appendix A Note 5: taken odd destinations add a clock.
+                    // Actual opcode/displacement fetches are charged separately.
+                    // Independent vectors: docs/jcc-timing.md.
+                    execution = 4 + u32::from(self.ip & 1);
                 }
             }
             0x80 | 0x81 | 0x83 => {
@@ -692,7 +698,8 @@ impl Cpu {
                 // Appendix A: DBNZ is 5/2 decoded clocks; DBNZE/DBNZNE
                 // are 6/3, with +1 for a taken odd destination. These have
                 // no operand transfers; the two actual byte fetches are
-                // already charged by the bus. Keep JCXZ's existing policy.
+                // already charged by the bus. JCXZ is 4/1 decoded clocks
+                // with the same taken odd-destination adjustment.
                 // See docs/loop-timing.md for independent literal vectors.
                 execution = match opcode {
                     0xe2 => {
@@ -711,7 +718,7 @@ impl Cpu {
                     }
                     _ => {
                         if take {
-                            4
+                            4 + u32::from(self.ip & 1)
                         } else {
                             1
                         }

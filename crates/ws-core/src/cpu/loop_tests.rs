@@ -179,7 +179,7 @@ fn literal_loop_mapped_fetch_waits_bank_and_ip_wraps() {
 }
 
 #[test]
-fn loop_prefixes_and_jcxz_keep_existing_policy() {
+fn loop_prefixes_and_corrected_jcxz_target_parity() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         for (opcode, flags, cx, target, base) in [
             (0xe2, 0xf002, 2, 0x1000, 7),
@@ -197,7 +197,7 @@ fn loop_prefixes_and_jcxz_keep_existing_policy() {
                 c.registers[1] = cx;
                 assert_eq!(
                     c.step(&mut b).unwrap(),
-                    base + count as u32 + u32::from(opcode != 0xe3 && count % 2 == 1)
+                    base + count as u32 + u32::from((opcode != 0xe3 || cx == 0) && count % 2 == 1)
                 );
                 assert_eq!(b.accesses.get(), count as u32 + 2);
                 assert_eq!(c.ip, target + count as u16);
