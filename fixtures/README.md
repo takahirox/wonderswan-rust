@@ -1,6 +1,6 @@
 # Original hardware compatibility probes
 
-All source (`compat.asm`, `gdma.asm`, `sound.asm`, `sweep.asm`, `startup.asm`, `buslock.asm`, `fpo1-poll.asm`, `multiply.asm`, `multiply-timing.asm`, `conversion.asm`, `divide.asm`, `trap.asm`, `push-sp.asm`, `rtc.asm`, `rtc-calendar.asm`, `shift-rotate.asm`, `internal-eeprom.asm`, `a0.asm`, `raw-rom.asm`, `lcd.asm`, `lcd-output.asm`, `word-timing.asm`, `irq-timing.asm`, `loop-timing.asm`, `jmp-timing.asm`, `jcc-timing.asm`, `ordinary-io.asm`, `keypad.asm`, `build.py`), generated cartridges in `generated/`,
+All source (`compat.asm`, `gdma.asm`, `sound.asm`, `sweep.asm`, `startup.asm`, `buslock.asm`, `fpo1-poll.asm`, `multiply.asm`, `multiply-timing.asm`, `conversion.asm`, `divide.asm`, `trap.asm`, `push-sp.asm`, `rtc.asm`, `rtc-calendar.asm`, `shift-rotate.asm`, `internal-eeprom.asm`, `internal-eeprom-rejected.asm`, `a0.asm`, `raw-rom.asm`, `lcd.asm`, `lcd-output.asm`, `word-timing.asm`, `irq-timing.asm`, `loop-timing.asm`, `jmp-timing.asm`, `jcc-timing.asm`, `ordinary-io.asm`, `keypad.asm`, `build.py`), generated cartridges in `generated/`,
 and test graphics/sound data in this directory are original work authored for
 this repository for Issues #11, #13, #19, #21, #23, #25, #27, #29, #31, #33, #35, #37, #39, #41, #43, #45, #47, #51, #53, #55, #63, #67, #69, #71, #73, #75 and #85, dedicated to the public domain under **CC0-1.0**
 ([full license](LICENSE)). No downloaded ROM, BIOS, emulator implementation,
@@ -188,7 +188,7 @@ See [source reconciliation](../docs/fast-sweep.md) and
 [validation](../docs/issue-31-validation.md). HOLD_CH remains unsupported; these
 are emulator regressions, not physical-console or commercial-title results.
 
-## Internal console EEPROM probes (Issue #21)
+## Internal console EEPROM probes (Issues #21 and #91)
 
 `internal-eeprom.asm` is original CC0 source assembled into two 128 KiB images:
 `internal-eeprom.ws` requests writable settings through header byte 9 bit 7;
@@ -199,7 +199,7 @@ using ten-bit Color commands on Color/Crystal. They initialize their own segment
 stack, tile data and display. No firmware, title detection or host port injection
 is involved. Build/check commands above include both images.
 
-Each reads the owner/settings word at byte 60, increments the shared word at 00,
+Each reads the owner/settings word at byte 60, increments the shared word at 02,
 polls READY and READ DONE, checks separate read/write buffers, WDS/WEN and the
 header exception, restores the settings word, sets protection twice through word
 OUT BE (including nonzero reserved BF), writes the boundary word at 5E and checks
@@ -207,7 +207,24 @@ that writes at 60 fail. Color/Crystal additionally preserve the final physical
 word across protected writes and mono/Color transitions. A self-checked pass
 stores 600D at RAM 0400 and draws green (Color/Crystal) or gray 170 (Mono);
 failure stores 0BAD and draws red or gray 187. RAM 0402 is the shared counter,
-0406 the original settings word, and 0408 the last Color word.
+0406 the original settings word, and 0408 the last Color word. Issue #91 adds
+actual direct ERASE at word zero in both command widths, including WDS rejection,
+WEN, busy/READY and unchanged DONE/read buffer checks, reserved BE/BF bits,
+changed address/data latches, protection and a mode change while pending. RAM
+040A records FFFF after mono-mode erase; console bytes 00/01 remain FF after
+completion. The counter moved to byte 02 so exports/browser records can prove
+both retained erase effects and cross-cartridge counting.
+
+`internal-eeprom-rejected.asm` generates eight intentional diagnostic images,
+`internal-eeprom-rejected-1.ws` through `-8.ws`. After writing 1234 to word zero,
+they issue respectively: nonzero ERASE at byte 5E, protected byte 60, physical
+final word, candidate WRAL, candidate ERAL, mixed controls, missing start bit,
+and a second command while an ERASE is busy. Actual CPU OUT must stop with the
+specific expected diagnostic. RAM 0400 is 91EE immediately before the rejected
+request; native tests assert this marker and every console/save byte. Optimized
+Wasm tests execute all eight on every model, including cancellation on restart.
+These are emulator diagnostic expectations, not assertions about silicon's
+invalid-command responses. Source and generated images are original CC0.
 
 The native integration test imports distinct settings/final-word markers, checks
 these actual CPU results, settings preservation, independent cartridge saves,
@@ -218,7 +235,10 @@ The browser suite disables the one-second persistence timer in its isolated
 console context to prove lifecycle/model flushes themselves retain data; it also
 checks reload/reopen, malformed/size-mismatched records, denied console reads and
 full console storage with independently working cartridge saves. Injected storage
-failures are synthetic. Neither fixture is a physical-console validation result.
+failures are synthetic. These fixtures are not physical-console validation results.
+The [Issue #91 source review](../docs/issue-91-validation.md#source-reconciliation)
+explains the conservative word-zero support and unresolved nonzero/bulk behavior;
+these probes must not be used to infer universal physical ERASE support.
 
 ## A0 runtime-control probe (Issue #23)
 
