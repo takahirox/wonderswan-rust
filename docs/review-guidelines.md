@@ -17,6 +17,8 @@ documentation, and consistency with the repository's structure and conventions.
 Do not approve a PR as closing an Issue when required work remains unimplemented.
 An intentionally partial PR must state its limits and leave the Issue open.
 
+For interface changes, review against the [UI/UX principles](../README.md#uiux).
+
 ## Check for unnecessary work
 
 Require a demonstrated need tied to the Issue for added scope or complexity.
