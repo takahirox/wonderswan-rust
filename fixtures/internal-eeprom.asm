@@ -1,5 +1,5 @@
 ; SPDX-License-Identifier: CC0-1.0
-; Original Issue #21 CPU probe. No copied test code, firmware or assets.
+; Original Issues #21/#91 CPU probe. No copied test code, firmware or assets.
 bits 16
 cpu 186
 org 0
@@ -32,8 +32,12 @@ start:
     call wait_ready
     in ax,0xba
     mov [0x406],ax                 ; original settings word
-    ; Read/increment shared word zero, common across cartridges.
-    mov ax,0x180
+    ; Word zero is reserved for direct ERASE; counter moves to word one.
+    mov ax,0x1234
+    mov dx,0x140
+    call write_word
+    ; Read/increment shared word one, common across cartridges.
+    mov ax,0x181
     call read_word
     cmp ax,0xffff
     jne .increment
@@ -41,9 +45,9 @@ start:
 .increment:
     inc ax
     mov [0x402],ax
-    mov dx,0x140
+    mov dx,0x141
     call write_word
-    mov ax,0x180
+    mov ax,0x181
     call read_word
     cmp ax,[0x402]
     jne failed
@@ -54,11 +58,21 @@ start:
     out 0xbe,ax
     call wait_ready
     mov ax,0xdead
-    mov dx,0x140
+    mov dx,0x141
     call write_word
-    mov ax,0x180
+    mov ax,0x181
     call read_word
     cmp ax,[0x402]
+    jne failed
+    ; WDS also prevents a direct word-zero ERASE.
+    mov ax,0x1c0
+    out 0xbc,ax
+    mov al,0x40
+    out 0xbe,al
+    call wait_ready
+    mov ax,0x180
+    call read_word
+    cmp ax,0x1234
     jne failed
     mov ax,0x130
     out 0xbc,ax
@@ -113,16 +127,73 @@ start:
     in ax,0xbe
     cmp ax,0x83
     jne failed
+    ; Direct ERASE at word zero: READY busy, DONE/read buffer unchanged.
+    mov ax,0x180
+    call read_word
+    cmp ax,0x1234
+    jne failed
+    mov ax,0x1c0
+    out 0xbc,ax
+    mov ax,0x5a4f                 ; nonzero BF and reserved low BE bits
+    out 0xbe,ax
+    in ax,0xbe
+    cmp ax,0x81
+    jne failed
+    in ax,0xba
+    cmp ax,0x1234
+    jne failed
+    ; In-flight address/data changes cannot redirect the accepted erase.
+    mov ax,0xdead
+    out 0xba,ax
+    out 0xbc,ax
+    mov al,0x80
+    out 0xbe,al                   ; protection is not an abort
+    call wait_ready
+    in ax,0xba
+    cmp ax,0x1234
+    jne failed
+    mov ax,0x180
+    call read_word
+    cmp ax,0xffff
+    jne failed
+    mov [0x40a],ax
     ; Color physical capacity persists through mono -> Color -> mono -> Color.
     in al,0xa0
     test al,2
     jz passed
     mov al,0x80
     out 0x60,al
-    mov ax,0x1800
+    mov ax,0x1801
     call read_word
     cmp ax,[0x402]
     jne failed
+    ; Same supported ERASE in ten-bit mode, leaving persisted bytes FFFF.
+    mov ax,0x5678
+    mov dx,0x1400
+    call write_word
+    mov ax,0x1800
+    call read_word
+    cmp ax,0x5678
+    jne failed
+    mov ax,0x1c00
+    out 0xbc,ax
+    mov ax,0x40
+    out 0xbe,ax
+    in ax,0xbe
+    cmp ax,0x81
+    jne failed
+    xor al,al
+    out 0x60,al                   ; mode changes cannot reinterpret pending erase
+    call wait_ready
+    in ax,0xba
+    cmp ax,0x5678
+    jne failed
+    mov ax,0x180
+    call read_word
+    cmp ax,0xffff
+    jne failed
+    mov al,0x80
+    out 0x60,al
     mov ax,0x1bff                  ; physical final word, beyond mono address range
     call read_word
     mov [0x408],ax
@@ -135,7 +206,7 @@ start:
     jne failed
     xor al,al
     out 0x60,al
-    mov ax,0x180
+    mov ax,0x181
     call read_word
     cmp ax,[0x402]
     jne failed

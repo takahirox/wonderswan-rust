@@ -1,5 +1,6 @@
 //! Internal console EEPROM, independent of cartridge controller/mapper quirks.
-//! Ordinary word transfers only; fixed delays are approximations, not measurements.
+//! Word transfers and conservative word-zero ERASE; see docs/issue-91-validation.md.
+//! Fixed delays are approximations, not measurements.
 use crate::{Error, Model};
 
 pub(crate) fn initial_data(model: Model) -> Vec<u8> {
@@ -14,6 +15,7 @@ pub(crate) fn initial_data(model: Model) -> Vec<u8> {
 enum Operation {
     Read(usize),
     Write(usize, u16),
+    Erase(usize),
     Enable(bool),
     Locked,
 }
@@ -71,16 +73,6 @@ impl InternalEeprom {
                 let op = (self.command >> bits) & 3;
                 let sub = (self.command >> (bits - 2)) & 3;
                 let offset = usize::from(self.command & ((1 << bits) - 1)) * 2;
-                let operation = match (op, sub, control) {
-                    (2, _, 0x10) => Operation::Read(offset),
-                    (1, _, 0x20) if self.enabled => Operation::Write(offset, self.data),
-                    (1, _, 0x20) => Operation::Locked,
-                    (0, 0, 0x40) => Operation::Enable(false),
-                    (0, 3, 0x40) => Operation::Enable(true),
-                    _ => return Err(Error::new(format!(
-                        "Unsupported internal EEPROM command {:#06x} / control {value:#04x}; direct ERASE and bulk operations are not implemented.", self.command
-                    ))),
-                };
                 if self.command >> (bits + 2) != 1 {
                     return Err(Error::new(format!(
                         "Unsupported internal EEPROM command format {:#06x} in {} mode.",
@@ -88,6 +80,28 @@ impl InternalEeprom {
                         if color { "Color" } else { "mono" }
                     )));
                 }
+                let operation = match (op, sub, control) {
+                    (2, _, 0x10) => Operation::Read(offset),
+                    (1, _, 0x20) if self.enabled => Operation::Write(offset, self.data),
+                    (1, _, 0x20) => Operation::Locked,
+                    // Public libws defines this sequence, but the hardware
+                    // experiment questions nonzero addresses. Do not generalize
+                    // or redirect those requests to word zero.
+                    (3, _, 0x40) if offset != 0 => return Err(Error::new(format!(
+                        "Unsupported internal EEPROM ERASE at byte offset {offset:#05x}: nonzero-word effects are unverified; only word zero is supported."
+                    ))),
+                    (3, _, 0x40) if self.enabled => Operation::Erase(offset),
+                    (3, _, 0x40) => Operation::Locked,
+                    (0, 0, 0x40) => Operation::Enable(false),
+                    (0, 3, 0x40) => Operation::Enable(true),
+                    (0, sub @ (1 | 2), 0x20 | 0x40) => return Err(Error::new(format!(
+                        "Unsupported internal EEPROM {}: internal-controller support and effects are unverified; storage is unchanged.",
+                        if sub == 1 { "WRAL" } else { "ERAL" }
+                    ))),
+                    _ => return Err(Error::new(format!(
+                        "Unsupported internal EEPROM command {:#06x} / control {value:#04x}.", self.command
+                    ))),
+                };
                 // Internal DONE clears on reads (no cartridge 2001 stale-DONE quirk).
                 if control == 0x10 {
                     self.done = false;
@@ -114,6 +128,9 @@ impl InternalEeprom {
             }
             Operation::Write(offset, word) if !self.protected || offset < 0x60 => {
                 bytes[offset..offset + 2].copy_from_slice(&word.to_le_bytes());
+            }
+            Operation::Erase(offset) if !self.protected || offset < 0x60 => {
+                bytes[offset..offset + 2].fill(0xff);
             }
             Operation::Enable(enabled) => self.enabled = enabled,
             _ => {}

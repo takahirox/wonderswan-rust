@@ -89,6 +89,10 @@ if __name__ == '__main__':
                        build(2, 0, 0, 0, 'internal-eeprom.asm',
                              defines=(f'PROTECTED={int(protected)}',),
                              protection=0 if protected else 0x80)))
+    for case in range(1, 9):
+        images.append((f'internal-eeprom-rejected-{case}',
+                       build(2, 0, 0, 0, 'internal-eeprom-rejected.asm',
+                             defines=(f'CASE={case}',), protection=0)))
     for name, rom in images:
         path = ROOT / 'generated' / (name+'.ws')
         if args.check:

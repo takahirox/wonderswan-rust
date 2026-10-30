@@ -104,8 +104,9 @@ records for WonderSwan (128 bytes), WonderSwan Color (2048 bytes) and SwanCrysta
 (2048 bytes). Different cartridges share that model's console data; switching
 away and back, reload and reopening preserve it. Storage failures report a
 separate console notice and unreadable records are preserved. Initial settings
-are deterministic synthetic data, not a factory image. Direct erase/bulk commands
-and exact programming timing remain hardware gaps; there is no settings editor.
+are deterministic synthetic data, not a factory image. Direct ERASE supports
+word zero under a conservative emulator policy; nonzero ERASE, bulk commands
+and exact programming timing remain hardware gaps. There is no settings editor.
 See the [console behavior and core/Wasm API](docs/hardware-subset.md#internal-eeprom-transfers-retention-and-api).
 
 Sound defaults to **on at 70%** after a **Play demo** or **Load ROM** interaction;

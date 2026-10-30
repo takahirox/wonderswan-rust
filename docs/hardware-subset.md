@@ -467,10 +467,16 @@ BA/BB have independent little-endian write and read buffers; writes to the data
 ports never change readback. BC/BD retain a 16-bit command. Command layout is
 `start=1`, two operation bits and six address bits in mono mode, or ten address
 bits with Color enabled at 60.7. READ is op 2/control 10, WRITE op 1/control 20,
-and WDS/WEN op 0/subcommand 0/3 (top two address bits)/control 40. Mono commands
-address the first 128 bytes on every model. Switching active video/command mode
-never reallocates bytes or resets write-enable/protection. Pending operations
-capture their decoded address, data and write-enable decision when accepted;
+and WDS/WEN op 0/subcommand 0/3 (top two address bits)/control 40. Both modes
+also accept direct ERASE op 3/control 40 **at word zero only**. This conservative
+policy follows the documented libws sequence and the experiment's questioned
+nonzero restriction;
+it is not a physical-console certification. Nonzero ERASE is explicitly rejected,
+including byte 5E, 60 and the physical final word. It never aliases to word zero.
+See [source reconciliation and limits](issue-91-validation.md#source-reconciliation).
+Mono commands address the first 128 bytes on every model. Switching active
+video/command mode never reallocates bytes or resets write-enable/protection.
+Pending operations capture their decoded address, data and write-enable decision when accepted;
 completion does not reinterpret them using later register/mode values.
 
 BE bit 0 is READ DONE, cleared at each accepted READ and set on completion.
@@ -480,19 +486,29 @@ settings protection: writing one sets a sticky latch, readback reports it, and
 writing zero cannot clear it. It does not abort a transfer. Words at byte 5E
 remain writable; words from byte 60 through the physical end reject writes when
 protected. WDS separately locks all writes; WEN does not remove protection.
+WDS also locks ERASE: an accepted locked command completes without mutation.
+An enabled word-zero ERASE sets only bytes 00/01 to FF, regardless of the data
+latch. It preserves settings and every other word. The same completion-time
+protection guard as WRITE applies; zero is in the unprotected user area.
 Protection also applies at completion, including if set while a write is pending.
 BF, the reserved high byte of word IN/OUT BE, reads zero and ignores every write
 without changing controller state. Lower reserved BE bits are ignored.
 
-The shared emulated clock completes READ in 32 clocks and WRITE/WEN/WDS in
+The shared emulated clock completes READ in 32 clocks and WRITE/ERASE/WEN/WDS in
 3072 clocks. These are **bounded approximations**, not measured internal EEPROM
 latencies (including short WEN/WDS commands). Polling consumes normal CPU/I/O
-clocks; scanlines, timers, audio and both DMAs keep advancing. Unsupported direct
-ERASE, WRAL/ERAL, malformed command formats, mixed operation controls and new
-requests while busy produce explicit diagnostics without changing stored bytes.
+clocks; scanlines, timers, audio and both DMAs keep advancing. ERASE reuses the
+programming approximation; the libws software delay/poll does not establish a
+measured erase latency. Nonzero direct ERASE, WRAL/ERAL, malformed command
+formats, mixed operation controls and new requests while busy produce explicit
+diagnostics without changing stored bytes.
+WRAL (op 0/subcommand 1) and ERAL (op 0/subcommand 2) remain specifically rejected:
+the inspected primary definitions and experiment do not establish internal
+support, effects, range or protection interaction. Neither full-memory nor
+user-area bulk mutation is invented from the cartridge implementation.
 No external EEPROM bulk/abort behavior is inherited. Serial command adaptation,
 invalid-command silicon behavior, protection races and precise busy/DONE timing
-outside these ordinary transfers remain unresolved hardware gaps.
+remain unresolved hardware gaps, as does direct ERASE at nonzero words.
 
 Each `Machine` owns one record per physical model. Completed bytes survive
 restart, reset/unload, cartridge replacement and switching away/back. Pending
@@ -567,6 +583,10 @@ its explicit uncertainty about direct erase. It was not built/run, copied into
 our fixtures or reported as a hardware pass. No Ares/emulator implementation or
 inaccessible WSdev snippets establish behavior here. The CC0 probes are original.
 See [Issue #21 validation and source review](issue-21-validation.md).
+The [Issue #91 source reconciliation and validation](issue-91-validation.md)
+adds the conservative word-zero ERASE policy and records why nonzero ERASE and
+WRAL/ERAL remain unsupported. The experiment replaces all internal erase calls
+with WRITE FFFF; it does not prove even word-zero direct erase on every model.
 
 Native tests exercise hardware vectors and full cartridge paths. Browser smoke
 checks use original licensed files only. See [fixture provenance/builds](../fixtures/README.md)
