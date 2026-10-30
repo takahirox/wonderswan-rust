@@ -33,6 +33,22 @@ load/restart/model change; subsequent OUT writes change CPU/DMA behavior without
 changing cartridge metadata. See [runtime ROM controls and limitations](docs/hardware-subset.md#runtime-rom-controls-a0)
 and the [original A0 CPU probe](fixtures/README.md#a0-runtime-control-probe-issue-23).
 
+## UI/UX
+
+These principles apply to the browser player's controls, Settings / Help and
+diagnostics, as well as documented commands, messages and examples.
+
+1. **Keep it simple.** Show only necessary information and actions; avoid
+   unnecessary UI elements.
+2. **Show, don't tell.** Prefer layout, spacing and visual hierarchy over
+   explanatory labels or prose to communicate structure.
+3. **Intuitive and predictable.** Keep appearance and behavior consistent with
+   user expectations; don't interrupt the user's work.
+
+Keep necessary control labels, accessible names, error messages and information
+needed to use the interface. Simplification must preserve meaningful consent,
+destructive-action safeguards and necessary warnings.
+
 ## Play in the browser
 
 Public URL: **https://takahirox.github.io/wonderswan-rust/**. The new version becomes
