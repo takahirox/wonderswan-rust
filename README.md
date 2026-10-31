@@ -301,5 +301,6 @@ Required **post-merge checks remain pending**:
 - `fixtures`: CC0 compatibility cartridge source, deterministic builder and generated files.
 
 Follow the [development flow and English collaboration policy](docs/development-flow.md),
+[test and CI performance principles](docs/development-flow.md#test-and-ci-performance-principles),
 [review guidelines](docs/review-guidelines.md), [Issue template](.github/ISSUE_TEMPLATE/issue.md),
 [PR template](.github/pull_request_template.md), and [AGENTS.md](AGENTS.md).

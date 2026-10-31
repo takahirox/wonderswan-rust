@@ -39,10 +39,19 @@ actual repository tooling. Check that validation reports say what was performed
 and give actual results, including failures, skipped checks, and unperformed
 checks with reasons. Optional checks must be identified separately.
 
+Apply the [test and CI performance principles](development-flow.md#test-and-ci-performance-principles):
+review the additional defects covered, duplicated assurance/execution, and added
+execution and maintenance cost of new or expanded checks. Ask:
+
+**Does this change provide sufficient confidence with the lightest appropriate
+validation, without redundant execution?**
+
 For template/documentation changes, inspect syntax, links and anchors, whitespace,
-and consistency. There are currently no configured build/test commands or CI.
-Do not invent commands, demand unrelated runtime suites, or require new tooling
-for this documentation-only change.
+and consistency. For code/build changes, use the applicable Rust, fixture,
+Wasm/frontend and production-preview browser checks documented in the
+[README](../README.md#build-and-run-locally). The Pages workflow builds and deploys
+on `main` but does not run the test suites. Do not demand unrelated runtime suites
+or require new tooling for documentation-only changes.
 
 Checks possible only after merge must not block pre-merge approval. Record
 genuinely required post-merge verification separately as pending until performed;
