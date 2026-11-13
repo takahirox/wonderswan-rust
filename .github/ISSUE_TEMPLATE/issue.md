@@ -45,3 +45,8 @@ required, describe the checks and expected results; report them as pending until
 performed. For example, merge-triggered deployment and published-site verification
 belong here, not in pre-merge acceptance. Pre-merge validation does not prove that
 publication succeeded. See the [review guidance](https://github.com/takahirox/wonderswan-rust/blob/main/docs/review-guidelines.md#check-pre-merge-acceptance-and-post-merge-verification).
+
+After complete implementation and mandatory pre-merge acceptance, merge and close
+this Issue before performing these checks. Closure does not claim pending or
+environment-blocked checks passed. Track actual defects in an existing equivalent
+or new linked Issue, following the [merge and follow-up lifecycle](https://github.com/takahirox/wonderswan-rust/blob/main/docs/development-flow.md#5-merge-and-record-any-required-follow-up).
