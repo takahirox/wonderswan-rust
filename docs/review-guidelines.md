@@ -15,7 +15,9 @@ Compare every required behavior and acceptance criterion the PR claims to resolv
 with the implementation and appropriate validation. Check correctness, relevant
 documentation, and consistency with the repository's structure and conventions.
 Do not approve a PR as closing an Issue when required work remains unimplemented.
-An intentionally partial PR must state its limits and leave the Issue open.
+An intentionally partial PR must state its remaining scope and leave the parent
+Issue open with a non-closing reference. Pending post-merge-only verification does
+not make an otherwise complete implementation partial.
 
 For interface changes, review against the [UI/UX principles](../README.md#uiux).
 
@@ -58,7 +60,15 @@ genuinely required post-merge verification separately as pending until performed
 state "None" when none is needed. For example, merge-triggered deployment and
 published-site checks belong after merge. Pre-merge validation does not prove
 deployment or publication succeeded. This separation does not waive required
-implementation work or applicable pre-merge checks.
+implementation work, mandatory pre-merge tests, required protections, or genuinely
+necessary pre-merge human acceptance.
+
+Preserve `Closes #N` when the implementation is complete and applicable mandatory
+pre-merge acceptance is satisfied. Do not request removing it, keeping the source
+Issue open, or withholding approval solely for pending post-merge-only checks.
+ProjectWeave publication adds this reference; asking review/fix to remove it
+creates a Review → Fix → Publish → Review loop. Follow the
+[merge and follow-up lifecycle](development-flow.md#5-merge-and-record-any-required-follow-up).
 
 ## Review outcome and waiting
 
@@ -77,10 +87,18 @@ Choose the outcome that matches the evidence:
   pre-merge checks are sufficient and pass. Merge after approval, subject to
   repository protections and the current workflow's authorization.
 
-Pending checks possible only after merge do not prevent approval. After merge,
-perform any required post-merge verification and record actual results, including
-failures and follow-up. Keep unperformed checks pending. This templates and
-documentation addition requires no post-merge verification.
+Pending checks possible only after merge do not prevent approval. After successful
+merge, close the original Issue, then perform required post-merge verification.
+Record actual evidence in the merged PR, closed Issue, or linked validation report;
+keep pending, unperformed, and environment-blocked checks explicit. Closure does
+not claim they passed, and an unavailable environment alone is not evidence of a
+product defect. For actual defects, check for an equivalent Issue before creating
+a new linked Issue with reproduction steps, affected revision, expected/actual
+behavior, and original Issue/PR links. Do not reopen the original Issue solely for
+follow-up.
+The linked lifecycle supersedes older keep-open instructions without rewriting
+historical results. This documentation/template change requires no post-merge
+verification.
 
 ## Reference
 

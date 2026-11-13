@@ -3,7 +3,7 @@
 This is the default contributor and AI-assisted development flow for
 `takahirox/wonderswan-rust`. The default branch is `main`.
 
-Issue → implementation → PR → review → revision as needed → merge.
+Issue → implementation → PR → review → revision as needed → merge and close Issue.
 Perform post-merge verification only when required by the Issue.
 
 ## Collaboration language
@@ -60,9 +60,10 @@ a process.
 
 For template/documentation changes, check Markdown and template syntax, relative
 links and anchors, whitespace, and consistency using available tools. Git provides
-`git diff --check` for whitespace checks. No runtime tests, hardware/device checks,
-or deployed-site verification are required for a documentation-only change unless
-the actual Issue establishes a necessary reason.
+`git diff --check` for whitespace checks. Do not add routine manual approval,
+runtime tests, physical-device checks, heavyweight model downloads, or deployment
+gates for a documentation-only change unless the actual Issue establishes a
+necessary reason.
 
 ### Test and CI performance principles
 
@@ -126,10 +127,12 @@ Report results accurately, including failures, skipped checks, and unperformed
 checks with reasons. Separate optional checks and pending post-merge verification
 from mandatory pre-merge results.
 
-Only claim to close an Issue when the PR fully addresses it. If intentionally
-partial, explain what remains and keep the Issue open. Pending checks possible
-only after merge do not make an otherwise complete implementation partial, but
-must not be reported as passed before they are performed.
+Use and preserve the normal `Closes #N` reference when the PR fully implements the
+Issue and satisfies applicable mandatory pre-merge acceptance. If intentionally
+partial, explain what remains and use a non-closing reference to keep the parent
+Issue open. Pending checks possible only after merge do not make an otherwise
+complete implementation partial, but must not be reported as passed before they
+are performed. See the [merge and follow-up lifecycle](#5-merge-and-record-any-required-follow-up).
 
 ## 4. Review and revise
 
@@ -148,11 +151,32 @@ fixable findings instead of repeatedly requesting code fixes.
 Approve and merge when the implementation is complete, mandatory pre-merge checks
 are sufficient and pass, and no blocking review findings remain. Follow applicable
 repository protections and the current workflow's authorization for merge actions.
+Missing implementation, mandatory pre-merge tests, required protections, and
+genuinely necessary pre-merge human acceptance remain blockers.
 
-Record genuinely required post-merge verification separately as pending until
-performed, then report actual results, failures, and necessary follow-up. Pre-merge
-validation does not prove deployment or publication succeeded. No post-merge
-verification is required for this collaboration-documentation addition.
+After successful merge, close the original Issue, then perform genuinely required
+post-merge verification. Review must not request removing `Closes #N`, keeping the
+source Issue open, or withholding approval solely because a post-merge-only check
+is pending. ProjectWeave publication adds the closing reference and its merge/close
+stages close the Issue; reversing that lifecycle during review causes repeated
+Review → Fix → Publish → Review loops without improving the implementation.
+
+Record evidence in the merged PR, closed Issue, or a linked validation report:
+the checked revision, checks performed, actual results, and any pending,
+unperformed, or environment-blocked checks with reasons. Issue closure does not
+claim those checks passed, and pre-merge validation does not prove deployment or
+publication succeeded. An unavailable test environment alone is not evidence of a
+product defect.
+
+If verification finds an actual defect, check for an existing equivalent Issue
+first. Link that Issue or create a new linked Issue with reproduction steps, the
+affected revision, expected and actual behavior, and links to the original Issue
+and PR. Do not reopen the original Issue solely for post-merge follow-up.
+
+This lifecycle supersedes older instructions to keep an implemented Issue open
+solely for post-merge verification. Preserve historical test outcomes and evidence;
+do not rewrite them as passed or erase pending checks. No post-merge verification
+is required for this documentation/template change.
 
 ## Reference
 
