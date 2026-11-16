@@ -1,5 +1,6 @@
 import { Saves, romIdentity, consoleKey, RtcRecords, rtcKey } from "./saves";
 import { Sound } from "./audio";
+import { Display, type DisplayEffect } from "./display";
 import init, { WebMachine } from "../pkg/ws_web.js";
 
 const element = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
@@ -31,11 +32,13 @@ async function main() {
   errorStatus.textContent = "";
   await init();
   const machine = new WebMachine();
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("This browser does not support a 2D canvas.");
   canvas.width = machine.frame_width();
   canvas.height = machine.frame_height();
-  context.imageSmoothingEnabled = false;
+  const display = new Display(canvas, element<HTMLCanvasElement>("screen-effect"),
+    message => { element("display-notice").textContent = message; });
+  const effectSelect = element<HTMLSelectElement>("display-effect");
+  effectSelect.value = display.effect;
+  effectSelect.addEventListener("change", () => display.select(effectSelect.value as DisplayEffect));
   let loaded: { name: string; key: string } | null = null;
   const report = (message: string) => { element("notice").textContent = message; };
   const saves = new Saves(report);
@@ -111,8 +114,8 @@ async function main() {
     updateButtons();
   }
   function draw() {
-    const pixels = new Uint8ClampedArray(machine.framebuffer());
-    context!.putImageData(new ImageData(pixels, canvas.width, canvas.height), 0, 0);
+    display.advance(new Uint8ClampedArray(machine.framebuffer()), machine.model());
+    display.present();
   }
   function state() {
     return loading ? "Loading ROM…" : !loaded ? "Ready to play" : faulted ? "Stopped" : running ? "Running" : "Paused";
@@ -143,7 +146,9 @@ async function main() {
     sizeScreen();
   }
   function setRunning(value: boolean) {
+    const wasRunning = running;
     running = value && loaded !== null && !faulted && !document.hidden && !help.open;
+    if (running && !wasRunning) display.resetHistory();
     if (animation !== null) cancelAnimationFrame(animation);
     animation = null;
     lastTime = null;
@@ -166,12 +171,13 @@ async function main() {
         const frameDuration = 1000 / machine.frame_rate();
         if (elapsed < frameDuration) break;
         machine.run_frame();
+        display.advance(new Uint8ClampedArray(machine.framebuffer()), machine.model());
         sound.push(machine.audio_samples(), machine.sample_rate());
         elapsed -= frameDuration;
         frames++;
       }
       elapsed = Math.min(elapsed, 1000 / machine.frame_rate());
-      if (frames) draw();
+      if (frames) display.present();
       animation = requestAnimationFrame(tick);
     } catch (error) {
       faulted = true;
@@ -182,6 +188,7 @@ async function main() {
   function load(name: string, bytes: Uint8Array, key: string, autoplay = true) {
     persist();
     machine.load_rom(bytes); // Validation errors preserve the previous machine.
+    display.resetHistory();
     machine.configure_rtc(rtcMode.value);
     loaded = { name, key };
     element("rtc-notice").textContent = "";
@@ -205,6 +212,8 @@ async function main() {
     errorStatus.textContent = "";
     try {
       machine.change_model(model);
+      display.resetHistory();
+      draw();
       restoreConsole();
       faulted = false;
       setRunning(loaded !== null);
@@ -212,7 +221,7 @@ async function main() {
     } catch (error) {
       errorStatus.textContent = `Could not restart: ${message(error)} Choose a compatible model or load another ROM.`;
     }
-    draw();
+    display.present();
     refresh();
   }
   async function readROM(name: string, read: () => Promise<Uint8Array>) {
@@ -344,11 +353,11 @@ async function main() {
   });
   // Integer scaling where space allows; fractional nearest-neighbor scaling on narrow screens.
   function sizeScreen() {
-    const display = element("display");
+    const frame = element("display");
     const vertical = machine.orientation() === "vertical";
     const width = vertical ? 144 : 224;
     const height = vertical ? 224 : 144;
-    const bounds = display.getBoundingClientRect();
+    const bounds = frame.getBoundingClientRect();
     const left = Math.ceil(bounds.left);
     const top = Math.ceil(bounds.top);
     const spaceWidth = Math.max(0, Math.floor(bounds.right) - left);
@@ -362,8 +371,7 @@ async function main() {
     presentation.style.height = `${height * scale}px`;
     presentation.style.left = `${left - bounds.left + Math.floor((spaceWidth - width * scale) / 2)}px`;
     presentation.style.top = `${top - bounds.top + Math.floor((spaceHeight - height * scale) / 2)}px`;
-    canvas.style.width = `${224 * scale}px`;
-    canvas.style.height = `${144 * scale}px`;
+    display.resize(scale);
   }
   new ResizeObserver(sizeScreen).observe(element("display"));
 
@@ -422,7 +430,7 @@ async function main() {
   });
   draw();
   toggleDebug(false);
-  for (const control of [modelSelect, demoButton, loadButton, settingsButton, fullscreenButton, soundButton, volume, enableAudio]) control.disabled = false;
+  for (const control of [modelSelect, effectSelect, demoButton, loadButton, settingsButton, fullscreenButton, soundButton, volume, enableAudio]) control.disabled = false;
   refreshSound();
   refresh();
 }

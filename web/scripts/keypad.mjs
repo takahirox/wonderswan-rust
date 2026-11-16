@@ -16,6 +16,7 @@ export async function keypadChecks(browser, base, errors) {
   const horizontal = await readFile(new URL('../../fixtures/generated/keypad-horizontal.ws', import.meta.url));
   const vertical = await readFile(new URL('../../fixtures/generated/keypad-vertical.ws', import.meta.url));
   const context = await browser.newContext({viewport:{width:1440,height:1000},hasTouch:true});
+  await context.addInitScript(() => localStorage.setItem('wonderswan:display:v1','clean'));
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   page.on('pageerror', e => errors.push(e.message));
@@ -23,6 +24,12 @@ export async function keypadChecks(browser, base, errors) {
   page.on('request', request => requests.push(request.method()));
   const click = id => page.locator(id).evaluate(button => button.click());
   const focus = () => page.locator('#screen').focus();
+  async function setEffect(mode) {
+    await page.locator('#settings').click();
+    await page.locator('#display-effect').selectOption(mode);
+    await page.locator('#help-close').click();
+    await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
+  }
   let expectedError = '';
   async function expect(y=0,x=0,a=0) {
     const expected = rows(y,x,a);
@@ -80,7 +87,7 @@ export async function keypadChecks(browser, base, errors) {
       document.dispatchEvent(new Event('visibilitychange'));
     }, hidden);
   }
-  async function layout(orientation) {
+  async function layout(orientation, effect = false) {
     await page.waitForFunction(orientation => document.querySelector('#display').dataset.orientation === orientation,orientation);
     // ResizeObserver runs asynchronously after model/load/fullscreen transitions.
     await page.waitForTimeout(60);
@@ -116,7 +123,18 @@ export async function keypadChecks(browser, base, errors) {
         return Array.from(ctx.getImageData(Math.floor((px+0.5)*c.width/w),Math.floor((py+0.5)*c.height/h),1,1).data);
       });
     }, {png:png.toString('base64'),vertical:orientation==='vertical'});
-    assert.deepEqual(samples,[0,170,85,255,255,0].map(v=>[v,v,v,255]));
+    const values = [0,170,85,255,255,0];
+    if (effect) {
+      for (const [i,v] of values.entries()) {
+        assert.ok(samples[i].slice(0,3).every(channel => Math.abs(channel-v)<35),`LCD rotated marker ${i}: ${samples[i]}`);
+        assert.equal(samples[i][3],255);
+      }
+      const geometry = await page.locator('#screen-effect').evaluate(c => {
+        const a=c.getBoundingClientRect(),b=document.querySelector('#screen').getBoundingClientRect();
+        return [a.x-b.x,a.y-b.y,a.width-b.width,a.height-b.height];
+      });
+      assert.ok(geometry.every(v => Math.abs(v)<0.01),'effect shares clean canvas geometry');
+    } else assert.deepEqual(samples,values.map(v=>[v,v,v,255]));
   }
   try {
     await page.goto(base);
@@ -269,13 +287,19 @@ export async function keypadChecks(browser, base, errors) {
       await page.setViewportSize(viewport);
       for (const [bytes,orientation] of [[vertical,'vertical'],[horizontal,'horizontal']]) {
         await load(bytes);await layout(orientation);
+        await setEffect('lcd-authentic');
+        await layout(orientation,true);
         if (await page.evaluate(() => document.fullscreenEnabled)) {
           await page.locator('#fullscreen').click();
           await page.waitForFunction(() => !!document.fullscreenElement);
-          await layout(orientation);
+          await setEffect('clean');
+          await layout(orientation); // retain exact composited Clean assertions in fullscreen
+          await setEffect('lcd-authentic');
+          await layout(orientation,true);
           await page.locator('#fullscreen').click();
           await page.waitForFunction(() => !document.fullscreenElement);
         }
+        await setEffect('clean');
       }
     }
     await load(vertical,'renamed.ws');
