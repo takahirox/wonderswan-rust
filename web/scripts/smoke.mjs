@@ -127,6 +127,9 @@ function checksum(bytes) {
 try {
   await page.goto(base);
   await page.waitForFunction(() => !document.querySelector('#model').disabled);
+  await page.locator('#settings').click();
+  await page.locator('#display-effect').selectOption('clean');
+  await closeHelp();
   assert.equal(await page.locator('#debug-toggle').isChecked(), false);
   assert.equal(await page.locator('#debug-panel').isVisible(), false);
   assert.equal(await page.locator('#help').isVisible(), false);
@@ -324,6 +327,7 @@ try {
 
   // Isolated fault injection: no production network/service is modified.
   const recovery = await browser.newContext({ viewport:{width:1440,height:900} });
+  await recovery.addInitScript(() => localStorage.setItem('wonderswan:display:v1','clean'));
   page = await recovery.newPage();
   page.on('pageerror', error => errors.push(error.message));
   let releaseWasm;
@@ -385,6 +389,7 @@ try {
   console.log('Wasm initialization/loading/retry, failed demo recovery, and asynchronous load/modal/background races passed');
 
   const mobile = await browser.newContext({ viewport:{width:375,height:812}, isMobile:true, hasTouch:true });
+  await mobile.addInitScript(() => localStorage.setItem('wonderswan:display:v1','clean'));
   page = await mobile.newPage();
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(base);

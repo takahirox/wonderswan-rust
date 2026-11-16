@@ -138,6 +138,7 @@ const observeAudio = () => {
   };
 };
 await context.addInitScript(observeAudio);
+await context.addInitScript(() => localStorage.setItem('wonderswan:display:v1','clean'));
 async function ready() {
   await page.waitForFunction(() => !document.querySelector('#model').disabled);
 }

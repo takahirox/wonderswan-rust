@@ -72,6 +72,19 @@ validation does not establish that deployment has happened.
    clears held inputs. Close or press Escape to return; a previously running
    game resumes unless the tab was hidden. A manually paused game stays paused.
    Keyboard gameplay is active only while the canvas has focus.
+   **Display effect** switches live, including while paused: **Clean** keeps exact
+   nearest-neighbor pixels; **LCD Light** (the new-visitor default with WebGL2) adds
+   subtle native pixel cells, softness and weak persistence; **LCD Authentic**
+   strengthens the matrix and response with modest reflective mono, softer Color,
+   and clearer/lower-ghosting SwanCrystal presets. These are aesthetic approximations,
+   not measured LCD calibration. **Retro CRT** adds a restrained decorative mask and
+   scanlines; a WonderSwan did not have a CRT. Effects change presentation only.
+   The choice is saved under `wonderswan:display:v1`, separately from saves, console
+   EEPROM, RTC and audio preferences. Unavailable/failed WebGL2 and context loss
+   report a nonblocking notice and use the playable 2D Clean display; an explicit
+   choice is retained and restored when the context recovers. History updates
+   only on emulated frames and is seeded across cartridge/restart/model/mode and
+   resume transitions. No additional animation loop runs while idle or paused.
 5. **Debug Mode** in Settings is off on every page load. Enable it to show the
    actual model, ROM name/byte count, execution state, core frame count, and last
    error. Runtime details collapse; Close or unchecking Debug Mode hides the
@@ -84,7 +97,8 @@ validation does not establish that deployment has happened.
 
 Vertical cartridges use their header orientation: the player rotates the native
 image counterclockwise into a 144:224 portrait footprint. The core framebuffer
-and canvas backing stay 224×144. Pixelated scaling keeps square pixels; controls
+and Clean canvas backing stay 224×144; shader history also stays native-sized,
+with output capped at 4× resolution. Pixelated scaling keeps square pixels; controls
 keep their raw hardware identities in either orientation. X1/X2/X3/X4 remain
 Up/Right/Down/Left (or W/D/S/A); Y1/Y2/Y3/Y4 remain I/L/K/J. Keyboard and multiple
 touch presses combine, including two sources holding the same button. Releasing
@@ -220,6 +234,16 @@ failures are synthetic; this does not claim a real device or physical tab test.
 For the win screenshot, set `WS_SMOKE_SCREENSHOT=/tmp/beacon-trail-win.png`.
 Set `WS_SMOKE_ARTIFACTS=/tmp/wonderswan-player` for desktop/mobile screenshots
 including empty, playing, settings, debug, and fullscreen states.
+Exact-pixel gameplay and panel-output checks explicitly choose Clean. The LCD
+output checks also exercise the production WebGL2 shaders with synthetic flat,
+edge and alternating RGBA uploads: native-cell detail, preset/model differences,
+softness, per-emulated-frame history, stable paused redraws and texture allocation,
+small-scale grid suppression, preference storage, and unavailable/compile/link/lost
+context fallback and restoration. Shader tests require working WebGL2 in Chromium
+and fail rather than silently skip GPU assertions. The keypad geometry checks
+compare both Clean and LCD output in landscape/portrait at desktop/mobile widths
+and fullscreen. These headless Chromium checks do not establish Safari/Firefox or
+physical mobile GPU behavior.
 The compatibility suite loads each original SRAM/EEPROM probe through the file
 picker, checks background/sprite colors, SHA-256 save isolation, reload/reopen,
 reset/model/pause preservation, and real Web Audio sample buffers and bounded

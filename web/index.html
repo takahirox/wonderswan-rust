@@ -36,6 +36,7 @@
                 aria-label="Game screen. X1–X4: arrows or W D S A. Y1–Y4: I L K J. A/B: Z/X. Start: Enter. Buttons keep their hardware identities in portrait.">
                 A browser with canvas support is required.
               </canvas>
+              <canvas id="screen-effect" width="224" height="144" aria-hidden="true" hidden></canvas>
             </div>
             <div id="empty-state">
               <p class="eyebrow">BEACON TRAIL</p>
@@ -65,6 +66,7 @@
             <p id="sound-status" role="status">Sound on · Start a game to enable audio.</p>
           </div>
           <div class="feedback">
+            <p id="display-notice" role="status"></p>
             <p id="error" role="alert"></p>
             <button id="retry" type="button" hidden>Retry initialization</button>
             <p id="console-notice" role="status"></p>
@@ -120,6 +122,14 @@
         <p>X and Y are independent hardware groups; both can be held with A/B/Start. Portrait cartridges rotate the screen counterclockwise. Key and touch labels always select the same raw buttons; they do not rotate with the image. Beacon Trail uses the X group.</p>
         <p>Click the screen to use the keyboard. Touch controls appear on small or touch screens. Hiding the tab pauses; choose Resume when you return.</p>
         <p>Changing the console restarts the current cartridge. Local ROM files stay in your browser and are never uploaded.</p>
+        <label for="display-effect">Display effect</label>
+        <select id="display-effect" aria-describedby="display-help" disabled>
+          <option value="clean">Clean</option>
+          <option value="lcd-light">LCD Light</option>
+          <option value="lcd-authentic">LCD Authentic</option>
+          <option value="retro-crt">Retro CRT</option>
+        </select>
+        <p id="display-help">Clean keeps exact, sharp pixels. LCD Light (default) adds subtle cells and persistence; LCD Authentic strengthens them with modest mono, Color and SwanCrystal panel approximations, not calibrated measurements. These optional effects only change presentation. Retro CRT is a creative extra, not a WonderSwan panel. Your choice stays in this browser; if graphics effects fail, Clean takes over.</p>
         <label for="rtc-mode">Cartridge clock</label>
         <select id="rtc-mode">
           <option value="auto">Use cartridge clock indication</option>

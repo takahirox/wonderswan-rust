@@ -40,6 +40,9 @@ button:disabled, select:disabled { opacity: .45; cursor: default; }
 .screen-frame[data-orientation="vertical"] { aspect-ratio: 144 / 224; max-height: 672px; }
 #screen-presentation { position: absolute; }
 canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: block; image-rendering: pixelated; }
+#screen-effect { pointer-events: none; }
+#screen[data-effect]:not([data-effect="clean"]) { opacity: 0; }
+#screen:focus-visible + #screen-effect { outline: 2px solid var(--accent); outline-offset: 4px; }
 [data-orientation="vertical"] canvas { transform: translate(-50%, -50%) rotate(-90deg); }
 #empty-state { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; background: #090b0d; text-align: center; padding: 16px; }
 #empty-state .eyebrow { color: var(--accent); letter-spacing: .18em; font-size: 12px; font-weight: 650; }
@@ -54,9 +57,9 @@ canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50
 #sound { min-width: 76px; }
 #sound-status { flex-basis: 100%; font-size: 12px; }
 .feedback { font-size: 13px; }
-#error:not(:empty), #notice:not(:empty), #console-notice:not(:empty), #retry:not([hidden]) { margin-top: 16px; }
+#error:not(:empty), #notice:not(:empty), #console-notice:not(:empty), #display-notice:not(:empty), #retry:not([hidden]) { margin-top: 16px; }
 #error { color: #ffb5b5; overflow-wrap: anywhere; }
-#notice, #console-notice { color: var(--muted); }
+#notice, #console-notice, #display-notice { color: var(--muted); }
 #touch-controls { display: none; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-top: 24px; }
 .action-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 #touch-controls button { touch-action: none; user-select: none; -webkit-user-select: none; min-width: 44px; min-height: 44px; padding: 6px; }
