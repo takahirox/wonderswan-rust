@@ -3,6 +3,7 @@ use crate::{bus::Bus, FRAME_HEIGHT, FRAME_WIDTH};
 fn word(bus: &Bus, address: usize) -> u16 {
     u16::from_le_bytes([bus.ram[address & 65535], bus.ram[(address + 1) & 65535]])
 }
+#[cfg(test)]
 fn tile_pixel(bus: &Bus, entry: u16, x: usize, y: usize, sprite: bool) -> Option<(usize, u8)> {
     let color = bus.color_mode();
     let four = color && bus.ports[0x60] & 64 != 0;
@@ -36,10 +37,12 @@ fn tile_pixel(bus: &Bus, entry: u16, x: usize, y: usize, sprite: bool) -> Option
 }
 // Identity type latches the composition mode; translation never reinterprets it.
 #[derive(Clone, Copy)]
+#[cfg_attr(test, derive(Debug, Eq, PartialEq))]
 enum Pixel {
     Shade(u8),
     Color(u8),
 }
+#[cfg(test)]
 fn identity(bus: &Bus, palette: usize, index: u8) -> Pixel {
     if bus.color_mode() {
         Pixel::Color((palette * 16 + index as usize) as u8)
@@ -76,6 +79,7 @@ fn window(bus: &Bus, base: usize, x: usize, y: usize) -> bool {
         && y >= bus.ports[base + 1] as usize
         && y <= bus.ports[base + 3] as usize
 }
+#[cfg(test)]
 fn screen(bus: &Bus, layer: usize, x: usize, y: usize) -> Option<Pixel> {
     if bus.ports[0] & (1 << layer) == 0 {
         return None;
@@ -90,8 +94,9 @@ fn screen(bus: &Bus, layer: usize, x: usize, y: usize) -> Option<Pixel> {
     let entry = word(bus, base + (sy / 8 * 32 + sx / 8) * 2);
     tile_pixel(bus, entry, sx % 8, sy % 8, false).map(|(p, i)| identity(bus, p, i))
 }
+#[cfg(test)]
 /// Compose identities, without final shade/RGB12 lookup. See docs/lcd-timing.md.
-fn compose_line(bus: &Bus, y: usize) -> [Pixel; FRAME_WIDTH] {
+fn compose_line_reference(bus: &Bus, y: usize) -> [Pixel; FRAME_WIDTH] {
     let mut row = [Pixel::Shade(0); FRAME_WIDTH];
     let count = (bus.ports[6] as usize).min(128);
     let first = bus.ports[5] as usize & 127;
@@ -142,12 +147,223 @@ fn compose_line(bus: &Bus, y: usize) -> [Pixel; FRAME_WIDTH] {
     }
     row
 }
+/// Decode a tile row once, keeping palette identities until the later LCD stage.
+fn tile_row(bus: &Bus, entry: u16, y: usize, sprite: bool) -> [Option<Pixel>; 8] {
+    let color = bus.color_mode();
+    let four = color && bus.ports[0x60] & 64 != 0;
+    let tile = (entry as usize & 511)
+        + if color && !sprite && entry & 0x2000 != 0 {
+            512
+        } else {
+            0
+        };
+    let y = if entry & 0x8000 != 0 { 7 - y } else { y };
+    let planes = if four { 4 } else { 2 };
+    let address = (if four { 0x4000 } else { 0x2000 }) + tile * planes * 8 + y * planes;
+    let palette = if sprite {
+        8 + ((entry as usize >> 9) & 7)
+    } else {
+        (entry as usize >> 9) & 15
+    };
+    let transparent = four || palette & 4 != 0;
+    let mono = u16::from_le_bytes([bus.ports[0x20 + palette * 2], bus.ports[0x21 + palette * 2]]);
+    let packed = four && bus.ports[0x60] & 32 != 0;
+    let mut row = [None; 8];
+    for x in 0..8 {
+        let index = if packed {
+            (bus.ram[address + x / 2] >> ((1 - (x & 1)) * 4)) & 15
+        } else {
+            (0..planes).fold(0, |value, p| {
+                value | (((bus.ram[address + p] >> (7 - x)) & 1) << p)
+            })
+        };
+        let output = if entry & 0x4000 != 0 { 7 - x } else { x };
+        if index != 0 || !transparent {
+            row[output] = Some(if color {
+                Pixel::Color((palette * 16 + index as usize) as u8)
+            } else {
+                Pixel::Shade(((mono >> (index * 4)) & 7) as u8)
+            });
+        }
+    }
+    row
+}
+
+fn screen_line(bus: &Bus, layer: usize, y: usize) -> [Option<Pixel>; FRAME_WIDTH] {
+    let mut row = [None; FRAME_WIDTH];
+    if bus.ports[0] & (1 << layer) == 0 {
+        return row;
+    }
+    let sy = (y + bus.ports[0x11 + layer * 2] as usize) & 255;
+    let scroll = bus.ports[0x10 + layer * 2] as usize;
+    let base =
+        ((bus.ports[7] >> (layer * 4)) & if bus.color_mode() { 15 } else { 7 }) as usize * 0x800;
+    let mut x = 0;
+    // Repeated map entries share the decoded row within this composition only.
+    // No write invalidation is needed, including for CPU and DMA tile writes.
+    let mut previous = None;
+    let mut tile = [None; 8];
+    while x < FRAME_WIDTH {
+        let sx = (x + scroll) & 255;
+        let entry = word(bus, base + (sy / 8 * 32 + sx / 8) * 2);
+        if previous != Some(entry) {
+            tile = tile_row(bus, entry, sy % 8, false);
+            previous = Some(entry);
+        }
+        let count = (8 - sx % 8).min(FRAME_WIDTH - x);
+        for offset in 0..count {
+            let at = x + offset;
+            if layer == 1
+                && bus.ports[0] & 32 != 0
+                && window(bus, 8, at, y) == (bus.ports[0] & 16 != 0)
+            {
+                continue;
+            }
+            row[at] = tile[sx % 8 + offset];
+        }
+        x += count;
+    }
+    row
+}
+
+/// Compose identities, without final shade/RGB12 lookup. See docs/lcd-timing.md.
+fn compose_line(bus: &Bus, y: usize) -> [Pixel; FRAME_WIDTH] {
+    let background = if bus.color_mode() {
+        Pixel::Color(bus.ports[1])
+    } else {
+        Pixel::Shade(bus.ports[1] & 7)
+    };
+    let mut row = [background; FRAME_WIDTH];
+    let back = screen_line(bus, 0, y);
+    let front = screen_line(bus, 1, y);
+    let mut sprites = [None; FRAME_WIDTH];
+    if bus.ports[0] & 4 != 0 {
+        let count = (bus.ports[6] as usize).min(128);
+        let first = bus.ports[5] as usize & 127;
+        let mut selected = 0;
+        for n in 0..count {
+            let base = ((first + n) & 127) * 4;
+            let sy = (y as u8).wrapping_sub(bus.sprites[base + 2]);
+            if sy >= 8 {
+                continue;
+            }
+            selected += 1;
+            let entry = u16::from_le_bytes([bus.sprites[base], bus.sprites[base + 1]]);
+            for (dx, pixel) in tile_row(bus, entry, sy as usize, true)
+                .into_iter()
+                .enumerate()
+            {
+                let x = bus.sprites[base + 3].wrapping_add(dx as u8) as usize;
+                if x >= FRAME_WIDTH || sprites[x].is_some() {
+                    continue;
+                }
+                if bus.ports[0] & 8 != 0 && window(bus, 12, x, y) == (entry & 0x1000 != 0) {
+                    continue;
+                }
+                // The first opaque sprite claims this location even if Screen 2
+                // will later cover it. List priority precedes layer priority.
+                if let Some(pixel) = pixel {
+                    sprites[x] = Some((pixel, entry & 0x2000 != 0));
+                }
+            }
+            if selected == 32 {
+                break;
+            }
+        }
+    }
+    for x in 0..FRAME_WIDTH {
+        if let Some(pixel) = back[x] {
+            row[x] = pixel;
+        }
+        if let Some((pixel, false)) = sprites[x] {
+            row[x] = pixel;
+        }
+        if let Some(pixel) = front[x] {
+            row[x] = pixel;
+        }
+        if let Some((pixel, true)) = sprites[x] {
+            row[x] = pixel;
+        }
+    }
+    row
+}
+
 fn translate_line(bus: &Bus, pixels: &mut [u8], y: usize, row: [Pixel; FRAME_WIDTH]) {
-    for (output, pixel) in pixels[y * FRAME_WIDTH * 4..(y + 1) * FRAME_WIDTH * 4]
-        .chunks_exact_mut(4)
-        .zip(row)
-    {
-        output.copy_from_slice(&translate(bus, pixel));
+    let output = &mut pixels[y * FRAME_WIDTH * 4..(y + 1) * FRAME_WIDTH * 4];
+    if bus.ports[0x14] & 1 == 0 {
+        output.fill(255);
+        return;
+    }
+    let shades: [[u8; 4]; 8] = std::array::from_fn(|i| shade(bus, i as u8));
+    // Translation reads the palette at this boundary, one line after composition.
+    // Alpha=255 distinguishes cached colors from the zero-initialized sentinel.
+    let mut colors = [0u32; 256];
+    for (output, pixel) in output.chunks_exact_mut(4).zip(row) {
+        let rgba = match pixel {
+            Pixel::Shade(i) => shades[i as usize],
+            Pixel::Color(i) => {
+                let cached = &mut colors[i as usize];
+                if *cached == 0 {
+                    *cached = u32::from_le_bytes(translate(bus, pixel));
+                }
+                cached.to_le_bytes()
+            }
+        };
+        output.copy_from_slice(&rgba);
+    }
+}
+
+#[cfg(test)]
+mod row_tests {
+    use super::*;
+    use crate::Model;
+
+    #[test]
+    fn row_composition_matches_pixel_reference_with_wrapping_windows_and_sprite_limits() {
+        let mut seed = 0x9e3779b9u32;
+        let mut next = || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 16) as u8
+        };
+        for scene in 0..96 {
+            let model = [Model::Mono, Model::Color, Model::Crystal][scene % 3];
+            let mut bus = Bus::new(model);
+            for byte in &mut bus.ram {
+                *byte = next();
+            }
+            for byte in &mut bus.ports {
+                *byte = next();
+            }
+            bus.ports[0x60] = [0, 0x80, 0xc0, 0xe0][scene / 3 % 4];
+            bus.ports[0] = [0, 1, 2, 3, 7, 15, 0x27, 0x37][scene % 8];
+            bus.ports[5] = next();
+            bus.ports[6] = [0, 1, 32, 33, 128, 255][scene % 6];
+            bus.ports[0x10] = [0, 1, 7, 255][scene % 4];
+            for y in [0, 7, 128, 143] {
+                for sprite in bus.sprites.chunks_exact_mut(4) {
+                    sprite[0] = next();
+                    sprite[1] = next();
+                    sprite[2] = (y as u8).wrapping_sub(next() % 12);
+                    sprite[3] = [0, 7, 220, 248, 255, next()][scene % 6];
+                }
+                let row = compose_line(&bus, y);
+                assert_eq!(row, compose_line_reference(&bus, y), "scene {scene}, y {y}");
+                let mut pixels = vec![0; crate::FRAME_BYTES];
+                // Palette changes belong to translation, including mixed
+                // latched Shade/Color identities after a video-mode change.
+                bus.ram[0xfe00..].fill(next());
+                bus.ports[0x60] ^= 0x80;
+                translate_line(&bus, &mut pixels, y, row);
+                for (x, pixel) in row.into_iter().enumerate() {
+                    assert_eq!(
+                        &pixels[(y * FRAME_WIDTH + x) * 4..(y * FRAME_WIDTH + x + 1) * 4],
+                        &translate(&bus, pixel)
+                    );
+                }
+                // Changed tile/palette inputs must be observed on every line.
+                bus.ram[0x2000..].fill(next());
+            }
+        }
     }
 }
 

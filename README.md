@@ -177,6 +177,14 @@ Wasm and reload after Rust changes; Vite handles TypeScript/CSS updates. Generat
 `web/pkg`, `web/dist`, dependency/build directories and Python caches are ignored.
 Both dependency lockfiles are committed.
 
+For native core throughput and comparisons with pinned Beetle/Oswan builds, see
+[the performance investigation](docs/performance.md). Run a headless measurement
+with video and audio generation enabled using:
+
+```sh
+cargo run -p ws-core --example throughput --release --locked -- web/public/demo/beacon-trail.ws 120 3000 crystal
+```
+
 To rebuild the game after editing `demo/game.asm` or `demo/graphics.py`, from root:
 
 ```sh

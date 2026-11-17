@@ -1,0 +1,382 @@
+{
+  "browser": "151.0.7922.34",
+  "frames": 1000,
+  "warmup": 120,
+  "repeats": 5,
+  "summary": [
+    {
+      "stage": "baseline",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "median_us": 456.5,
+      "min_us": 453.80000001192093,
+      "max_us": 459.5999999642372
+    },
+    {
+      "stage": "optimized",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "median_us": 230.5,
+      "min_us": 229.4000000357628,
+      "max_us": 234.39999997615814
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "median_us": 660.6999999880791,
+      "min_us": 657.9000000357628,
+      "max_us": 663.3999999761581
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "median_us": 139.9000000357628,
+      "min_us": 135.5,
+      "max_us": 142.60000002384186
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "median_us": 603.8000000119209,
+      "min_us": 599.6999999880791,
+      "max_us": 604.5
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "median_us": 110.90000003576279,
+      "min_us": 101.59999996423721,
+      "max_us": 112.19999998807907
+    }
+  ],
+  "samples": [
+    {
+      "stage": "baseline",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "trial": 0,
+      "frames": 1000,
+      "us_per_frame": 459.5999999642372,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "ad68342d",
+      "audio_hash": "1d037a85"
+    },
+    {
+      "stage": "optimized",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "trial": 0,
+      "frames": 1000,
+      "us_per_frame": 234.39999997615814,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "ad68342d",
+      "audio_hash": "1d037a85"
+    },
+    {
+      "stage": "optimized",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "trial": 1,
+      "frames": 1000,
+      "us_per_frame": 229.4000000357628,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "ad68342d",
+      "audio_hash": "1d037a85"
+    },
+    {
+      "stage": "baseline",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "trial": 1,
+      "frames": 1000,
+      "us_per_frame": 453.80000001192093,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "ad68342d",
+      "audio_hash": "1d037a85"
+    },
+    {
+      "stage": "baseline",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "trial": 2,
+      "frames": 1000,
+      "us_per_frame": 456.5,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "ad68342d",
+      "audio_hash": "1d037a85"
+    },
+    {
+      "stage": "optimized",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "trial": 2,
+      "frames": 1000,
+      "us_per_frame": 230.4000000357628,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "ad68342d",
+      "audio_hash": "1d037a85"
+    },
+    {
+      "stage": "optimized",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "trial": 3,
+      "frames": 1000,
+      "us_per_frame": 230.5,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "ad68342d",
+      "audio_hash": "1d037a85"
+    },
+    {
+      "stage": "baseline",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "trial": 3,
+      "frames": 1000,
+      "us_per_frame": 457.80000001192093,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "ad68342d",
+      "audio_hash": "1d037a85"
+    },
+    {
+      "stage": "baseline",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "trial": 4,
+      "frames": 1000,
+      "us_per_frame": 454.69999998807907,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "ad68342d",
+      "audio_hash": "1d037a85"
+    },
+    {
+      "stage": "optimized",
+      "rom": "web/public/demo/beacon-trail.ws",
+      "trial": 4,
+      "frames": 1000,
+      "us_per_frame": 230.5,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "ad68342d",
+      "audio_hash": "1d037a85"
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "trial": 0,
+      "frames": 1000,
+      "us_per_frame": 662.8999999761581,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "8cca8f45",
+      "audio_hash": "75f2da05"
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "trial": 0,
+      "frames": 1000,
+      "us_per_frame": 140.10000002384186,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "8cca8f45",
+      "audio_hash": "75f2da05"
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "trial": 1,
+      "frames": 1000,
+      "us_per_frame": 142.60000002384186,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "8cca8f45",
+      "audio_hash": "75f2da05"
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "trial": 1,
+      "frames": 1000,
+      "us_per_frame": 660.6999999880791,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "8cca8f45",
+      "audio_hash": "75f2da05"
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "trial": 2,
+      "frames": 1000,
+      "us_per_frame": 663.3999999761581,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "8cca8f45",
+      "audio_hash": "75f2da05"
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "trial": 2,
+      "frames": 1000,
+      "us_per_frame": 139.9000000357628,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "8cca8f45",
+      "audio_hash": "75f2da05"
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "trial": 3,
+      "frames": 1000,
+      "us_per_frame": 137.89999997615814,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "8cca8f45",
+      "audio_hash": "75f2da05"
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "trial": 3,
+      "frames": 1000,
+      "us_per_frame": 657.9000000357628,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "8cca8f45",
+      "audio_hash": "75f2da05"
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "trial": 4,
+      "frames": 1000,
+      "us_per_frame": 659.3999999761581,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "8cca8f45",
+      "audio_hash": "75f2da05"
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sram128-2003.ws",
+      "trial": 4,
+      "frames": 1000,
+      "us_per_frame": 135.5,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "8cca8f45",
+      "audio_hash": "75f2da05"
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "trial": 0,
+      "frames": 1000,
+      "us_per_frame": 604,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "1f4c6dc5",
+      "audio_hash": "7c38e285"
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "trial": 0,
+      "frames": 1000,
+      "us_per_frame": 106.80000001192093,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "1f4c6dc5",
+      "audio_hash": "7c38e285"
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "trial": 1,
+      "frames": 1000,
+      "us_per_frame": 101.59999996423721,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "1f4c6dc5",
+      "audio_hash": "7c38e285"
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "trial": 1,
+      "frames": 1000,
+      "us_per_frame": 600.6999999880791,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "1f4c6dc5",
+      "audio_hash": "7c38e285"
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "trial": 2,
+      "frames": 1000,
+      "us_per_frame": 604.5,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "1f4c6dc5",
+      "audio_hash": "7c38e285"
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "trial": 2,
+      "frames": 1000,
+      "us_per_frame": 112.19999998807907,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "1f4c6dc5",
+      "audio_hash": "7c38e285"
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "trial": 3,
+      "frames": 1000,
+      "us_per_frame": 111.69999998807907,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "1f4c6dc5",
+      "audio_hash": "7c38e285"
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "trial": 3,
+      "frames": 1000,
+      "us_per_frame": 603.8000000119209,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "1f4c6dc5",
+      "audio_hash": "7c38e285"
+    },
+    {
+      "stage": "baseline",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "trial": 4,
+      "frames": 1000,
+      "us_per_frame": 599.6999999880791,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "1f4c6dc5",
+      "audio_hash": "7c38e285"
+    },
+    {
+      "stage": "optimized",
+      "rom": "fixtures/generated/sound-hyper.ws",
+      "trial": 4,
+      "frames": 1000,
+      "us_per_frame": 110.90000003576279,
+      "sample_values": 636000,
+      "frame_bytes": 129024000,
+      "video_hash": "1f4c6dc5",
+      "audio_hash": "7c38e285"
+    }
+  ]
+}

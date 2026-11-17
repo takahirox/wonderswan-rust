@@ -320,6 +320,14 @@ impl Machine {
         while self.frame_number() < end {
             match self.cpu.step(&mut self.bus) {
                 Ok(cycles) => {
+                    // Cpu::step retains its single-clock HALT contract. Only
+                    // the machine scheduler can skip idle CPU calls: it knows
+                    // when raster/DMA events can next require CPU attention.
+                    let cycles = if cycles == 1 && self.cpu.halted {
+                        self.bus.halted_cycles()
+                    } else {
+                        cycles
+                    };
                     self.advance(cycles);
                 }
                 Err(error) => {
@@ -329,6 +337,59 @@ impl Machine {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod scheduling_tests {
+    use super::*;
+
+    #[test]
+    fn halted_event_scheduling_matches_single_clock_machine_execution() {
+        let demo: &[u8] = include_bytes!("../../../web/public/demo/beacon-trail.ws");
+        let compat: &[u8] = include_bytes!("../../../fixtures/generated/sram128-2003.ws");
+        let hyper: &[u8] = include_bytes!("../../../fixtures/generated/sound-hyper.ws");
+        for (model, rom) in [
+            (Model::Mono, demo),
+            (Model::Color, compat),
+            (Model::Crystal, compat),
+            (Model::Crystal, hyper),
+        ] {
+            let mut fast = Machine::new(model);
+            let mut reference = Machine::new(model);
+            fast.load_rom(rom).unwrap();
+            reference.load_rom(rom).unwrap();
+            for frame in 1..=6 {
+                let buttons = if frame == 4 { Button::Right as u16 } else { 0 };
+                fast.set_buttons(buttons);
+                reference.set_buttons(buttons);
+                fast.run_frame().unwrap();
+                let end = reference.frame_number() + 1;
+                while reference.frame_number() < end {
+                    let cycles = reference.cpu.step(&mut reference.bus).unwrap();
+                    reference.advance(cycles);
+                }
+                assert_eq!(fast.bus.cycles, reference.bus.cycles);
+                assert_eq!(fast.bus.raster_line, reference.bus.raster_line);
+                assert_eq!(fast.cpu.registers, reference.cpu.registers);
+                assert_eq!(fast.cpu.segments, reference.cpu.segments);
+                assert_eq!(fast.cpu.ip, reference.cpu.ip);
+                assert_eq!(fast.cpu.flags, reference.cpu.flags);
+                assert_eq!(fast.cpu.halted, reference.cpu.halted);
+                assert_eq!(fast.bus.ram, reference.bus.ram);
+                assert_eq!(fast.bus.ports, reference.bus.ports);
+                assert_eq!(fast.bus.sprites, reference.bus.sprites);
+                for port in 0xa8..=0xab {
+                    assert_eq!(
+                        fast.bus.input(port).unwrap(),
+                        reference.bus.input(port).unwrap()
+                    );
+                }
+                assert_eq!(fast.framebuffer(), reference.framebuffer());
+                assert_eq!(fast.audio_samples(), reference.audio_samples());
+                assert_eq!(fast.save_data(), reference.save_data());
+            }
+        }
     }
 }
 

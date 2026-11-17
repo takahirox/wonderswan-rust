@@ -309,7 +309,22 @@ impl Bus {
         let cycles = std::mem::take(&mut self.sound_stall);
         (cycles != 0).then_some(cycles)
     }
+    /// HALT has no CPU work before the next possible interrupt or DMA stall.
+    /// Raster interrupts occur at line boundaries; enabled SDMA can stall the
+    /// CPU at clock 117 of either half-line. Other devices still tick normally.
+    pub fn halted_cycles(&self) -> u32 {
+        let line = 256 - (self.cycles % 256) as u32;
+        if self.model != Model::Mono && self.ports[0x52] & 0x80 != 0 {
+            line.min(((117 + 128 - self.cycles % 128 - 1) % 128 + 1) as u32)
+        } else {
+            line
+        }
+    }
     pub fn tick(&mut self, mut cycles: u32) {
+        if self.model == Model::Mono || self.ports[0x52] & 0x80 == 0 {
+            self.tick_devices(cycles);
+            return;
+        }
         // Split at SDMA events so an arbitrarily sized clock advance produces
         // exactly the same PCM and controller state as single-clock advances.
         while cycles != 0 {
