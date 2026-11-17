@@ -2,6 +2,7 @@
 // Independent literal rows from the source-included line-polling cartridge.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
 const vectors = [
@@ -171,13 +172,13 @@ async function displayEffectsChecks(browser, base, errors) {
     assert.equal(await actual(),'lcd-light','shader is required in this Chromium check, never silently skipped');
     assert.equal(await page.locator('#display-notice').textContent(),'');
     assert.equal(await page.locator('#empty-state').isVisible(),true);
-    await page.locator('#demo').click();
+    await page.locator('#rom').setInputFiles(fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws',import.meta.url)));
     await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
     await page.locator('#settings').click();
     await page.locator('#debug-toggle').check();
     const counter = await page.locator('#debug-frames').textContent();
     const sound = await page.locator('#sound-status').textContent();
-    // Flat cells isolate matrix detail from game content; the edge isolates softness.
+    // Flat cells isolate matrix detail from cartridge content; the edge isolates softness.
     await page.evaluate(() => { window.displayProbe.pattern = 'flat'; });
     await select('lcd-light');
     const light = await snapshot();
@@ -319,7 +320,7 @@ async function displayEffectsChecks(browser, base, errors) {
     assert.equal(await actual(),'lcd-authentic','LCD preference persists');
 
     // Real context loss/restoration, with a playable native canvas during loss.
-    await page.locator('#demo').click();
+    await page.locator('#rom').setInputFiles(fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws',import.meta.url)));
     await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
     await page.evaluate(() => {
       const gl=document.querySelector('#screen-effect').getContext('webgl2');
@@ -363,10 +364,10 @@ async function displayEffectsChecks(browser, base, errors) {
       const fallback = ['unavailable','compile','link','draw'].includes(fault);
       assert.equal(await page.locator('#screen').getAttribute('data-effect'),fallback ? 'clean' : 'lcd-light');
       if (fallback) assert.match(await page.locator('#display-notice').textContent(),/Clean fallback/);
-      await page.locator('#demo').click();
+      await page.locator('#rom').setInputFiles(fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws',import.meta.url)));
       await page.waitForFunction(() => {
         const ctx=document.querySelector('#screen').getContext('2d');
-        return ctx.getImageData(27,65,1,1).data[0]===0 && document.querySelector('#rom-status').textContent === 'Running';
+        return ctx.getImageData(3,3,1,1).data[0]===0 && document.querySelector('#rom-status').textContent === 'Running';
       });
       await page.locator('#settings').click();
       await page.locator('#display-effect').selectOption('clean');

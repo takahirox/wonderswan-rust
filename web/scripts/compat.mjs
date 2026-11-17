@@ -48,15 +48,10 @@ page.on('request', r => requests.push(r.url()));
 // Observe real Web Audio nodes/buffers while letting them play normally.
 const observeAudio = () => {
   window.audioProbe = { buffers:0, nonzero:0, active:0, peak:0, contexts:0, resumes:0, suspends:0,
-    activations:[], fetchResumes:[], chooserResumes:[], readResumes:[], lastBuffer:null };
+    activations:[], chooserResumes:[], readResumes:[], lastBuffer:null };
   let clicking = false;
   document.addEventListener('click', event => { clicking = event.isTrusted; }, true);
   window.addEventListener('click', () => { clicking = false; });
-  const fetchROM = window.fetch;
-  window.fetch = (...args) => {
-    if (String(args[0]).endsWith('.ws')) window.audioProbe.fetchResumes.push(window.audioProbe.resumes);
-    return fetchROM(...args);
-  };
   const choose = HTMLInputElement.prototype.click;
   HTMLInputElement.prototype.click = function() {
     if (this.type === 'file') window.audioProbe.chooserResumes.push(window.audioProbe.resumes);
@@ -360,17 +355,11 @@ try {
   await fresh.addInitScript(observeAudio);
   page = await fresh.newPage();page.on('pageerror',e => errors.push(e.message));
   await page.goto(base);await ready();
-  let releaseDemo;
-  const gate = new Promise(resolve => { releaseDemo = resolve; });
-  await page.route('**/demo/beacon-trail.ws',async route => { await gate; await route.continue(); });
-  await page.locator('#demo').click();
-  assert.ok(await page.evaluate(() => window.audioProbe.resumes > 0),'resume attempted while fetch is gated');
-  assert.equal(await page.evaluate(() => window.audioProbe.activations[0]),true,'Play demo resumes from trusted click');
-  assert.ok(await page.evaluate(() => window.audioProbe.fetchResumes[0] > 0),'resume precedes demo fetch');
-  releaseDemo();
-  await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
-  await page.waitForFunction(() => window.audioProbe.buffers > 3);
-  assert.equal(await page.evaluate(() => window.audioProbe.nonzero),0,'shipped original demo is silent');
+  await load(probes[0]);
+  assert.equal(await page.evaluate(() => window.audioProbe.activations[0]),true,'Load ROM resumes from trusted click');
+  assert.ok(await page.evaluate(() => window.audioProbe.chooserResumes[0] > 0),'resume precedes file chooser');
+  assert.ok(await page.evaluate(() => window.audioProbe.readResumes[0] > 0),'resume precedes local file read');
+  await page.waitForFunction(() => window.audioProbe.nonzero > 3);
   await page.locator('#volume').fill('31');
   await page.reload();await ready();
   assert.equal(await page.locator('#volume').inputValue(),'31');
@@ -378,10 +367,9 @@ try {
   assert.equal(await page.evaluate(() => window.audioProbe.contexts),0);
   // Mute before any context exists, including starting/restarting a cartridge.
   await page.locator('#sound').click();
-  await page.locator('#demo').click();
-  await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
-  assert.equal(await page.locator('#sound').textContent(),'Unmute','Play demo preserves mute');
-  await load(probes[0]); await page.locator('#reset').click(); await display();
+  await load(probes[0]);
+  assert.equal(await page.locator('#sound').textContent(),'Unmute','Load ROM preserves mute');
+  await page.locator('#reset').click(); await display();
   assert.equal(await page.evaluate(() => window.audioProbe.contexts),0);
   assert.equal(await page.locator('#sound').textContent(),'Unmute');
   await page.close();page = await fresh.newPage();page.on('pageerror',e => errors.push(e.message));
@@ -394,7 +382,7 @@ try {
   await load(probes[0]);
   await page.waitForFunction(() => window.audioProbe.nonzero > 3);
   await fresh.close();page = originalPage;
-  console.log('Gesture-before-fetch/chooser/read, intentionally silent demo, persisted on/mute/volume and pre-unlock mute/unmute passed');
+  console.log('Gesture-before-chooser/read, persisted on/mute/volume and pre-unlock mute/unmute passed');
 
   for (const preference of ['bad JSON','null','{"muted":"yes","volume":"20"}',
     '{"muted":null,"volume":-1}','{"volume":101}','{"volume":1e999}','denied']) {

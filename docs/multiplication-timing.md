@@ -115,14 +115,14 @@ state without an absolute multiply interval. `compat.asm` uses IMUL during setup
 before timers/interrupt loops; it has no absolute assertion for that setup.
 Word/I/O, shift, direct/indirect CALL/JMP, return/IRET, IRQ, Jcc/JCXZ and LOOP
 measured bodies contain no multiplication. Other 69/6B occurrences are port
-addresses, not executed multiply opcodes. Demo assembly has no multiplication.
+addresses, not executed multiply opcodes.
 Consequently no existing measured cartridge interval or tolerance needs changing.
 One older CPU accounting assertion assumed `F7 E0` must exceed a memory MOV.
 Its bytes follow `90 B8 01 00 A1 00 08` at 1007: two fetches plus three residual
 clocks give **5**, equal to the preceding aligned `A1 00 08` (opcode + odd
 address-word fetch + aligned operand read + residual = 1+2+1+1). Replace only
 that affected assertion with the literal five-clock multiply budget; retain its
-other fetch/wait/HALT assertions. Existing fixture/demo bytes, unrelated assertions
+other fetch/wait/HALT assertions. Existing fixture bytes, unrelated assertions
 and historical reports are preserved.
 
 [Validation evidence](issue-85-validation.md) records executed controls, actual

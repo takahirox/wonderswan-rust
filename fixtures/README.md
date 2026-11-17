@@ -479,7 +479,7 @@ Wasm player, actual SRAM flush and framebuffer, and checks browser-local data.
 See [source reconciliation and limits](../docs/multiplication-flags.md) and
 [executed validation](../docs/issue-43-validation.md). The probe establishes
 bounded emulator behavior; physical execution and commercial gameplay were not
-performed. All earlier fixture and demo bytes are retained.
+performed. All earlier fixture bytes are retained.
 
 ## Shift and rotate probe (Issue #45)
 
@@ -946,7 +946,7 @@ Physical-console measurements and commercial-catalog compatibility are unestabli
 source-included CC0-1.0 work under [LICENSE](LICENSE). No external implementation,
 ROM, firmware, assets or device identity is included. The 128 KiB/32 KiB SRAM
 cartridge boots firmware-free on all three emulated models; Color/Crystal exercise
-00/80/00/C0/00/E0/00. Existing fixture/demo bytes remain unchanged.
+00/80/00/C0/00/E0/00. Existing fixture bytes remain unchanged.
 
 Eighteen samples cover every explicit byte/word unsigned/signed and both immediate
 forms, with register and even/odd RAM sources. Every repetition reloads operands
@@ -978,5 +978,5 @@ across all model/mode/boot records before rejecting. Mono runs 00; Color and
 SwanCrystal run 00/80/00/C0/00/E0/00. All 7168 RAM observation bytes mirror to SRAM.
 See [emitted instruction sums, bounds and layout](../docs/division-timing.md) and
 [executed validation and identities](../docs/issue-87-validation.md). Reproduce
-with `python3 fixtures/build.py --check`. Prior fixture/demo bytes are unchanged.
+with `python3 fixtures/build.py --check`. Prior fixture bytes are unchanged.
 Physical-console measurements and commercial-title compatibility remain unestablished.

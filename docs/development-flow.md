@@ -51,7 +51,7 @@ Simplicity does not excuse omitted requirements or necessary validation.
 Select checks appropriate to the changed files and actual tooling, following the
 [test and CI performance principles](#test-and-ci-performance-principles) below.
 The [README](../README.md#build-and-run-locally) documents Rust workspace checks,
-reproducible demo/fixture checks, Wasm/frontend builds, and production-preview
+reproducible fixture checks, Wasm/frontend builds, and production-preview
 Playwright suites. The [Pages workflow](../.github/workflows/deploy-pages.yml)
 builds and deploys on pushes to `main` or manual dispatch on `main`; it does not
 run the test suites, and no PR test workflow is configured. Inspect the current
@@ -88,7 +88,7 @@ meaningful integration coverage when redistributing checks.
    (`cargo fmt`, workspace tests and Clippy as documented in the README), plus
    affected cartridge/Wasm/browser integration checks. UI/Wasm changes need
    relevant Wasm/frontend builds and production-preview browser acceptance;
-   demo/fixture changes need their builders' `--check` validation and affected
+   fixture changes need their builders' `--check` validation and affected
    consumers. CI/build changes need configuration, trigger and artifact-path
    review plus relevant local builds. Use focused checks for fast feedback, then
    complete applicable full regression validation before merge. Keep mandatory

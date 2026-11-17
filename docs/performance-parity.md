@@ -1,5 +1,11 @@
 # Comparable core throughput (Issue #102)
 
+This is an archived measurement record, including workloads removed since the
+measurement. Its recorded results are historical, not claims about today's
+workloads. Current benchmark scripts use only the independent SRAM/audio fixtures
+under `fixtures/generated/`; see the
+[current build and throughput instructions](../README.md#build-and-run-locally).
+
 This continues the [Issue #99 investigation](performance.md) from merged revision
 `7dec186`. The working target was execution time within 10% of the fastest passing
 reference on both mutually passing cartridges. The final implementation meets it
@@ -151,8 +157,8 @@ python3 tools/perf/compare.py \
 Repeat with `WS_PERF_INPUT_REPLAY=1` before `python3` for the moving workload.
 The same environment variable works with `tools/perf/wasm-throughput.mjs` and
 the original report's separate-package Wasm comparison command. Preflight requires
-cartridge success; replay checks valid demo coordinates/score rather than its
-stationary initial position. Output equality across native versions remains mandatory.
+cartridge success markers on the retained fixtures. Output equality across native
+versions remains mandatory; the commands no longer reproduce the removed workload.
 
 ## Validation
 

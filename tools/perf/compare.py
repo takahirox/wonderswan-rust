@@ -11,7 +11,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKLOADS = [
-    "web/public/demo/beacon-trail.ws",
     "fixtures/generated/sram128-2003.ws",
     "fixtures/generated/sound-hyper.ws",
 ]
@@ -55,10 +54,8 @@ def main():
             row = json.loads(subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=120, check=True).stdout)
             diagnostics.append(dict(stage=label, rom=rom, result=row))
             markers = row.get("markers")
-            expected = [3, 8, 0] if "beacon-trail" in rom else [0x600d, 1] if "hyper" in rom else [1]
+            expected = [0x600d, 1] if "hyper" in rom else [1]
             valid = markers is None or markers[:len(expected)] == expected
-            if replay and "beacon-trail" in rom and markers is not None:
-                valid = 2 <= markers[0] <= 25 and 2 <= markers[1] <= 14 and 0 <= markers[2] <= 3
             if not valid:
                 if native:
                     raise RuntimeError(f"native workload failed: {label}/{rom}: {markers}")

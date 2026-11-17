@@ -91,9 +91,9 @@ quantization remain unchanged. Compatibility startup uses ROL AX,1 outside any
 measured timing interval; keypad selection uses SHL AL,4 and SHR DL,1 without an
 absolute timing assertion. Issue #45's probe measures results/FLAGS/branches,
 not absolute intervals. Other occurrences of C0/D0–D3 are I/O ports or data,
-not decoded shift opcodes. Demo source contains no shift/rotate instructions.
+not decoded shift opcodes.
 No existing consumer budget needs recalculation, and no tolerance changes.
-Existing fixture/demo bytes and historical reports are preserved.
+Existing fixture bytes and historical reports are preserved.
 
 Executed checks, control observations and tested identities are recorded in
 [Issue #83 validation](issue-83-validation.md).

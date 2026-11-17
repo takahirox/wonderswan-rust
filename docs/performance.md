@@ -1,5 +1,11 @@
 # Core performance investigation (Issue #99)
 
+This is an archived measurement record, including workloads removed since the
+measurement. Its recorded results are historical, not claims about today's
+workloads. Current benchmark scripts use only the independent SRAM/audio fixtures
+under `fixtures/generated/`; see the
+[current build and throughput instructions](../README.md#build-and-run-locally).
+
 The following is the original measurement record. Further optimization in
 [Issue #102's follow-up](performance-parity.md) reaches comparable native
 throughput on these workloads, including a moving-input replay.
@@ -211,7 +217,7 @@ and `-ldl` for the libretro host. For core-only measurements omit both reference
 options and `--oswan`. The scripts require Python 3 and a C compiler only when
 building reference hosts; the Rust core adds no dependencies. Intermediate-stage
 executables were measured during development; their raw samples document the
-sequence, while the commands above reproduce the original/final comparison.
+sequence, while the commands above now compare only the retained fixture workloads.
 
 To repeat the Wasm comparison, build both original and optimized `ws-web` crates
 with `wasm-pack build --target web --locked` into separate package directories,
