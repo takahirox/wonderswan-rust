@@ -1,5 +1,9 @@
 # Reference audio playback comparison (Issue #113)
 
+This records the research baseline. The subsequent
+[clock-drift correction](audio-clock-drift.md) implements and validates the
+output feedback identified here; the historical measurements below are retained.
+
 The most useful next technique is **queue feedback and clock-drift correction**,
 followed by audio-aware reduction of presentation cost. Replacing the current
 buffer scheduler with an AudioWorklet is a separate experiment, not a necessary
@@ -226,6 +230,10 @@ stall results, which evaluated a different failure mode over shorter windows.
    latency. Compare equivalent device rates, settings and cartridge success paths.
 
 ## Reproduction and validation
+
+The following baseline commands describe checkout `949dacf`. On current main,
+the same drift option validates corrected behavior and expanded scenarios; see
+[the implemented correction](audio-clock-drift.md) for current expectations.
 
 From the root with existing frontend dependencies:
 

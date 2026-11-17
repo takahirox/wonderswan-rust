@@ -24,8 +24,12 @@ class Context {
   }
   createBufferSource(){
     const n=new Node(),context=this;
+    let rate=1,started=false;
+    n.playbackRate={get value(){return rate;},set value(value){
+      assert.equal(started,false,'a scheduled packet must keep its chosen rate');rate=Math.fround(value);
+    }};
     n.start=function(when){
-      this.when=when;this.end=when+this.buffer.duration;
+      started=true;this.when=when;this.end=when+this.buffer.duration/rate;
       assert.equal(this.buffer.getChannelData(0)[0],.25);
       assert.equal(this.buffer.getChannelData(1)[0],-.25);
       if(context.onStart)context.onStart(this);else context.nodes.push(this);
@@ -62,23 +66,36 @@ assert.ok(sound.timing.overruns>0);assert.ok(sound.timing.sources<=32);
 assert.ok(sound.timing.queuedSeconds<=.25+T+1e-9);
 // Lifecycle clears queued sound; old ended callbacks cannot resurrect it.
 sound.pause();assert.equal(context.state,'suspended');assert.equal(sound.timing.sources,0);
+assert.equal(sound.timing.playbackRate,1,'pause resets rate feedback');
 assert.ok(context.nodes.every(n=>n.stopped && n.disconnected));
 const paused=context.nodes.length;sound.push(pcm,24000);assert.equal(context.nodes.length,paused);
 sound.resume();await Promise.resolve();sound.push(pcm,24000);
 assert.equal(context.nodes.length,paused+1);
 sound.setMuted(true);assert.equal(sound.timing.sources,0);assert.equal(context.state,'suspended');
+assert.equal(sound.timing.playbackRate,1,'mute resets rate feedback');
 console.log(`Actual Sound: 120 s contiguous PCM, deferred ended events (peak ${peak}), starvation/overflow recovery, pause/resume/mute passed`);
 
 if(values['drift-output']){
   // Sensitivity experiment, not a measurement of any browser/device oscillator.
   // Production follows wall time; the mocked audio clock has the stated skew.
   const seconds=3600,rows=[];
-  for(const ppm of [0,100,-100,1000,-1000]){
+  const scenarios=[...[0,100,-100,1000,-1000].map(ppm=>({name:`constant-${ppm}`,ppm})),
+    {name:'reverse-drift',ppm:1000,reverse:true},
+    {name:'fast-with-stalls',ppm:1000,jitter:true},
+    {name:'slow-with-stalls',ppm:-1000,jitter:true}];
+  for(const scenario of scenarios){
+    const {ppm}=scenario;
     const player=new Sound(()=>{});player.resume();player.unlock();await Promise.resolve();
     const clock=Context.last;
     let tail=null,gaps=0,gapSeconds=0,cancelledSeconds=0,packets=0,peak=0,wall=0,firstRecovery=null;
+    let minRate=Infinity,maxRate=-Infinity,minLead=Infinity,maxLead=0,lastRate=1,maxRateStep=0,rateSum=0,rateCount=0;
     clock.onStart=node=>{
       packets++;
+      const rate=node.playbackRate.value;
+      minRate=Math.min(minRate,rate);maxRate=Math.max(maxRate,rate);
+      maxRateStep=Math.max(maxRateStep,Math.abs(rate-lastRate));lastRate=rate;
+      if(wall>seconds-60){rateSum+=rate;rateCount++;}
+      minLead=Math.min(minLead,node.when-clock.currentTime);maxLead=Math.max(maxLead,node.end-clock.currentTime);
       if(tail!==null&&node.when-tail>1e-8){gaps++;gapSeconds+=node.when-tail;}
       tail=node.end;
     };
@@ -88,28 +105,47 @@ if(values['drift-output']){
       // Recovery flushes the entire queued tail, including a playing node.
       if(cancelled>0)tail=Math.min(tail??clock.currentTime,clock.currentTime);
     };
-    for(let i=0;i<Math.floor(seconds/T);i++){
-      wall=i*T;clock.currentTime=1+wall*(1+ppm/1e6);
-      player.push(pcm,24000);const timing=player.timing;
+    let generated=0;
+    const count=Math.floor(seconds/T);
+    for(let i=0;i<count;i++){
+      // Seven packets arrive together every 38 packets, following an 80 ms
+      // producer stall. All PCM is retained; no simulation of CPU work cost.
+      if(scenario.jitter&&i%38<6)continue;
+      wall=i*T;
+      const first=Math.min(wall,seconds/2),second=Math.max(0,wall-seconds/2);
+      clock.currentTime=1+first*(1+ppm/1e6)+second*(1+(scenario.reverse?-ppm:ppm)/1e6);
+      while(generated<=i){player.push(pcm,24000);generated++;}
+      const timing=player.timing;
       peak=Math.max(peak,timing.sources);
       if(firstRecovery===null&&(timing.underruns||timing.overruns))firstRecovery=wall;
     }
-    rows.push({audio_clock_ppm:ppm,seconds,packets,peak_sources:peak,
+    rows.push({scenario:scenario.name,audio_clock_ppm:ppm,seconds,packets,peak_sources:peak,
       underruns:player.timing.underruns,overruns:player.timing.overruns,
       first_recovery_wall_seconds:firstRecovery,gap_count:gaps,gap_ms:gapSeconds*1000,
-      cancelled_future_pcm_ms:cancelledSeconds*1000});
-    clock.onStop=null;player.pause();
+      cancelled_future_pcm_ms:cancelledSeconds*1000,min_rate:minRate,max_rate:maxRate,
+      max_rate_step:maxRateStep,final_rate:player.timing.playbackRate,settled_mean_rate:rateSum/rateCount,
+      min_start_lead_ms:minLead*1000,max_tail_lead_ms:maxLead*1000});
+    clock.onStop=null;clock.onStart=null;player.pause();
+    assert.equal(player.timing.playbackRate,1,'pause discards learned correction');
+    player.resume();await Promise.resolve();player.push(pcm,24000);
+    assert.equal(clock.nodes.at(-1).playbackRate.value,1,'resume starts with neutral rate');
+    player.setMuted(true);assert.equal(player.timing.sources,0);
   }
-  const zero=rows.find(r=>r.audio_clock_ppm===0);
-  assert.equal(zero.underruns+zero.overruns+zero.gap_count,0);
-  assert.ok(rows.find(r=>r.audio_clock_ppm===1000).underruns>0);
-  assert.ok(rows.find(r=>r.audio_clock_ppm===-1000).overruns>0);
-  assert.ok(rows.every(r=>r.peak_sources<=32));
+  for(const row of rows){
+    assert.equal(row.packets,Math.floor(row.seconds/T),'all PCM packets must be scheduled');
+    assert.equal(row.underruns+row.overruns+row.gap_count,0,row.scenario);
+    assert.equal(row.cancelled_future_pcm_ms,0,row.scenario);
+    assert.ok(row.peak_sources<=32);
+    assert.ok(row.min_rate>=Math.fround(.995)&&row.max_rate<=Math.fround(1.005),'bounded rate');
+    assert.ok(row.max_rate_step<=.0005*T+2e-7,'bounded slew including float32 rounding');
+    const expected=1/(1+(row.scenario==='reverse-drift'?-row.audio_clock_ppm:row.audio_clock_ppm)/1e6);
+    assert.ok(Math.abs(row.settled_mean_rate-expected)<.0001,`${row.scenario}: learn clock ratio`);
+  }
   const sha=data=>createHash('sha256').update(data).digest('hex');
-  await writeFile(values['drift-output'],JSON.stringify({project_revision:'979c75e',
+  await writeFile(values['drift-output'],JSON.stringify({project_revision:'clock-drift-fix-on-949dacf',
     source_sha256:sha(await readFile(new URL('../../web/src/audio.ts',import.meta.url))),
     compiled_module_sha256:sha(await readFile(resolve(values.module))),
-    model:'Actual compiled Sound; perfect 13.25 ms producer; independent mocked audio clock; ended events withheld; no CPU, device, render-quantum or measured oscillator model',
+    model:'Actual compiled Sound with float32 fixed source rates; periodic/burst PCM producer and independent mocked audio clock; ended events withheld; no CPU, device, render-quantum or measured oscillator model',
     rows},null,2)+'\n');
-  for(const r of rows)console.log(`audio clock ${r.audio_clock_ppm} ppm: underruns=${r.underruns}, overruns=${r.overruns}, gaps=${r.gap_ms.toFixed(2)} ms, cancelled=${r.cancelled_future_pcm_ms.toFixed(2)} ms, first recovery=${r.first_recovery_wall_seconds}`);
+  for(const r of rows)console.log(`${r.scenario}: underruns=${r.underruns}, overruns=${r.overruns}, gaps=${r.gap_ms.toFixed(2)} ms, cancelled=${r.cancelled_future_pcm_ms.toFixed(2)} ms, rate=${r.settled_mean_rate.toFixed(7)}`);
 }
