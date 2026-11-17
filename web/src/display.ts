@@ -169,7 +169,7 @@ class ShaderPanel {
 }
 
 export class Display {
-  effect: DisplayEffect = "lcd-light";
+  effect: DisplayEffect = "retro-crt";
   private context: CanvasRenderingContext2D;
   private panel: ShaderPanel | null = null;
   private gl: WebGL2RenderingContext | null = null;
