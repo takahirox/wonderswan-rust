@@ -3,30 +3,24 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { installPlayerClock, stepPlayerClock } from './player-clock.mjs';
 
 export async function indirectTimingChecks(browser, base, errors) {
   const bytes = await readFile(new URL('../../fixtures/generated/indirect-timing.ws',import.meta.url));
   const key = `wonderswan:save:v1:${createHash('sha256').update(bytes).digest('hex')}`;
   for (const model of ['mono','color','crystal']) {
     const context = await browser.newContext();
+    await context.addInitScript(installPlayerClock);
     await context.addInitScript(() => {
-      // Control host RAF delivery to inspect startup invalidation through the
+      // Control producer and presentation delivery to inspect startup invalidation through the
       // real player's pause/save path. Core execution stays unchanged.
-      let next = 0;
-      window.indirectRAF = new Map();
-      window.requestAnimationFrame = callback => { window.indirectRAF.set(++next, callback); return next; };
-      window.cancelAnimationFrame = id => window.indirectRAF.delete(id);
       localStorage.setItem('wonderswan:audio:v1','{"muted":true,"volume":70}');
     });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
     const requests = [];
     const click = selector => page.locator(selector).evaluate(button => button.click());
-    const step = time => page.evaluate(time => {
-      const callbacks = [...window.indirectRAF.values()];
-      window.indirectRAF.clear();
-      callbacks.forEach(callback => callback(time));
-    },time);
+    const step = time => page.evaluate(stepPlayerClock, time);
     try {
       await page.goto(base);
       await page.waitForFunction(() => !document.querySelector('#model').disabled,null,{polling:25});
@@ -50,7 +44,7 @@ export async function indirectTimingChecks(browser, base, errors) {
         },key),0,'stale completion invalidated before sampling finishes');
         await click('#pause');
         await step(0);
-        for (let i=1;i<=100;i++) await step(i*100); // bounded 400 emulated frames
+        for (let i=1;i<=100;i++) await step(i*100); // bounded 800 emulated frames
         await click('#pause');
         assert.equal(await page.locator('#error').textContent(),'');
         const saved = await page.evaluate(key => Array.from(atob(localStorage.getItem(key)),c => c.charCodeAt(0)),key);

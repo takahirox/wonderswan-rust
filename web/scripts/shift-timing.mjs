@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { installPlayerClock, stepPlayerClock } from './player-clock.mjs';
 
 export async function shiftTimingChecks(browser, base, errors) {
   const bytes = await readFile(new URL('../../fixtures/generated/shift-timing.ws',import.meta.url));
@@ -10,24 +11,17 @@ export async function shiftTimingChecks(browser, base, errors) {
   const failures = [];
   for (const model of ['mono','color','crystal']) {
     const context = await browser.newContext();
+    await context.addInitScript(installPlayerClock);
     await context.addInitScript(() => {
-      // Control host RAF delivery to inspect startup invalidation through the
+      // Control producer and presentation delivery to inspect startup invalidation through the
       // real player's pause/save path. Core execution stays unchanged.
-      let next = 0;
-      window.shiftRAF = new Map();
-      window.requestAnimationFrame = callback => { window.shiftRAF.set(++next, callback); return next; };
-      window.cancelAnimationFrame = id => window.shiftRAF.delete(id);
       localStorage.setItem('wonderswan:audio:v1','{"muted":true,"volume":70}');
     });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
     const requests = [];
     const click = selector => page.locator(selector).evaluate(button => button.click());
-    const step = time => page.evaluate(time => {
-      const callbacks = [...window.shiftRAF.values()];
-      window.shiftRAF.clear();
-      callbacks.forEach(callback => callback(time));
-    },time);
+    const step = time => page.evaluate(stepPlayerClock, time);
     try {
       await page.goto(base);
       await page.waitForFunction(() => !document.querySelector('#model').disabled,null,{polling:25});
@@ -44,7 +38,7 @@ export async function shiftTimingChecks(browser, base, errors) {
         if (boot===2) {
           assert.equal(requests.length,0,'first boot ROM/save handling stays local');
           // Restore poisoned retained observations through the real local save path,
-          // then restart before any RAF can execute the newly loaded cartridge.
+          // then restart before the producer can execute the newly loaded cartridge.
           await page.reload();
           await page.waitForFunction(() => !document.querySelector('#model').disabled,null,{polling:25});
           await page.locator('#model').selectOption(model);
@@ -67,7 +61,7 @@ export async function shiftTimingChecks(browser, base, errors) {
         },key),0,'stale completion invalidated before sampling finishes');
         await click('#pause');
         await step(0);
-        for (let i=1;i<=350;i++) await step(i*100); // bounded 1400 emulated frames
+        for (let i=1;i<=350;i++) await step(i*100); // bounded 2800 emulated frames
         await click('#pause');
         assert.equal(await page.locator('#error').textContent(),'');
         const saved = await page.evaluate(key => Array.from(atob(localStorage.getItem(key)),c => c.charCodeAt(0)),key);

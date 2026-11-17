@@ -10,6 +10,24 @@ const base = process.env.WS_PREVIEW_URL ?? 'http://127.0.0.1:4173/wonderswan-rus
 const rom = fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws', import.meta.url));
 const browser = await chromium.launch({ headless: true });
 let page = await browser.newPage({ viewport: { width:1440, height:900 } }); // fresh, unauthenticated context
+// Observe genuine emulation progress: presentation no longer drives the CPU.
+function observeFrameProgress() {
+  window.executedFrames=0;
+  const wrap=result=>{
+    const exports={...result.instance.exports},run=exports.webmachine_run_frame;
+    exports.webmachine_run_frame=(...args)=>{
+      const ret=run(...args);window.executedFrames++;return ret;
+    };
+    return {...result,instance:{exports}};
+  };
+  const streaming=WebAssembly.instantiateStreaming.bind(WebAssembly);
+  WebAssembly.instantiateStreaming=async(...args)=>wrap(await streaming(...args));
+  const instantiate=WebAssembly.instantiate.bind(WebAssembly);
+  WebAssembly.instantiate=async(...args)=>{
+    const result=await instantiate(...args);return result.instance?wrap(result):result;
+  };
+}
+await page.addInitScript(observeFrameProgress);
 const artifacts = process.env.WS_SMOKE_ARTIFACTS;
 if (artifacts) await mkdir(artifacts, { recursive:true });
 const errors = [];
@@ -47,12 +65,19 @@ async function cancelPicker() {
   await page.locator('#load-rom').click();
   await (await chooser).setFiles([]);
 }
-// Wait for two elapsed rendering intervals with input held/released. A wall
-// timeout can expire without a tick, and the first callback after load/resume
-// only initializes the clock. Three callbacks allow the ROM to observe input.
+// Hold/release through two genuine emulator frames, then present. Paused input
+// still exercises the handlers without expecting the CPU to advance.
 async function inputFrames() {
-  await page.evaluate(() => new Promise(resolve => {
-    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await page.evaluate(() => new Promise((resolve,reject) => {
+    const before=window.executedFrames,deadline=performance.now()+3000;
+    const poll=()=>{
+      if(document.querySelector('#rom-status').textContent!=='Running'||window.executedFrames>=before+2){
+        requestAnimationFrame(resolve);return;
+      }
+      if(performance.now()>deadline){reject(new Error('No emulator progress with input held/released'));return;}
+      setTimeout(poll,4);
+    };
+    poll();
   }));
 }
 async function tap(key) {
@@ -307,6 +332,7 @@ try {
 
   // Isolated fault injection: no production network/service is modified.
   const recovery = await browser.newContext({ viewport:{width:1440,height:900} });
+  await recovery.addInitScript(observeFrameProgress);
   await recovery.addInitScript(() => localStorage.setItem('wonderswan:display:v1','clean'));
   page = await recovery.newPage();
   page.on('pageerror', error => errors.push(error.message));
@@ -401,6 +427,7 @@ try {
   console.log('Wasm initialization/retry, failed local reads, cartridge preservation and asynchronous read/modal/background/restart/replacement races passed');
 
   const mobile = await browser.newContext({ viewport:{width:375,height:812}, isMobile:true, hasTouch:true });
+  await mobile.addInitScript(observeFrameProgress);
   await mobile.addInitScript(() => localStorage.setItem('wonderswan:display:v1','clean'));
   page = await mobile.newPage();
   page.on('pageerror', error => errors.push(error.message));

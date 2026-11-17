@@ -262,7 +262,7 @@ try {
   await page.waitForFunction(before => window.audioProbe.buffers > before,buffers);
   for (let i=0; i<3; i++) {await page.locator('#reset').click();await display();}
   const audio = await page.evaluate(() => window.audioProbe);
-  assert.equal(audio.contexts,1,'reuse one context across toggles and resets');assert.ok(audio.peak <= 8,'bounded sources');assert.ok(audio.suspends>0 && audio.resumes>0);
+  assert.equal(audio.contexts,1,'reuse one context across toggles and resets');assert.ok(audio.peak <= 32,'bounded sources');assert.ok(audio.suspends>0 && audio.resumes>0);
   await page.evaluate(() => {Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
   assert.equal(await page.evaluate(() => window.audioProbe.active),0);
   await page.evaluate(() => {delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
@@ -509,7 +509,7 @@ try {
       const hidden = await page.evaluate(() => window.audioProbe.buffers);
       await page.locator('#pause').click();await soundBuffer(path,hidden);
       const state = await page.evaluate(() => window.audioProbe);
-      assert.equal(state.contexts,1);assert.ok(state.peak<=8);
+      assert.equal(state.contexts,1);assert.ok(state.peak<=32);
       await pause();
     }
     // Each cartridge explicitly detects mono and halts without color-only I/O.

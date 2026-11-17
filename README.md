@@ -183,6 +183,10 @@ with video and audio generation enabled using:
 cargo run -p ws-core --example throughput --release --locked -- fixtures/generated/sram128-2003.ws 120 3000 crystal
 ```
 
+For browser playback under low frame delivery and main-thread stalls, see the
+[audio stability fix and regression commands](docs/audio-stability-fix.md) and
+[the baseline investigation](docs/audio-stability.md).
+
 To rebuild development probes after editing their assembly, run
 `python3 fixtures/build.py` and `python3 fixtures/build.py --check` from the root.
 Native and browser integration tests execute those fixtures through the CPU,

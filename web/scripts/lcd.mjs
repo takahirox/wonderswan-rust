@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: CC0-1.0
-// Controlled RAF timestamps, real production Wasm and original CC0 CPU fixture.
+// Controlled host timestamps, real production Wasm and original CC0 CPU fixture.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { installPlayerClock } from './player-clock.mjs';
 
 export async function lcdChecks(browser, base, errors) {
   const bytes = await readFile(new URL('../../fixtures/generated/lcd.ws', import.meta.url));
@@ -10,14 +11,12 @@ export async function lcdChecks(browser, base, errors) {
   const wasm = await readFile(new URL('../pkg/ws_web_bg.wasm', import.meta.url));
   const key = `wonderswan:save:v1:${createHash('sha256').update(bytes).digest('hex')}`;
   const context = await browser.newContext();
+  await context.addInitScript(installPlayerClock);
   await context.addInitScript(() => {
     // Only time delivery is controlled. The player, cartridge CPU and all Wasm
     // execution are unchanged. Suppress periodic timers; exercise their callbacks
     // explicitly so diagnostics read actual core counters at each assertion.
     let id = 0;
-    window.lcdRAF = new Map();
-    window.requestAnimationFrame = callback => { window.lcdRAF.set(++id, callback); return id; };
-    window.cancelAnimationFrame = id => window.lcdRAF.delete(id);
     window.lcdTimers = new Map();
     const interval = window.setInterval.bind(window);
     window.setInterval = (callback, delay, ...args) => {
@@ -59,28 +58,28 @@ export async function lcdChecks(browser, base, errors) {
       const result = await page.evaluate(time => {
         const r = window.lcdReference;
         const before = r.machine.frame_number();
-        if (r.time !== null) r.credit += Math.min(100,time-r.time);
+        if (r.time !== null) r.credit = Math.min(100,r.credit+time-r.time);
         r.time = time;
         let count = 0;
-        while (count < 4) {
+        while (count < 8) {
           const cost = 1000/r.machine.frame_rate();
           if (r.credit < cost) break;
           r.credit -= cost;
           r.machine.run_frame();r.machine.audio_samples();count++;
         }
-        r.credit = Math.min(r.credit,1000/r.machine.frame_rate());
-        const callbacks = [...window.lcdRAF.values()];window.lcdRAF.clear();
-        callbacks.forEach(callback => callback(time));
+        window.playerClock.step(time);
         window.lcdTimers.get(500)();
         return {actual:Number(document.querySelector('#debug-frames').textContent),
           expected:r.machine.frame_number(),before,rate:r.machine.frame_rate(),
           pixel:Array.from(document.querySelector('#screen').getContext('2d').getImageData(0,0,1,1).data),
-          error:document.querySelector('#error').textContent,queued:window.lcdRAF.size};
+          error:document.querySelector('#error').textContent,queued:window.playerClock.frames.size,
+          producers:window.playerClock.timers.size};
       }, time);
       assert.equal(result.error,expectedError);
       assert.equal(result.actual,result.expected,`controlled timestamp ${time}: current cadence must drive the player`);
-      assert.ok(result.actual-result.before <= 4,'bounded catch-up');
+      assert.ok(result.actual-result.before <= 8,'bounded catch-up');
       assert.equal(result.queued,1,'one pending animation callback');
+      assert.equal(result.producers,1,'one pending production callback');
       return result;
     }
     async function saved(model, total, switches) {
@@ -106,7 +105,7 @@ export async function lcdChecks(browser, base, errors) {
       await click('#pause');await saved(model,180,0);
       const paused = await page.locator('#debug-frames').textContent();
       await page.evaluate(time => {
-        const callbacks=[...window.lcdRAF.values()];window.lcdRAF.clear();callbacks.forEach(cb=>cb(time));
+        window.playerClock.step(time);
         window.lcdTimers.get(500)();
       },time+5000);
       assert.equal(await page.locator('#debug-frames').textContent(),paused);
@@ -139,7 +138,7 @@ export async function lcdChecks(browser, base, errors) {
       for (let i=0;i<5;i++) await step(time += 14);
       // Visibility cancels scheduling, requires explicit resume, and drops debt.
       await page.evaluate(() => {Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
-      assert.equal(await page.evaluate(() => window.lcdRAF.size),0);
+      assert.equal(await page.evaluate(() => window.playerClock.frames.size+window.playerClock.timers.size),0);
       await page.evaluate(() => {delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
       assert.equal(await page.locator('#pause').textContent(),'Resume');
       await click('#pause');
@@ -148,6 +147,6 @@ export async function lcdChecks(browser, base, errors) {
       await click('#pause');
     }
     await page.evaluate(() => window.lcdReference.machine.free());
-    console.log('LCD original CPU markers/pixels on all models, byte/word I/O, restart, live Wasm cadence, controlled RAF thresholds/catch-up, input timing changes, pause/visibility and failed-load recovery passed');
+    console.log('LCD original CPU markers/pixels on all models, byte/word I/O, restart, live Wasm cadence, controlled producer thresholds/catch-up, input timing changes, pause/visibility and failed-load recovery passed');
   } finally { await context.close(); }
 }
