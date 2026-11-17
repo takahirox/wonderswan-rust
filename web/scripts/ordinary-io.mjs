@@ -3,30 +3,24 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { installPlayerClock, stepPlayerClock } from './player-clock.mjs';
 
 export async function ordinaryIoChecks(browser, base, errors) {
   const bytes = await readFile(new URL('../../fixtures/generated/ordinary-io.ws', import.meta.url));
   const key = `wonderswan:save:v1:${createHash('sha256').update(bytes).digest('hex')}`;
   for (const model of ['mono', 'color', 'crystal']) {
     const context = await browser.newContext();
+    await context.addInitScript(installPlayerClock);
     await context.addInitScript(() => {
       // Control only host time delivery to inspect the real player's first
       // frame and save flush. Core execution and result bytes are unchanged.
-      let next = 0;
-      window.ioRAF = new Map();
-      window.requestAnimationFrame = callback => { window.ioRAF.set(++next, callback); return next; };
-      window.cancelAnimationFrame = id => window.ioRAF.delete(id);
       localStorage.setItem('wonderswan:audio:v1', '{"muted":true,"volume":70}');
     });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
     const requests = [];
     const click = selector => page.locator(selector).evaluate(button => button.click());
-    const step = time => page.evaluate(time => {
-      const callbacks = [...window.ioRAF.values()];
-      window.ioRAF.clear();
-      callbacks.forEach(callback => callback(time));
-    }, time);
+    const step = time => page.evaluate(stepPlayerClock, time);
     const saved = () => page.evaluate(key => Array.from(atob(localStorage.getItem(key)), c => c.charCodeAt(0)), key);
     try {
       await page.goto(base);
@@ -50,7 +44,7 @@ export async function ordinaryIoChecks(browser, base, errors) {
         assert.equal(pending[2] | pending[3] << 8, 0, `${model}: retained success invalidated before completion`);
         await click('#pause'); // resume
         await step(0);
-        for (let i = 1; i <= 30; i++) await step(i * 100); // bounded 120 frames
+        for (let i = 1; i <= 30; i++) await step(i * 100); // bounded 240 frames
         await click('#pause');
         assert.equal(await page.locator('#error').textContent(), '');
         const data = await saved();

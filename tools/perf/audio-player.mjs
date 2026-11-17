@@ -9,21 +9,26 @@ import {chromium} from '../../web/node_modules/playwright/index.mjs';
 
 const {values}=parseArgs({options:{browser:{type:'string'},output:{type:'string'},
   url:{type:'string',default:'http://127.0.0.1:4173/wonderswan-rust/'},
-  seconds:{type:'string',default:'8'},profiles:{type:'string'},
+  seconds:{type:'string',default:'8'},profiles:{type:'string'},check:{type:'boolean'},revision:{type:'string',default:'working-tree'},
   rom:{type:'string',default:'fixtures/generated/sram128-2003.ws'}}});
 const seconds=Number(values.seconds);
 if(!values.output || !Number.isFinite(seconds) || seconds<3) throw new Error('usage: audio-player.mjs --output JSON [--browser EXECUTABLE] [--seconds 8] [--profiles NAME,...]');
 const profiles=[
   {name:'clean',effect:'clean'},
   {name:'lcd',effect:'lcd-light'},
+  {name:'crt',effect:'retro-crt'},
   {name:'clean-cpu8',effect:'clean',cpu:8},
   {name:'lcd-cpu8',effect:'lcd-light',cpu:8},
   {name:'clean-15hz',effect:'clean',hz:15},
+  {name:'clean-10hz',effect:'clean',hz:10},
+  {name:'lcd-15hz',effect:'lcd-light',hz:15},
   {name:'clean-jitter80',effect:'clean',block:80},
+  {name:'lcd-jitter80-cpu8',effect:'lcd-light',block:80,cpu:8},
+  {name:'crt-jitter80-cpu8',effect:'retro-crt',block:80,cpu:8},
   {name:'candidate-15hz',effect:'clean',hz:15,candidate:true},
   {name:'candidate-jitter80',effect:'clean',block:80,candidate:true},
 ];
-const selected=values.profiles ? profiles.filter(p=>values.profiles.split(',').includes(p.name)) : profiles;
+const selected=values.profiles ? profiles.filter(p=>values.profiles.split(',').includes(p.name)) : profiles.filter(p=>!p.candidate);
 assert.ok(selected.length,'no matching profiles');
 if(values.profiles) assert.equal(selected.length,new Set(values.profiles.split(',')).size,'unknown profile');
 const romPath=resolve(values.rom);
@@ -54,21 +59,25 @@ try {
     });
     await page.addInitScript(({profile})=>{
       localStorage.setItem('wonderswan:display:v1',profile.effect);
-      const probe=window.audioTiming={enabled:false,packets:[],callbacks:[],wasm:[],values:0,active:0,peak:0,nonzero:0,glMs:0,glCalls:0};
+      const probe=window.audioTiming={enabled:false,packets:[],callbacks:[],wasm:[],values:0,active:0,peak:0,nonzero:0,cancelled:0,glMs:0,glCalls:0};
       const Native=window.AudioContext;
       window.AudioContext=class extends Native{
         constructor(...args){super(...args);window.measuredAudioContext=this;}
         createBufferSource(){
           const node=super.createBufferSource(),start=node.start.bind(node),stop=node.stop.bind(node);
-          let active=false;
+          let active=false,scheduledAt=0,scheduledEnd=0;
           const ended=()=>{if(active){active=false;probe.active--;}};
           node.addEventListener('ended',ended);
-          node.stop=(...args)=>{ended();return stop(...args);};
+          node.stop=(...args)=>{
+            if(probe.enabled&&active)probe.cancelled+=Math.max(0,scheduledEnd-Math.max(scheduledAt,this.currentTime));
+            ended();return stop(...args);
+          };
           node.start=(when,...args)=>{
             if(probe.enabled){
               probe.packets.push({at:this.currentTime,when,duration:node.buffer.duration});
               if(node.buffer.getChannelData(0).some(x=>x!==0))probe.nonzero++;
             }
+            scheduledAt=when;scheduledEnd=when+node.buffer.duration;
             active=true;probe.active++;probe.peak=Math.max(probe.peak,probe.active);
             return start(when,...args);
           };
@@ -158,6 +167,7 @@ try {
     const raw=await page.evaluate(()=>window.endAudioMeasurement());
     assert.equal(errors.length,0,errors.join('\n'));
     assert.equal(raw.contextState,'running');assert.equal(raw.display,profile.effect);
+    assert.equal(raw.notice,'','requested display mode must not silently fall back');
     assert.ok(raw.nonzero>0 && raw.wasm.length>0 && raw.values>0,'missing real PCM/emulation');
     assert.deepEqual(raw.lastPixels[0],[0,255,0,255],'probe must render its green success signal');
     if(basename(romPath)==='sram128-2003.ws')assert.deepEqual(raw.lastPixels.slice(1),[[255,0,0,255],[0,0,255,255]],'missing color window/sprite');
@@ -181,14 +191,22 @@ try {
       probe_pixels:raw.lastPixels,
       emulated_fps:raw.wasm.length*1000/raw.ms,generated_pcm_seconds:raw.values/2/24000,
       scheduled_pcm_seconds:raw.packets.reduce((n,p)=>n+p.duration,0),packets:raw.packets.length,nonzero_packets:raw.nonzero,
+      cancelled_pcm_seconds:raw.cancelled,
       source_peak:raw.peak,wasm_ms_p50:percentile(raw.wasm,.5),wasm_ms_p95:percentile(raw.wasm,.95),
       callback_ms_p50:percentile(raw.callbacks.map(r=>r.ms),.5),callback_ms_p95:percentile(raw.callbacks.map(r=>r.ms),.95),
       raf_interval_ms_p95:percentile(intervals,.95),gl_call_ms:raw.glMs,gl_calls:raw.glCalls,
       gap_count:gaps,gap_ms:gapMs,max_gap_ms:maxGap,already_starved_ms:starvedMs,early_reanchor_gap_ms:earlyMs,errors};
     rows.push(row);
-    await writeFile(values.output,JSON.stringify({baseline:'9edf5b6',browser:await browser.version(),
+    await writeFile(values.output,JSON.stringify({revision:values.revision,browser:await browser.version(),
       rom:values.rom,rom_sha256:hash(rom),rows},null,2)+'\n');
     console.log(`${row.profile}: ${row.emulated_fps.toFixed(2)} fps; ${row.gap_ms.toFixed(1)} ms gaps; PCM ${row.scheduled_pcm_seconds.toFixed(3)}/${row.generated_pcm_seconds.toFixed(3)} s; callback p95 ${row.callback_ms_p95.toFixed(1)} ms`);
+    if(values.check){
+      assert.equal(row.gap_count,0,'scheduled playback must remain contiguous');
+      assert.ok(Math.abs(row.generated_pcm_seconds-row.scheduled_pcm_seconds)<1/24000,'drained PCM must not be dropped');
+      assert.ok(row.cancelled_pcm_seconds<1/24000,'future PCM must not be cancelled during playback');
+      assert.ok(Math.abs(row.generated_pcm_seconds-row.seconds)<.12,'PCM supply must track real time, allowing the final stall/packet phase');
+      assert.ok(row.source_peak<=32,'source resources must remain bounded');
+    }
     await context.close();
   }
 } finally {await browser.close();}

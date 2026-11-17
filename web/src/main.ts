@@ -86,8 +86,10 @@ async function main() {
   let visibilityRevision = 0;
   let returnFocus: HTMLElement | null = null;
   let animation: number | null = null;
-  let lastTime: number | null = null;
+  let production: number | null = null;
+  let lastTime = 0;
   let elapsed = 0;
+  let dirty = false;
   const pressed = new Set<string>();
   const pointers = new Map<number, HTMLButtonElement>();
   const activated = new Map<string, HTMLButtonElement>();
@@ -146,40 +148,58 @@ async function main() {
     running = value && loaded !== null && !faulted && !document.hidden && !help.open;
     if (running && !wasRunning) display.resetHistory();
     if (animation !== null) cancelAnimationFrame(animation);
+    if (production !== null) clearTimeout(production);
     animation = null;
-    lastTime = null;
+    production = null;
+    lastTime = performance.now();
     elapsed = 0;
+    dirty = false;
     clearKeys();
-    if (running) { sound.resume(); animation = requestAnimationFrame(tick); }
+    if (running) {
+      sound.resume();
+      production = window.setTimeout(tick, 0);
+      animation = requestAnimationFrame(present);
+    }
     else { sound.pause(); persist(); }
     refresh();
   }
-  function tick(time: number) {
+  function failed(error: unknown) {
+    faulted = true;
+    errorStatus.textContent = `Execution stopped: ${message(error)} Try Restart or load another ROM.`;
+    setRunning(false);
+  }
+  function present() {
     animation = null;
     if (!running) return;
-    if (lastTime !== null) elapsed += Math.min(time - lastTime, 100);
+    try {
+      if (dirty) { display.present(); dirty = false; }
+      animation = requestAnimationFrame(present);
+    } catch (error) { failed(error); }
+  }
+  function tick() {
+    production = null;
+    if (!running) return;
+    const time = performance.now();
+    // Presentation cadence must not determine how much PCM is produced. Bound
+    // both backlog and work per turn after stalls; a suspended page is paused.
+    elapsed = Math.min(elapsed + time - lastTime, 100);
     lastTime = time;
     syncClock();
     try {
-      // Bounded catch-up. Never run an unbounded loop after suspension.
       let frames = 0;
-      while (frames < 4) {
+      while (frames < 8 && performance.now() - time < 8) {
         const frameDuration = 1000 / machine.frame_rate();
         if (elapsed < frameDuration) break;
         machine.run_frame();
-        display.advance(new Uint8ClampedArray(machine.framebuffer()), machine.model());
         sound.push(machine.audio_samples(), machine.sample_rate());
+        display.advance(new Uint8ClampedArray(machine.framebuffer()), machine.model());
         elapsed -= frameDuration;
         frames++;
       }
-      elapsed = Math.min(elapsed, 1000 / machine.frame_rate());
-      if (frames) display.present();
-      animation = requestAnimationFrame(tick);
-    } catch (error) {
-      faulted = true;
-      errorStatus.textContent = `Execution stopped: ${message(error)} Try Restart or load another ROM.`;
-      setRunning(false);
-    }
+      dirty ||= frames > 0;
+      production = window.setTimeout(tick, Math.max(0, Math.min(8,
+        1000 / machine.frame_rate() - elapsed - (performance.now() - time))));
+    } catch (error) { failed(error); }
   }
   function load(name: string, bytes: Uint8Array, key: string, autoplay = true) {
     persist();

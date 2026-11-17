@@ -184,7 +184,8 @@ cargo run -p ws-core --example throughput --release --locked -- fixtures/generat
 ```
 
 For browser playback under low frame delivery and main-thread stalls, see the
-[audio stability investigation and diagnostic commands](docs/audio-stability.md).
+[audio stability fix and regression commands](docs/audio-stability-fix.md) and
+[the baseline investigation](docs/audio-stability.md).
 
 To rebuild development probes after editing their assembly, run
 `python3 fixtures/build.py` and `python3 fixtures/build.py --check` from the root.

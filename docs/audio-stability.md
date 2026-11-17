@@ -1,5 +1,8 @@
 # Browser audio stability investigation (Issue #110)
 
+This is the historical baseline investigation. The subsequent implementation,
+current validation and latency tradeoff are in [the audio stability fix](audio-stability-fix.md).
+
 At baseline `9edf5b6`, the browser player's scheduling can interrupt audio even
 when the core has substantial execution headroom. A controlled approximately
 15 Hz presentation cadence produced **1,730 ms of gaps in eight seconds**.
@@ -179,12 +182,15 @@ real-time here; this does not prove an old GPU is responsible for the report.
 ## Reproduction and evidence
 
 Run from the repository root with existing frontend dependencies and generated
-CC0 fixtures. Build the current production Wasm/frontend as documented in the
+CC0 fixtures. To reproduce the historical browser measurements, build revision
+`9edf5b6` in a separate checkout as documented in the
 [README](../README.md#build-and-run-locally). The candidate response replacements
 are deliberately tied to this baseline's minifier output and fail if it changes.
 
 ```sh
-web/node_modules/.bin/tsc --ignoreConfig web/src/audio.ts --target ES2022 --module ES2022 --lib ES2022,DOM --outDir /tmp/ws-audio-compiled --skipLibCheck
+mkdir -p /tmp/ws-audio-baseline
+git show 9edf5b6:web/src/audio.ts > /tmp/ws-audio-baseline/audio.ts
+web/node_modules/.bin/tsc --ignoreConfig /tmp/ws-audio-baseline/audio.ts --target ES2022 --module ES2022 --lib ES2022,DOM --outDir /tmp/ws-audio-compiled --skipLibCheck
 cp /tmp/ws-audio-compiled/audio.js /tmp/ws-audio-compiled/audio.mjs
 node tools/perf/audio-scheduling.mjs --module /tmp/ws-audio-compiled/audio.mjs --output /tmp/ws-audio-scheduling.json
 ```
@@ -199,7 +205,7 @@ cd web
 Then, from the repository root:
 
 ```sh
-node tools/perf/audio-player.mjs --browser /path/to/chromium --output /tmp/ws-audio-player.json
+node tools/perf/audio-player.mjs --browser /path/to/chromium --profiles clean,lcd,clean-cpu8,lcd-cpu8,clean-15hz,clean-jitter80,candidate-15hz,candidate-jitter80 --revision 9edf5b6 --output /tmp/ws-audio-player.json
 node tools/perf/audio-player.mjs --browser /path/to/chromium --rom fixtures/generated/sound-direct.ws --profiles clean-cpu8,lcd-cpu8 --output /tmp/ws-audio-direct.json
 ```
 

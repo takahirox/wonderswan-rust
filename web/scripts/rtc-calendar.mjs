@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { installPlayerClock, stepPlayerClock } from './player-clock.mjs';
 
 export async function rtcCalendarChecks(browser, base, errors) {
   const bytes = await readFile(new URL('../../fixtures/generated/rtc-calendar.ws', import.meta.url));
@@ -16,19 +17,14 @@ export async function rtcCalendarChecks(browser, base, errors) {
     document.querySelector('#help').addEventListener('close',resolve,{once:true});
     document.querySelector('#help-close').click();
   }));
-  const step = (page, time) => page.evaluate(time => {
-    const callbacks = [...window.rtcRAF.values()]; window.rtcRAF.clear();
-    callbacks.forEach(callback => callback(time));
-  }, time);
+  const step = (page, time) => page.evaluate(stepPlayerClock, time);
   const open = async (context, now = 1000) => {
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(installPlayerClock);
     await page.addInitScript(now => {
       window.rtcNow = now;
       Date.now = () => window.rtcNow;
-      let next = 0; window.rtcRAF = new Map();
-      window.requestAnimationFrame = callback => { window.rtcRAF.set(++next,callback); return next; };
-      window.cancelAnimationFrame = id => window.rtcRAF.delete(id);
       localStorage.setItem('wonderswan:audio:v1', '{"muted":true,"volume":70}');
     },now);
     await page.goto(base);
@@ -45,7 +41,7 @@ export async function rtcCalendarChecks(browser, base, errors) {
     }
   };
   const execute = async page => {
-    await step(page,0); await step(page,100); // four genuine emulator frames
+    await step(page,0); await step(page,100); // bounded genuine emulator frames
     await click(page,'#pause');
     assert.equal(await page.locator('#error').textContent(),'');
     return page.evaluate(key => Array.from(atob(localStorage.getItem(key)), c=>c.charCodeAt(0)),key);

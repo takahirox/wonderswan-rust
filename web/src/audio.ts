@@ -1,11 +1,13 @@
-// A bounded queue of Web Audio buffers. No independent emulation/audio timer.
+// Contiguous PCM with a bounded reserve for main-thread scheduling jitter.
 const preferenceKey = "wonderswan:audio:v1";
 export class Sound {
   private context: AudioContext | null = null;
   private filter: BiquadFilterNode | null = null;
   private gain: GainNode | null = null;
-  private sources = new Set<AudioBufferSourceNode>();
+  private sources = new Map<AudioBufferSourceNode, number>();
   private next = 0;
+  private underruns = 0;
+  private overruns = 0;
   private playing = false;
   private attempt = 0;
   private failure = "";
@@ -21,6 +23,10 @@ export class Sound {
   }
   get muted() { return this.silent; }
   get volume() { return this.level; }
+  get timing() {
+    return { underruns: this.underruns, overruns: this.overruns, sources: this.sources.size,
+      queuedSeconds: Math.max(0, this.next - (this.context?.currentTime ?? 0)) };
+  }
   get needsUnlock() {
     return !this.muted && (this.failure !== "" || (this.playing && this.context?.state !== "running"));
   }
@@ -110,7 +116,7 @@ export class Sound {
     }
   }
   private clearQueue() {
-    for (const source of this.sources) {
+    for (const source of this.sources.keys()) {
       source.onended = null;
       try { source.stop(); } catch { /* Already ended. */ }
       source.disconnect();
@@ -140,7 +146,25 @@ export class Sound {
   private enqueue(samples: Float32Array, rate: number) {
     const context = this.context;
     if (!this.playing || this.muted || this.failure || !context || context.state !== "running" || !samples.length) return;
-    if (this.sources.size >= 8 || this.next > context.currentTime + 0.15) return;
+    const now = context.currentTime;
+    // Audio completion precedes delivery of onended on a busy main thread.
+    for (const [source, end] of this.sources) {
+      if (end > now) continue;
+      source.onended = null;
+      try { source.stop(); } catch { /* Already ended. */ }
+      source.disconnect();
+      this.sources.delete(source);
+    }
+    // A clock/producer discontinuity must recover within bounded latency rather
+    // than silently discard the incoming, already-drained PCM indefinitely.
+    if (this.sources.size >= 32 || this.next > now + 0.25) {
+      this.overruns++;
+      this.clearQueue();
+    }
+    if (this.next <= now) {
+      if (this.next !== 0) this.underruns++;
+      this.next = now + 0.1;
+    }
     const length = samples.length / 2;
     const buffer = context.createBuffer(2, length, rate);
     for (let side = 0; side < 2; side++) {
@@ -151,8 +175,7 @@ export class Sound {
     source.buffer = buffer;
     source.connect(this.filter!);
     source.onended = () => { this.sources.delete(source); source.disconnect(); };
-    this.sources.add(source);
-    this.next = Math.max(this.next, context.currentTime + 0.025);
+    this.sources.set(source, this.next + length / rate);
     source.start(this.next);
     this.next += length / rate;
   }
