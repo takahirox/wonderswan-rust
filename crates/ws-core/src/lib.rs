@@ -353,11 +353,11 @@ mod scheduling_tests {
 
     #[test]
     fn halted_event_scheduling_matches_single_clock_machine_execution() {
-        let demo: &[u8] = include_bytes!("../../../web/public/demo/beacon-trail.ws");
+        let keypad: &[u8] = include_bytes!("../../../fixtures/generated/keypad-horizontal.ws");
         let compat: &[u8] = include_bytes!("../../../fixtures/generated/sram128-2003.ws");
         let hyper: &[u8] = include_bytes!("../../../fixtures/generated/sound-hyper.ws");
         for (model, rom) in [
-            (Model::Mono, demo),
+            (Model::Mono, keypad),
             (Model::Color, compat),
             (Model::Crystal, compat),
             (Model::Crystal, hyper),

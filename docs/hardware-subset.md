@@ -2,9 +2,9 @@
 
 This is a from-scratch Rust core with a thin Wasm adapter. No existing emulator
 has been ported/copied, and no proprietary firmware or commercial ROM is present.
-The [original CC0 probes](../fixtures/README.md) and [Beacon Trail](../demo/README.md)
-are the only cartridge fixtures. No ROM identity, title, publisher or file hash
-changes emulated behavior. SHA-256 is used only by the browser save adapter.
+The [original CC0 probes](../fixtures/README.md) are development-only cartridge
+fixtures; the published player supplies no ROMs. No ROM identity, title, publisher
+or file hash changes emulated behavior. SHA-256 is used only by the browser save adapter.
 This milestone expands a hardware subset; it does not promise that arbitrary
 commercial software will run or that timing matches a physical console.
 
@@ -34,7 +34,7 @@ commercial software will run or that timing matches a physical console.
 | Mono video | 2bpp interleaved planar tiles at 2000–3FFF; palette ports 20–3F and shade LUT 1C–1F; LCD enable 14; grayscale RGBA 224×144 | No LCD ghosting, icons, contrast/panel response or gamma simulation. |
 | Color video | 60=80: 2bpp planar, 1024 tiles at 2000–5FFF; C0: 4bpp planar; E0: 4bpp packed, 1024 tiles at 4000–BFFF; FE00–FFFF 12-bit RGB palettes | Packed nibbles are left/high, right/low. 2bpp palettes 4–7/12–15 make index 0 transparent; 4bpp index 0 always transparent. Mono rejects color register writes; WSC/Crystal extra RAM requires color enable. Invalid mode combinations rejected. |
 | Sound | Four 32×4-bit wavetable channels; channel 2 unsigned PCM/voice volume; channel 3 signed ordinary/fast sweep with wrap; channel 4 eight LFSR tap modes/reset | 80–94 documented bit masks, 95 clearing/FAST_SWEEP control/readback, 96–9B 10/11-bit legacy mixer readbacks, 9E speaker volume; 24 kHz stereo clock, bounded 200 ms queue. Headphone 16-bit and speaker 8-bit adders wrap; speaker main volume uses a linear approximation. HOLD_CH/other debug controls remain rejected. Analogue filters/volume levels are approximate. |
-| Browser sound | Default-on sound preference, Mute/Unmute and 0–100% volume, gesture activation, Web Audio buffers, high-pass DC removal, bounded queue, reused single AudioContext | Pause/restart/hide clears scheduled sources; failures show a notice and keep gameplay usable. No output loop while paused. Headless buffer validation does not certify physical speaker quality. Original demo stays silent. |
+| Browser sound | Default-on sound preference, Mute/Unmute and 0–100% volume, gesture activation, Web Audio buffers, high-pass DC removal, bounded queue, reused single AudioContext | Pause/restart/hide clears scheduled sources; failures show a notice and keep gameplay usable. No output loop while paused. Headless buffer validation does not certify physical speaker quality. |
 | Input | B5 active-high keypad matrix (yyyy xxxx bas0); independent X/Y/action keyboard and touch controls, union of simultaneous sources | Exact keypad IRQ timing remains approximate. No serial/UART, link cable, sound/power buttons or accessories. |
 | Orientation | Wasm `orientation()` returns `horizontal` by default or `vertical` from parsed header bit 0; browser portrait presentation rotates counterclockwise | Core framebuffer and canvas backing remain 224×144; portrait footprint 144:224, unchanged raw button identities and ROM/save bytes. Header selection only; runtime orientation signaling is unsupported. |
 

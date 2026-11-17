@@ -39,10 +39,8 @@
               <canvas id="screen-effect" width="224" height="144" aria-hidden="true" hidden></canvas>
             </div>
             <div id="empty-state">
-              <p class="eyebrow">BEACON TRAIL</p>
-              <p>Three beacons. One trail.</p>
-              <button id="demo" class="primary" type="button" disabled>Play demo</button>
-              <p class="hint">or load your own ROM below</p>
+              <p>Load a ROM to play</p>
+              <p id="rom-guide" class="hint">Choose a local .ws or .wsc file you are entitled to use. Files are never uploaded.</p>
             </div>
           </div>
           <div id="controls" class="toolbar" role="group" aria-label="Player controls" aria-busy="true">
@@ -51,7 +49,7 @@
               <button id="reset" type="button" disabled>Restart</button>
             </div>
             <div class="tools">
-              <button id="load-rom" type="button" disabled>Load ROM</button>
+              <button id="load-rom" class="primary" type="button" aria-describedby="rom-guide" disabled>Load ROM</button>
               <input id="rom" type="file" accept=".ws,.wsc" aria-label="Local ROM file" hidden />
               <button id="fullscreen" type="button" disabled>Fullscreen</button>
               <button id="settings" type="button" aria-haspopup="dialog" disabled>Settings / Help</button>
@@ -112,14 +110,14 @@
       </div>
       <dialog id="help" aria-labelledby="help-title">
         <div class="dialog-heading"><h2 id="help-title">Settings / Help</h2><button id="help-close" type="button" autofocus>Close</button></div>
-        <h3>Make your way</h3><p>Move the hollow square to collect all three diamond beacons in Beacon Trail. Press Start to play again.</p>
+        <h3>Local ROMs</h3><p>Choose Load ROM to open a local .ws or .wsc file you are entitled to use. No games are supplied or downloaded; files stay in your browser.</p>
         <dl class="key-guide">
           <dt>X1 / X2 / X3 / X4</dt><dd>↑ / → / ↓ / ← or W / D / S / A</dd>
           <dt>Y1 / Y2 / Y3 / Y4</dt><dd>I / L / K / J</dd>
           <dt>A / B</dt><dd>Z / X</dd>
-          <dt>Start / restart demo</dt><dd>Enter</dd>
+          <dt>Start</dt><dd>Enter</dd>
         </dl>
-        <p>X and Y are independent hardware groups; both can be held with A/B/Start. Portrait cartridges rotate the screen counterclockwise. Key and touch labels always select the same raw buttons; they do not rotate with the image. Beacon Trail uses the X group.</p>
+        <p>X and Y are independent hardware groups; both can be held with A/B/Start. Portrait cartridges rotate the screen counterclockwise. Key and touch labels always select the same raw buttons; they do not rotate with the image.</p>
         <p>Click the screen to use the keyboard. Touch controls appear on small or touch screens. Hiding the tab pauses; choose Resume when you return.</p>
         <p>Changing the console restarts the current cartridge. Local ROM files stay in your browser and are never uploaded.</p>
         <label for="display-effect">Display effect</label>
@@ -129,21 +127,14 @@
           <option value="lcd-authentic">LCD Authentic</option>
           <option value="retro-crt">Retro CRT</option>
         </select>
-        <p id="display-help">Clean keeps exact, sharp pixels. LCD Light (default) adds subtle cells and persistence; LCD Authentic strengthens them with modest mono, Color and SwanCrystal panel approximations, not calibrated measurements. These optional effects only change presentation. Retro CRT is a creative extra, not a WonderSwan panel. Your choice stays in this browser; if graphics effects fail, Clean takes over.</p>
+        <p id="display-help">Retro CRT (default) adds a stylistic mask and scanlines; the WonderSwan had an LCD, not a CRT. Clean keeps exact, sharp pixels. LCD Light adds subtle cells and persistence; LCD Authentic strengthens them with modest mono, Color and SwanCrystal panel approximations, not calibrated measurements. These optional effects only change presentation. Your choice stays in this browser; if graphics effects fail, Clean takes over.</p>
         <label for="rtc-mode">Cartridge clock</label>
         <select id="rtc-mode">
           <option value="auto">Use cartridge clock indication</option>
           <option value="absent">No clock attached</option>
         </select>
-        <h3>Compatibility</h3><p>The original demo is silent and uses monochrome tiles on all three models. The core also supports color layers/sprites, cartridge saves, interrupts/timers, four-channel sound, and Sound DMA/Hyper Voice PCM on Color and Crystal. Compatibility is limited; unsupported instructions or hardware operations stop execution. Saves stay in this browser, keyed by ROM content.</p>
-        <h3>Sound</h3><p>Sound defaults to on at 70% after you choose Play demo or Load ROM. Browsers may require another click or tap on Enable audio to allow playback. Mute / Unmute keeps your volume level; the 0–100% slider adjusts output live (0% is silent). Raising the slider while muted keeps it muted. Sound preferences stay in this browser, separately from cartridge saves. Unavailable audio does not stop gameplay. Beacon Trail is deliberately silent.</p>
-        <h3>Original demo · CC0-1.0</h3><p>Beacon Trail’s code, lettering, and graphics were created for this project in 2026 and dedicated to the public domain under CC0-1.0. No commercial ROM or proprietary firmware is included.</p>
-        <ul class="links">
-          <li><a href="%BASE_URL%demo/beacon-trail.ws" download>Download demo ROM</a></li>
-          <li><a href="https://github.com/takahirox/wonderswan-rust/tree/main/demo">Editable game source</a></li>
-          <li><a href="%BASE_URL%demo/NOTICE.txt">License and provenance</a> · <a href="https://github.com/takahirox/wonderswan-rust/blob/main/demo/LICENSE">Full CC0 license</a></li>
-        </ul>
-        <button id="demo-again" type="button">Play demo</button>
+        <h3>Compatibility</h3><p>The core supports color layers/sprites, cartridge saves, interrupts/timers, four-channel sound, and Sound DMA/Hyper Voice PCM on Color and Crystal. Compatibility is limited; unsupported instructions or hardware operations stop execution. Saves stay in this browser, keyed by ROM content.</p>
+        <h3>Sound</h3><p>Sound defaults to on at 70% after you choose Load ROM. Browsers may require another click or tap on Enable audio to allow playback. Mute / Unmute keeps your volume level; the 0–100% slider adjusts output live (0% is silent). Raising the slider while muted keeps it muted. Sound preferences stay in this browser, separately from cartridge saves. Unavailable audio does not stop gameplay.</p>
         <div class="debug-setting">
           <label for="debug-toggle"><input id="debug-toggle" type="checkbox" /> Debug Mode</label>
           <p class="hint">Show actual model, cartridge, execution state, and frame count.</p>

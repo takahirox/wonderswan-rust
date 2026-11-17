@@ -7,7 +7,6 @@ const element = <T extends HTMLElement>(id: string) => document.querySelector<T>
 const modelSelect = element<HTMLSelectElement>("model");
 const resetButton = element<HTMLButtonElement>("reset");
 const pauseButton = element<HTMLButtonElement>("pause");
-const demoButton = element<HTMLButtonElement>("demo");
 const loadButton = element<HTMLButtonElement>("load-rom");
 const romInput = element<HTMLInputElement>("rom");
 const romStatus = element<HTMLParagraphElement>("rom-status");
@@ -84,7 +83,6 @@ async function main() {
   let running = false;
   let faulted = false;
   let resumeAfterDialog = false;
-  let demoAfterDialog = false;
   let visibilityRevision = 0;
   let returnFocus: HTMLElement | null = null;
   let animation: number | null = null;
@@ -118,7 +116,7 @@ async function main() {
     display.present();
   }
   function state() {
-    return loading ? "Loading ROM…" : !loaded ? "Ready to play" : faulted ? "Stopped" : running ? "Running" : "Paused";
+    return loading ? "Loading ROM…" : !loaded ? "No ROM loaded" : faulted ? "Stopped" : running ? "Running" : "Paused";
   }
   function updateDiagnostics() {
     if (debugPanel.hidden) return;
@@ -138,8 +136,6 @@ async function main() {
     element("controls").setAttribute("aria-busy", String(loading));
     pauseButton.disabled = loaded === null || faulted || loading;
     resetButton.disabled = loaded === null;
-    demoButton.disabled = loading;
-    demoButton.textContent = loading ? "Loading…" : "Play demo";
     pauseButton.textContent = running ? "Pause" : "Resume";
     for (const button of touchButtons) button.disabled = !running;
     updateDiagnostics();
@@ -206,7 +202,7 @@ async function main() {
     if (!help.open) canvas.focus({ preventScroll: true });
   }
   function restart(model: string) {
-    readRevision++; // Invalidate any in-flight file read or demo fetch.
+    readRevision++; // Invalidate any in-flight file read.
     loading = false;
     setRunning(false);
     errorStatus.textContent = "";
@@ -238,7 +234,7 @@ async function main() {
     } catch (error) {
       if (revision === readRevision) {
         loading = false;
-        errorStatus.textContent = `Could not load “${name}”: ${message(error)} Choose Play demo or another ROM.`;
+        errorStatus.textContent = `Could not load “${name}”: ${message(error)} Choose another local ROM.`;
         setRunning(wasRunning && visibleRevision === visibilityRevision);
       }
     } finally {
@@ -249,15 +245,6 @@ async function main() {
       }
     }
   }
-  function playDemo() {
-    sound.unlock();
-    void readROM("Beacon Trail", async () => {
-      const response = await fetch(`${import.meta.env.BASE_URL}demo/beacon-trail.ws`);
-      if (!response.ok) throw new Error(`Demo request failed (${response.status}). Try again.`);
-      return new Uint8Array(await response.arrayBuffer());
-    });
-  }
-
   soundButton.addEventListener("click", () => {
     sound.setMuted(!sound.muted);
     if (!sound.muted) sound.unlock();
@@ -283,7 +270,6 @@ async function main() {
     setRunning(!running);
     if (running) canvas.focus({ preventScroll: true });
   });
-  demoButton.addEventListener("click", playDemo);
   loadButton.addEventListener("click", () => { sound.unlock(); clearKeys(); romInput.click(); });
   romInput.addEventListener("change", () => {
     const file = romInput.files?.[0];
@@ -306,16 +292,6 @@ async function main() {
     resumeAfterDialog = false;
     setRunning(resume);
     (running ? canvas : returnFocus ?? settingsButton).focus({ preventScroll: true });
-    if (demoAfterDialog) {
-      demoAfterDialog = false;
-      playDemo();
-    }
-  });
-  element("demo-again").addEventListener("click", () => {
-    sound.unlock();
-    resumeAfterDialog = false;
-    demoAfterDialog = true;
-    help.close();
   });
   function toggleDebug(enabled: boolean) {
     debugToggle.checked = enabled;
@@ -430,7 +406,7 @@ async function main() {
   });
   draw();
   toggleDebug(false);
-  for (const control of [modelSelect, effectSelect, demoButton, loadButton, settingsButton, fullscreenButton, soundButton, volume, enableAudio]) control.disabled = false;
+  for (const control of [modelSelect, effectSelect, loadButton, settingsButton, fullscreenButton, soundButton, volume, enableAudio]) control.disabled = false;
   refreshSound();
   refresh();
 }

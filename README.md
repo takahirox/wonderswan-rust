@@ -4,10 +4,10 @@ A from-scratch Rust WonderSwan emulator with a browser WebAssembly adapter.
 Choose **WonderSwan (mono)**, **WonderSwan Color**, or **SwanCrystal** (default).
 No existing emulator core is copied, ported, vendored, or used as a dependency.
 
-**Beacon Trail is playable:** an original, silent, freely redistributable cartridge
-runs its game logic as CPU instructions, reads the emulated keypad, and draws
-through tile RAM and video registers. The Rust core produces the 224×144 RGBA
-framebuffer. The browser only provides input/timing and displays those pixels.
+The player starts empty. Choose **Load ROM** to open a local `.ws` or `.wsc`
+file you are entitled to use. No games are supplied, fetched or uploaded. The Rust
+core executes the cartridge and produces the 224×144 RGBA framebuffer; the browser
+provides input, timing, audio and presentation.
 The core now also implements cartridge SRAM/EEPROM, common and Bandai 2003
 banking, a broader 80186 instruction set, interrupts/timers, color backgrounds
 and sprites, four-channel audio, and Color/Crystal General DMA, Sound DMA and
@@ -24,8 +24,9 @@ controls remain unsupported.
 Compatibility and timing remain limited; see the exact
 [support matrix and limitations](docs/hardware-subset.md).
 Unsupported instructions and hardware operations stop with a visible diagnostic.
-[Original CC0 hardware probes](fixtures/README.md) verify these paths separately
-from the unchanged demo. No broad commercial-ROM compatibility is claimed.
+[Original CC0 hardware probes](fixtures/README.md) verify these paths for development and
+tests; they are not published with the player. No broad commercial-ROM
+compatibility is claimed.
 
 ROM bus width and additional wait clocks are software-controlled through A0 on
 all three models. Header flags seed the synthetic firmware-free handoff on
@@ -55,30 +56,31 @@ Public URL: **https://takahirox.github.io/wonderswan-rust/**. The new version be
 public after the existing `main` deployment workflow succeeds; local pre-merge
 validation does not establish that deployment has happened.
 
-1. Click **Play demo**. Move the hollow square to collect the diamond beacon.
-   Each collected beacon advances the visible score and places the next target.
-   Find all three to see **ALL FOUND!**.
-2. **Arrow keys or W A S D** move (the X keypad); **Enter** is Start/restart.
-   Z/X map to A/B, although the demo does not use them. Held directions repeat.
-   **I / L / K / J** independently select Y1 / Y2 / Y3 / Y4.
+1. Click **Load ROM** and select a local `.ws` or `.wsc` file. No cartridge is
+   preloaded or remembered across page loads. Cancelling keeps the current state;
+   invalid files or failed reads report a recoverable error and preserve the current
+   cartridge. There is no backend or ROM catalog.
+2. **Arrow keys or W A S D** select the X keypad; **Enter** is Start, and **Z/X**
+   map to A/B. **I / L / K / J** select Y1 / Y2 / Y3 / Y4 independently.
    Click the screen to focus gameplay controls if needed.
 3. Use **Pause/Resume**, **Restart**, or **Fullscreen** below the display. Changing
    the visible console selector restarts the loaded cartridge and clears keys.
    Hiding the tab pauses; click Resume when returning. There is no emulation loop
    while idle or paused. Small/touch screens show both X and Y groups, A, B, and Start
    buttons; hold directions to repeat and release to stop.
-4. **Settings / Help** contains controls, compatibility information, and the
-   original demo's download/source/CC0 links. Opening it pauses gameplay and
-   clears held inputs. Close or press Escape to return; a previously running
-   game resumes unless the tab was hidden. A manually paused game stays paused.
+4. **Settings / Help** contains controls, display options, sound and storage
+   guidance. Opening it pauses gameplay and clears held inputs. Close or press
+   Escape to return; a previously running game resumes unless the tab was hidden.
+   A manually paused game stays paused.
    Keyboard gameplay is active only while the canvas has focus.
    **Display effect** switches live, including while paused: **Clean** keeps exact
-   nearest-neighbor pixels; **LCD Light** (the new-visitor default with WebGL2) adds
+   nearest-neighbor pixels; **LCD Light** adds
    subtle native pixel cells, softness and weak persistence; **LCD Authentic**
    strengthens the matrix and response with modest reflective mono, softer Color,
    and clearer/lower-ghosting SwanCrystal presets. These are aesthetic approximations,
-   not measured LCD calibration. **Retro CRT** adds a restrained decorative mask and
-   scanlines; a WonderSwan did not have a CRT. Effects change presentation only.
+   not measured LCD calibration. **Retro CRT** (the new-visitor default with WebGL2)
+   adds a restrained decorative mask and scanlines; a WonderSwan had an LCD, not a
+   CRT. Effects change presentation only.
    The choice is saved under `wonderswan:display:v1`, separately from saves, console
    EEPROM, RTC and audio preferences. Unavailable/failed WebGL2 and context loss
    report a nonblocking notice and use the playable 2D Clean display; an explicit
@@ -90,10 +92,6 @@ validation does not establish that deployment has happened.
    error. Runtime details collapse; Close or unchecking Debug Mode hides the
    panel. Diagnostics refresh at most twice per second and provide no CPU
    registers or accuracy claims.
-6. **Download demo ROM** in Settings saves the same `beacon-trail.ws` used by
-   Play demo. Choose **Load ROM** to run it manually. Selected files remain in
-   browser memory and are never uploaded. Invalid files report a recoverable
-   error without replacing the cartridge. There is no backend or ROM catalog.
 
 Vertical cartridges use their header orientation: the player rotates the native
 image counterclockwise into a 144:224 portrait footprint. The core framebuffer
@@ -123,22 +121,20 @@ word zero under a conservative emulator policy; nonzero ERASE, bulk commands
 and exact programming timing remain hardware gaps. There is no settings editor.
 See the [console behavior and core/Wasm API](docs/hardware-subset.md#internal-eeprom-transfers-retention-and-api).
 
-Sound defaults to **on at 70%** after a **Play demo** or **Load ROM** interaction;
+Sound defaults to **on at 70%** after a **Load ROM** interaction;
 there is no audible autoplay on page load. Browser autoplay restrictions may keep
 audio suspended: use **Enable audio** to retry directly. The status describes the
 actual browser audio state; an audio-ready cartridge can still be silent.
-**Beacon Trail is deliberately silent**. **Mute / Unmute** preserves the slider
+**Mute / Unmute** preserves the slider
 level, and the labeled **Volume** slider adjusts output immediately from 0–100%
 (100% is unity gain). At 0% output is silent; raising the slider restores its level
 unless explicitly muted. Mute and volume are remembered locally, separately from
 ROM saves; clearing storage resets them. Pause/background/restart clears scheduled
 sound, and unavailable audio does not prevent gameplay.
 
-The demo source, generated binary, hand-authored lettering, and graphics are
-**CC0-1.0**, allowing play, modification and redistribution. See
-[demo provenance/license](web/public/demo/NOTICE.txt), [full license](demo/LICENSE),
-and [editable game source and build details](demo/README.md). No commercial ROMs,
-copied assets, unlicensed game binaries, or proprietary BIOS/firmware are bundled.
+No game assets, playable ROMs or proprietary BIOS/firmware are bundled into the
+site. Independent original CC0 hardware probes remain under [fixtures](fixtures/README.md)
+for reproducible development tests only.
 
 ## Build and run locally
 
@@ -148,8 +144,8 @@ Prerequisites:
 - `rustup target add wasm32-unknown-unknown`.
 - `cargo install wasm-pack --version 0.14.0 --locked`.
 - Node.js 22.12+ or 24+ and npm; a modern browser supporting Wasm and canvas.
-- To rebuild/verify the demo only: Python 3 and [NASM](https://www.nasm.us/)
-  (validated with Python 3.13 and NASM 3.02). The deployable ROM is committed;
+- To rebuild/verify development fixtures: Python 3 and [NASM](https://www.nasm.us/)
+  (validated with Python 3.13 and NASM 3.02). Generated fixtures are committed;
   normal browser builds do not need an assembler.
 
 If Homebrew/system Rust takes precedence, select rustup before building Wasm:
@@ -161,7 +157,6 @@ export PATH="$(dirname "$(rustup which rustc)"):$PATH"
 From the repository root:
 
 ```sh
-python3 demo/build.py --check
 python3 fixtures/build.py --check  # rebuildable original CC0 hardware probes
 cargo fmt --all -- --check
 cargo test --workspace --locked
@@ -178,29 +173,24 @@ Wasm and reload after Rust changes; Vite handles TypeScript/CSS updates. Generat
 Both dependency lockfiles are committed.
 
 For native core throughput and comparisons with pinned Beetle/Oswan builds, see
-[the current performance results](docs/performance-parity.md) and
-[the original investigation](docs/performance.md). Run a headless measurement
+[the historical performance results](docs/performance-parity.md) and
+[the original investigation](docs/performance.md). The current benchmark scripts
+use only independent development fixtures, outside the deployable site. Run a headless
+measurement
 with video and audio generation enabled using:
 
 ```sh
-cargo run -p ws-core --example throughput --release --locked -- web/public/demo/beacon-trail.ws 120 3000 crystal
+cargo run -p ws-core --example throughput --release --locked -- fixtures/generated/sram128-2003.ws 120 3000 crystal
 ```
 
 For browser playback under low frame delivery and main-thread stalls, see the
 [audio stability investigation and diagnostic commands](docs/audio-stability.md).
 
-To rebuild the game after editing `demo/game.asm` or `demo/graphics.py`, from root:
-
-```sh
-python3 demo/build.py
-python3 demo/build.py --check
-cargo test --workspace --locked
-```
-
-The deterministic builder creates `web/public/demo/beacon-trail.ws`, a valid
-128 KiB cartridge with footer/checksum. Integration tests load that exact asset,
-execute CPU frames, inject keypad input, check changed graphics/score, complete
-the game and restart on all three models. Unit tests cover CPU arithmetic/flags,
+To rebuild development probes after editing their assembly, run
+`python3 fixtures/build.py` and `python3 fixtures/build.py --check` from the root.
+Native and browser integration tests execute those fixtures through the CPU,
+keypad, video, sound and storage paths on the supported models.
+Unit tests cover CPU arithmetic/flags,
 addressing, branches, stack, strings, I/O, ROM errors, bank mapping, video and input.
 There are no emulator dependencies. The only added frontend test tool is
 Playwright for the required end-to-end production-preview check.
@@ -215,8 +205,9 @@ npm run build
 npm run preview
 ```
 
-The build runs TypeScript checks and produces `web/dist`, including the bundled
-ROM and notice. Preview normally opens **http://127.0.0.1:4173/wonderswan-rust/**.
+The build runs TypeScript checks and produces `web/dist`, containing the player
+assets and Wasm, with no playable ROM binaries or fixture copies. Preview normally
+opens **http://127.0.0.1:4173/wonderswan-rust/**.
 Serve over HTTP, not `file://`. Production/preview use the existing
 `/wonderswan-rust/` base; the dev server uses `/`.
 
@@ -230,20 +221,16 @@ npm run test:compat
 
 Use `WS_PREVIEW_URL=http://127.0.0.1:4287/wonderswan-rust/ npm run test:browser`
 if preview is on port 4287. The smoke script opens a fresh Chromium context,
-loads Wasm and the demo, moves with actual keyboard events, checks score 1/2/3
-and the win message from canvas pixels, restarts via Enter, plays on all three
-models, tests UI pause/restart and cleared input on model switches, plays a
-local file to completion, rejects an empty file, reloads the same file, checks
-no upload requests, and verifies production asset paths and the license notice.
-It also checks dialog pointer/keyboard entry, Escape, focus/input isolation,
-conditional resume, Debug Mode default/on/off, native Chromium fullscreen and
-simulated API failure, initialization retry, failed demo recovery, asynchronous
-load/menu/visibility races, execution errors, and a 375×812 touch layout. Touch
-input is sent through Chromium's touch event API; A/B and Z/X are verified with a
-checksum-valid test-only variant of the original CC0 cartridge that reads the
-action keypad row. The bundled ROM is unchanged. Visibility events and API/network
-failures are synthetic; this does not claim a real device or physical tab test.
-For the win screenshot, set `WS_SMOKE_SCREENSHOT=/tmp/beacon-trail-win.png`.
+checks empty startup, cancellation and local file-picker loading of an independent
+CC0 keypad fixture, then verifies CPU input on all three models, pause/restart and
+input clearing. It checks no ROM network requests or uploads, invalid-file and
+failed-read preservation, same-file reload, asynchronous read/replacement/model/
+restart/modal/visibility races, and execution errors. Dialog focus/Escape,
+conditional resume, Debug Mode, fullscreen and API failures, initialization retry,
+and a 375×812 touch layout remain covered. Touch directions/A/B/Start are observed
+through CPU-produced bit tiles; no game or game-specific test variant is needed.
+Visibility, read failures and API failures are synthetic, not physical-device tests.
+Set `WS_SMOKE_SCREENSHOT=/tmp/wonderswan-playing.png` for a running-player screenshot.
 Set `WS_SMOKE_ARTIFACTS=/tmp/wonderswan-player` for desktop/mobile screenshots
 including empty, playing, settings, debug, and fullscreen states.
 Exact-pixel gameplay and panel-output checks explicitly choose Clean. The LCD
@@ -259,7 +246,7 @@ physical mobile GPU behavior.
 The compatibility suite loads each original SRAM/EEPROM probe through the file
 picker, checks background/sprite colors, SHA-256 save isolation, reload/reopen,
 reset/model/pause preservation, and real Web Audio sample buffers and bounded
-sources. It checks default-on activation before demo fetch/file chooser/file read,
+sources. It checks default-on activation before the local file chooser/read,
 measures live output gain at 0%, 35% and 100%, and covers mute/volume persistence,
 keyboard/touch controls, denied/malformed preference storage, corrupt saves and
 unavailable audio. Suspended, rejected and pending resumes, creation/playback
@@ -315,25 +302,25 @@ Required **post-merge checks remain pending**:
 
 1. Verify the merge-triggered workflow publishes successfully; record its Actions
    run URL, deployed commit and final deployment result.
-2. Open the public URL unauthenticated. Play the bundled demo to completion,
-   restart, and load the same downloaded ROM via the file picker. Confirm ROM,
-   JS and Wasm load without production-path errors.
+2. Open the public URL unauthenticated. Confirm the player starts empty with a
+   prominent Load ROM action, local-file instructions, and no supplied game or
+   download links. Select an independent local CC0 fixture through the file picker;
+   verify it runs without ROM network requests/uploads or production-path errors.
 3. Load a CC0 compatibility probe locally on the public page; verify color,
    sound and saves surviving reload, plus Debug Mode/error recovery (Issue #11).
 4. Start an original licensed sound-producing fixture on the public player with
    a normal user gesture. Verify default-on audio, mute and live volume changes;
    reload to check remembered preferences and record actual autoplay restrictions
-   (Issue #17). Beacon Trail cannot verify audible output because it is silent.
+   (Issue #17).
 5. Confirm the public model selector, Settings/Help, Debug Mode, compatibility
-   notice, and demo download/source/license links. Report deployment-only problems
-   as follow-up work.
+   notice, and the absence of bundled ROMs in the deployed files. Report
+   deployment-only problems as follow-up work.
 
 ## Layout and contributing
 
 - `crates/ws-core`: dependency-free CPU, cartridge/save, bus, input, mono/color video and sound.
 - `crates/ws-web`: thin wasm-bindgen adapter; machine state stays in Rust core.
 - `web`: framework-free TypeScript/HTML/CSS, Vite and browser smoke script.
-- `demo`: original cartridge assembly, graphics, deterministic builder and license.
 - `fixtures`: CC0 compatibility cartridge source, deterministic builder and generated files.
 
 Follow the [development flow and English collaboration policy](docs/development-flow.md),

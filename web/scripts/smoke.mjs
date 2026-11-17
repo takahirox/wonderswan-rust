@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
 const base = process.env.WS_PREVIEW_URL ?? 'http://127.0.0.1:4173/wonderswan-rust/';
-const rom = fileURLToPath(new URL('../public/demo/beacon-trail.ws', import.meta.url));
+const rom = fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws', import.meta.url));
 const browser = await chromium.launch({ headless: true });
 let page = await browser.newPage({ viewport: { width:1440, height:900 } }); // fresh, unauthenticated context
 const artifacts = process.env.WS_SMOKE_ARTIFACTS;
@@ -18,34 +18,34 @@ page.on('pageerror', error => errors.push(error.message));
 page.on('request', request => requests.push({ url: request.url(), method: request.method() }));
 page.on('response', response => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
 
-const player = [0,126,66,90,90,66,126,0];
-const glyphs = {
-  '0': ['111','101','101','101','111'], '1': ['010','110','010','010','111'],
-  '2': ['110','001','010','100','111'], '3': ['110','001','010','001','110'],
-  'A': ['010','101','111','101','101'],
-};
-function glyph(char) {
-  return [0, ...glyphs[char].map(row => parseInt(`0${[...row].map(b => b+b).join('')}0`, 2)), 0, 0];
-}
-async function tile(x, y) {
-  return page.locator('#screen').evaluate((canvas, {x,y}) => {
-    const data = canvas.getContext('2d').getImageData(x*8,y*8,8,8).data;
-    return Array.from({length:8}, (_, row) => {
-      let bits = 0;
-      for (let col=0; col<8; col++) if (data[(row*8+col)*4] < 128) bits |= 128 >> col;
-      return bits;
+// Independent CC0 keypad fixture renders CPU IN B5 results as bit tiles.
+async function expectInput(y=0, x=0, a=0) {
+  const expected = [0,0x10|y,0x20|x,0x30|y|x,0x40|a,0x50|y|a,0x60|x|a,0x70|y|x|a];
+  await page.waitForFunction(expected => {
+    const context = document.querySelector('#screen').getContext('2d');
+    return expected.every((value,row) => {
+      let actual = 0;
+      for (let bit=0;bit<8;bit++) {
+        if (context.getImageData(bit*8+3,row*8+19,1,1).data[0] === 0) actual |= 1<<bit;
+      }
+      return actual === value;
     });
-  }, {x,y});
+  }, expected);
 }
-async function expectTile(x, y, expected) {
-  // Allow startup/rendering time, but fail rather than skipping an absent frame.
-  for (let attempt=0; attempt<100; attempt++) {
-    if (JSON.stringify(await tile(x,y)) === JSON.stringify(expected)) return;
-    const error = await page.locator('#error').textContent();
-    assert.equal(error, '', `runtime error: ${error}`);
-    await page.waitForTimeout(20);
-  }
-  assert.deepEqual(await tile(x,y), expected, `tile ${x},${y}`);
+async function initial() {
+  await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
+  await expectInput();
+}
+async function load(file=rom) {
+  const chooser = page.waitForEvent('filechooser');
+  await page.locator('#load-rom').click();
+  await (await chooser).setFiles(file);
+  await initial();
+}
+async function cancelPicker() {
+  const chooser = page.waitForEvent('filechooser');
+  await page.locator('#load-rom').click();
+  await (await chooser).setFiles([]);
 }
 // Wait for two elapsed rendering intervals with input held/released. A wall
 // timeout can expire without a tick, and the first callback after load/resume
@@ -60,20 +60,6 @@ async function tap(key) {
   await inputFrames();
   await page.keyboard.up(key);
   await inputFrames();
-}
-async function initial() {
-  await expectTile(3,8,player);
-  await expectTile(21,1,glyph('0'));
-}
-async function complete() {
-  for (let i=0;i<6;i++) await tap('ArrowRight');
-  await expectTile(21,1,glyph('1'));
-  for (let i=0;i<3;i++) await tap('ArrowUp');
-  await expectTile(21,1,glyph('2'));
-  for (let i=0;i<9;i++) await tap('ArrowRight');
-  await expectTile(18,5,player);
-  await expectTile(21,1,glyph('3'));
-  await expectTile(9,10,glyph('A')); // ALL FOUND! is rendered by ROM tile writes
 }
 async function frame() {
   const pixels = await page.locator('#screen').evaluate(c => c.toDataURL());
@@ -139,74 +125,67 @@ try {
   assert.equal(await page.locator('#model option').count(), 3);
   assert.equal(await page.locator('#screen').getAttribute('width'), '224');
   assert.equal(await page.locator('#screen').getAttribute('height'), '144');
-  await page.locator('#demo').click();
-  await initial();
+  assert.equal(await page.locator('#rom-status').textContent(), 'No ROM loaded');
+  assert.equal(await page.locator('#empty-state').isVisible(), true);
+  assert.equal(await page.getByRole('button', {name:'Load ROM',exact:true}).count(), 1);
+  assert.equal(await page.locator('#rom').getAttribute('accept'), '.ws,.wsc');
+  assert.equal(await page.locator('#pause').isDisabled(), true);
+  assert.equal(await page.locator('#reset').isDisabled(), true);
+  await openHelp();
+  await page.locator('#debug-toggle').check();
+  await closeHelp();
+  assert.equal(await page.locator('#debug-rom').textContent(), 'None');
+  assert.equal(await page.locator('#debug-bytes').textContent(), '0');
+  assert.equal(await page.locator('#debug-frames').textContent(), '0');
+  await page.locator('#debug-close').click();
+  await cancelPicker();
+  assert.equal(await page.locator('#rom-status').textContent(), 'No ROM loaded');
+  const countBeforeFile = requests.length;
+  await load();
+  assert.equal(await page.locator('#empty-state').isVisible(), false);
   await screenshot('desktop-playing');
+  if (process.env.WS_SMOKE_SCREENSHOT) await page.screenshot({path:process.env.WS_SMOKE_SCREENSHOT,fullPage:true});
   for (const model of ['crystal','mono','color']) {
     if (model !== 'crystal') await page.locator('#model').selectOption(model);
     await initial();
-    await complete();
-    if (model === 'crystal' && process.env.WS_SMOKE_SCREENSHOT) {
-      await page.screenshot({ path: process.env.WS_SMOKE_SCREENSHOT, fullPage:true });
-    }
-    await tap('Enter');
-    await initial();
-    console.log(`${model}: demo boot, move, score 1/2/3, win, cartridge Start restart passed`);
+    await page.keyboard.down('ArrowRight');
+    await expectInput(0,2);
+    await page.keyboard.up('ArrowRight');
+    await expectInput();
   }
-  await tap('ArrowRight');
-  await expectTile(4,8,player);
   await page.locator('#pause').click();
   const paused = await frame();
   await tap('ArrowRight');
   assert.equal(await frame(), paused);
   await page.locator('#pause').click();
-  // Let the ROM observe released input and clear its retained repeat delay.
-  await inputFrames();
-  await tap('ArrowDown');
-  await expectTile(4,9,player);
+  await page.keyboard.down('d');
+  await expectInput(0,2);
   await page.locator('#reset').click();
+  await page.keyboard.up('d');
   await initial();
   await page.keyboard.down('ArrowRight');
-  await page.waitForTimeout(45);
+  await expectInput(0,2);
   await page.locator('#model').selectOption('crystal');
   await page.keyboard.up('ArrowRight');
   await initial();
-  await page.waitForTimeout(150);
-  await initial(); // held key must not leak across reset
-  // Exercise the visibility handler deterministically in headless Chromium.
-  // This is synthetic visibility, not a claim of testing a physical tab switch.
-  await page.evaluate(() => {
-    Object.defineProperty(document, 'hidden', { configurable:true, value:true });
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
+  await visibility(true);
   assert.equal(await page.locator('#pause').textContent(), 'Resume');
-  await page.evaluate(() => {
-    delete document.hidden;
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
+  await visibility(false);
   assert.equal(await page.locator('#pause').textContent(), 'Resume');
   await page.locator('#pause').click();
-  await inputFrames(); // Start the resumed frame clock before the short WASD tap.
-  await tap('d');
-  await expectTile(4,8,player);
-  await page.locator('#reset').click();
   await initial();
-  console.log('Pause/resume, UI restart, model-switch input clearing, WASD, and synthetic visibility pause passed');
-
-  const countBeforeFile = requests.length;
-  await page.locator('#rom').setInputFiles(rom);
-  await initial();
-  await complete();
+  await cancelPicker();
+  assert.equal(await page.locator('#rom-status').textContent(), 'Running');
+  await load();
   assert.equal(requests.length, countBeforeFile, 'local ROM selection must not send requests');
-  assert.match(await page.locator('#rom-title').textContent(), /beacon-trail.ws/);
+  assert.equal(await page.locator('#rom-title').textContent(), 'keypad-horizontal.ws');
   await page.locator('#rom').setInputFiles({name:'empty.ws',mimeType:'application/octet-stream',buffer:Buffer.alloc(0)});
-  // File reading and ROM identity hashing finish after the change event.
   await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Expected a 128 KiB'));
-  assert.match(await page.locator('#error').textContent(), /Expected a 128 KiB/);
-  await page.locator('#rom').setInputFiles(rom);
-  await initial();
+  assert.equal(await page.locator('#rom-title').textContent(), 'keypad-horizontal.ws', 'invalid file preserves cartridge');
+  assert.equal(await page.locator('#rom-status').textContent(), 'Running');
+  await load();
   assert.equal(await page.locator('#error').textContent(), '');
-  console.log('Local cartridge playthrough, no uploads, invalid-file recovery, same-file reload passed');
+  console.log('Empty startup/cancellation, three-model local ROM CPU/input, pause/restart/model clearing, no uploads and invalid-file recovery passed');
   // Modal input isolation, native focus confinement, Escape, and conditional resume.
   await page.locator('#settings').focus();
   await page.keyboard.press('Enter');
@@ -243,6 +222,7 @@ try {
   await page.locator('#settings').click();
   await page.keyboard.up('ArrowRight');
   await closeHelp();
+  await expectInput();
   const releasedFrame = await frame();
   await page.waitForTimeout(200);
   assert.equal(await frame(), releasedFrame, 'overlay clears held keys');
@@ -253,6 +233,7 @@ try {
   await page.locator('#model').focus();
   await page.keyboard.up('ArrowRight');
   await page.waitForTimeout(50);
+  await expectInput();
   const focusFrame = await frame();
   await tap('d'); // no model label starts with D; native select typeahead does not change models
   assert.equal(await frame(), focusFrame, 'select focus clears and blocks gameplay keys');
@@ -264,7 +245,7 @@ try {
   await closeHelp();
   assert.equal(await page.locator('#debug-panel').isVisible(), true);
   assert.equal(await page.locator('#debug-bytes').textContent(), '131072');
-  assert.match(await page.locator('#debug-rom').textContent(), /beacon-trail.ws/);
+  assert.match(await page.locator('#debug-rom').textContent(), /keypad-horizontal.ws/);
   await page.waitForTimeout(550);
   assert.ok(Number(await page.locator('#debug-frames').textContent()) > 0);
   await page.locator('#debug-panel summary').click();
@@ -307,7 +288,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('could not open'));
   assert.equal(await page.locator('#pause').textContent(), 'Pause');
 
-  // Real cartridge execution error, using the same checksum-valid mutation as Rust tests.
+  // A checksum-valid unsupported opcode exercises the real CPU error path.
   const broken = Buffer.from(await readFile(rom));
   broken[65536] = 0x0f;
   await page.locator('#rom').setInputFiles({ name:'unsupported.ws', mimeType:'application/octet-stream', buffer:checksum(broken) });
@@ -319,13 +300,10 @@ try {
   console.log('Fullscreen fallback/rejection, stopped execution feedback, and recovery passed');
 
   assert.ok(requests.some(r => r.url.endsWith('.wasm')));
-  assert.ok(requests.some(r => r.url.endsWith('/wonderswan-rust/demo/beacon-trail.ws')));
   assert.ok(requests.every(r => r.method === 'GET'));
+  assert.ok(requests.every(r => !/\.(ws|wsc)(?:[?#]|$)/i.test(r.url)), 'no ROM network requests at startup or selection');
   assert.deepEqual(errors, []);
-  const notice = await page.request.get(new URL('demo/NOTICE.txt', base).href);
-  assert.equal(notice.status(),200);
-  assert.match(await notice.text(), /CC0-1.0/);
-  console.log('Production base path, Wasm/ROM loading, license notice, and no browser errors passed');
+  console.log('Production base path, Wasm loading, local-only cartridges and no browser errors passed');
 
   // Isolated fault injection: no production network/service is modified.
   const recovery = await browser.newContext({ viewport:{width:1440,height:900} });
@@ -340,7 +318,7 @@ try {
   });
   await page.goto(base);
   assert.equal(await page.locator('#rom-status').textContent(), 'Loading WebAssembly…');
-  assert.equal(await page.locator('#demo').isDisabled(), true);
+  assert.equal(await page.locator('#load-rom').isDisabled(), true);
   assert.equal(await page.locator('[data-button]:enabled').count(), 0, 'touch controls disabled before initialization');
   releaseWasm();
   await page.waitForFunction(() => !document.querySelector('#retry').hidden);
@@ -350,45 +328,77 @@ try {
   await page.waitForFunction(() => !document.querySelector('#model').disabled);
   assert.equal(await page.locator('#error').textContent(), '');
 
-  await page.route('**/demo/beacon-trail.ws', route => route.fulfill({ status:503, body:'simulated unavailable demo' }));
-  await page.locator('#demo').click();
-  await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Demo request failed'));
-  assert.equal(await page.locator('#demo').isDisabled(), false);
-  await page.unroute('**/demo/beacon-trail.ws');
-
-  let releaseDemo;
-  let demoGate = new Promise(resolve => { releaseDemo = resolve; });
-  await page.route('**/demo/beacon-trail.ws', async route => { await demoGate; await route.continue(); });
-  await page.locator('#demo').click();
-  assert.equal(await page.locator('#rom-status').textContent(), 'Loading ROM…');
+  // Gate actual local Blob reads to exercise load races without a ROM server.
+  await page.evaluate(() => {
+    const read = Blob.prototype.arrayBuffer;
+    window.fileReads = [];
+    Blob.prototype.arrayBuffer = function() {
+      const file = this;
+      return new Promise((resolve,reject) => window.fileReads.push({
+        resolve:() => read.call(file).then(resolve,reject),
+        reject:() => reject(new Error('simulated local read failure')),
+      }));
+    };
+  });
+  const localFile = {name:'local.wsc',mimeType:'application/octet-stream',buffer:await readFile(rom)};
+  async function beginRead() {
+    await page.locator('#rom').setInputFiles(localFile);
+    await page.waitForFunction(() => window.fileReads.length > 0);
+    assert.equal(await page.locator('#rom-status').textContent(), 'Loading ROM…');
+  }
+  const finishRead = (fail=false) => page.evaluate(fail => window.fileReads.shift()[fail ? 'reject' : 'resolve'](),fail);
+  await beginRead();
+  await finishRead(true);
+  await page.waitForFunction(() => document.querySelector('#error').textContent.includes('simulated local read failure'));
+  assert.equal(await page.locator('#rom-status').textContent(), 'No ROM loaded');
+  assert.equal(await page.locator('#empty-state').isVisible(), true);
+  await beginRead();
   await openHelp();
-  releaseDemo();
-  await page.waitForFunction(() => document.querySelector('#rom-title').textContent === 'Beacon Trail');
+  await finishRead();
+  await page.waitForFunction(() => document.querySelector('#rom-title').textContent === 'local.wsc');
   assert.equal(await page.locator('#pause').textContent(), 'Resume', 'late load stays paused behind modal');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'help-close', 'late load preserves dialog focus');
   await closeHelp(true);
-  assert.equal(await page.locator('#pause').textContent(), 'Pause');
   await initial();
-  // The settings demo action must close the dialog before starting a fresh load.
-  await openHelp();
-  await page.locator('#demo-again').click();
-  await page.waitForFunction(() => !document.querySelector('#help').open && document.querySelector('#rom-status').textContent === 'Running');
-  await initial();
-
-  demoGate = new Promise(resolve => { releaseDemo = resolve; });
-  await openHelp();
-  await page.locator('#demo-again').click();
-  await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Loading ROM…');
+  await beginRead();
+  await finishRead(true);
+  await page.waitForFunction(() => document.querySelector('#error').textContent.includes('simulated local read failure'));
+  assert.equal(await page.locator('#rom-title').textContent(), 'local.wsc', 'failed read preserves current ROM');
+  assert.equal(await page.locator('#rom-status').textContent(), 'Running');
+  await page.locator('#pause').click();
+  await beginRead();
+  await finishRead(true);
+  await page.waitForFunction(() => document.querySelector('#error').textContent.includes('simulated local read failure'));
+  assert.equal(await page.locator('#rom-status').textContent(), 'Paused', 'failure preserves prior pause');
+  await page.locator('#pause').click();
+  await beginRead();
   await visibility(true);
   await visibility(false);
-  releaseDemo();
+  await finishRead();
   await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Paused');
-  assert.equal(await page.locator('#pause').textContent(), 'Resume', 'late load respects background pause');
   await page.locator('#pause').click();
   await initial();
+
+  // Restart/model changes and newer selections invalidate an older read.
+  for (const action of ['reset','model','newer']) {
+    await beginRead();
+    if (action === 'newer') {
+      await page.locator('#rom').setInputFiles({...localFile,name:'newer.ws'});
+      await page.waitForFunction(() => window.fileReads.length === 2);
+      await page.evaluate(() => window.fileReads.pop().resolve());
+    } else if (action === 'model') await page.locator('#model').selectOption('mono');
+    else await page.locator('#reset').click();
+    await initial();
+    const title = await page.locator('#rom-title').textContent();
+    await finishRead(action === 'reset');
+    await page.waitForTimeout(80);
+    assert.equal(await page.locator('#rom-title').textContent(), title);
+    assert.equal(await page.locator('#error').textContent(), '');
+    assert.equal(await page.locator('#rom-status').textContent(), 'Running');
+  }
   assert.deepEqual(errors, []);
   await recovery.close();
-  console.log('Wasm initialization/loading/retry, failed demo recovery, and asynchronous load/modal/background races passed');
+  console.log('Wasm initialization/retry, failed local reads, cartridge preservation and asynchronous read/modal/background/restart/replacement races passed');
 
   const mobile = await browser.newContext({ viewport:{width:375,height:812}, isMobile:true, hasTouch:true });
   await mobile.addInitScript(() => localStorage.setItem('wonderswan:display:v1','clean'));
@@ -405,8 +415,7 @@ try {
   await page.locator('#sound').tap();
   assert.equal(await page.locator('#sound').textContent(),'Mute');
   await page.locator('#volume').tap();
-  await page.locator('#demo').tap();
-  await initial();
+  await load();
   await screenshot('mobile-playing');
   const cdp = await mobile.newCDPSession(page);
   async function touch(button, type) {
@@ -414,80 +423,23 @@ try {
     await cdp.send('Input.dispatchTouchEvent', { type,
       touchPoints:type === 'touchEnd' || type === 'touchCancel' ? [] : [{x:box.x+box.width/2, y:box.y+box.height/2, id:1}] });
   }
-  async function touchTap(button) {
+  for (const [button,y,x,a] of [[16,0,1,0],[32,0,2,0],[64,0,4,0],[128,0,8,0],[4,0,0,4],[8,0,0,8],[2,0,0,2]]) {
     await touch(button,'touchStart');
-    await inputFrames();
+    await expectInput(y,x,a);
     await touch(button,'touchEnd');
-    await inputFrames();
+    await expectInput();
   }
-  await touchTap(32);
-  await expectTile(4,8,player);
-  await touchTap(16);
-  await expectTile(4,7,player);
-  await touchTap(128);
-  await expectTile(3,7,player);
-  await touchTap(64);
-  await initial();
   await touch(32,'touchStart');
-  await page.waitForTimeout(300);
-  await touch(32,'touchEnd');
-  assert.notDeepEqual(await tile(4,8), player, 'holding repeats movement');
-  await inputFrames();
-  const touchReleased = await frame();
+  await expectInput(0,2);
   await page.waitForTimeout(200);
-  assert.equal(await frame(), touchReleased);
-  await touchTap(2);
-  await initial();
-  const up = await page.locator('[data-button="16"]').boundingBox();
-  const right = await page.locator('[data-button="32"]').boundingBox();
-  await cdp.send('Input.dispatchTouchEvent', { type:'touchStart', touchPoints:[
-    {x:up.x+22,y:up.y+22,id:1}, {x:right.x+22,y:right.y+22,id:2},
-  ] });
-  await page.waitForTimeout(45);
-  await cdp.send('Input.dispatchTouchEvent', { type:'touchEnd',touchPoints:[] });
-  await expectTile(4,7,player);
-  assert.equal(await page.evaluate(() => scrollY), 0, 'touch controller does not scroll the page');
-  await touchTap(2);
-  await initial();
-  await touch(32,'touchStart');
-  await page.waitForTimeout(45);
+  await expectInput(0,2);
   await touch(32,'touchCancel');
-  await inputFrames();
-  const canceled = await frame();
-  await page.waitForTimeout(200);
-  assert.equal(await frame(), canceled, 'pointer cancel releases');
-  await touchTap(2);
-  await initial();
+  await expectInput();
   await touch(32,'touchStart');
-  await page.waitForTimeout(45);
+  await expectInput(0,2);
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await touch(32,'touchEnd');
-  await inputFrames();
-  const blurred = await frame();
-  await page.waitForTimeout(200);
-  assert.equal(await frame(), blurred, 'blur releases touch');
-
-  // A/B are unused by Beacon Trail. A checksum-valid test-only variant reads the
-  // action row for movement, so the real keypad path is observable in canvas pixels.
-  const actions = Buffer.from(await readFile(rom));
-  const directionScan = Buffer.from([0xb0,0x20,0xe6,0xb5,0x90,0x90,0xe4,0xb5]);
-  const offset = actions.indexOf(directionScan, 65536);
-  assert.ok(offset >= 65536, 'find the cartridge direction scan');
-  actions[offset+1] = 0x40; // action row: A=4 (down), B=8 (left)
-  await page.locator('#rom').setInputFiles({ name:'action-input-test.ws', mimeType:'application/octet-stream', buffer:checksum(actions) });
-  await initial();
-  await touchTap(4);
-  await expectTile(3,9,player);
-  await touchTap(8);
-  await expectTile(2,9,player);
-  await tap('Enter');
-  await initial();
-  await tap('z');
-  await expectTile(3,9,player);
-  await tap('x');
-  await expectTile(2,9,player);
-  await page.locator('#rom').setInputFiles(rom);
-  await initial();
+  await expectInput();
   await page.locator('#settings').tap();
   await page.locator('#debug-toggle').check();
   await screenshot('mobile-settings');
