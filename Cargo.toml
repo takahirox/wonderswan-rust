@@ -1,3 +1,7 @@
 [workspace]
 members = ["crates/ws-core", "crates/ws-web"]
 resolver = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

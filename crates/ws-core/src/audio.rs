@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 pub const SAMPLE_RATE: u32 = 24000;
 const MAX_SAMPLES: usize = 4800 * 2;
 #[derive(Default)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub(crate) struct Audio {
     phases: [usize; 4],
     clocks: [u32; 4],
@@ -74,6 +75,75 @@ impl Audio {
         }
     }
     pub fn tick(&mut self, cycles: u32, ram: &[u8], ports: &mut [u8; 256]) {
+        if ports[0x90] & 15 == 0 && cycles < 128 - self.sample_clock {
+            self.sample_clock += cycles;
+            return;
+        }
+        // Fast sweep can change the channel period on every clock. Keep that
+        // uncommon path clocked; otherwise jump between sample/sweep boundaries.
+        if (cycles < 16 && ports[0x90] & 15 != 0)
+            || (ports[0x90] & 0x44 == 0x44 && ports[0x95] & 2 != 0)
+        {
+            self.tick_clocks(cycles, ram, ports);
+            return;
+        }
+        let mut remaining = cycles;
+        while remaining != 0 {
+            let control = ports[0x90];
+            let sweep = control & 0x44 == 0x44;
+            let mut count = remaining.min(128 - self.sample_clock);
+            if sweep {
+                count = count.min(8192 - self.sweep_clock);
+            }
+            for ch in 0..4 {
+                if control & (1 << ch) == 0 {
+                    continue;
+                }
+                let freq = u16::from_le_bytes([ports[0x80 + ch * 2], ports[0x81 + ch * 2]]) & 2047;
+                let period = 2048 - u32::from(freq);
+                // A port write can shorten the period below the current clock.
+                // The old counter then resets on the NEXT clock, losing the
+                // overshoot; taking a modulus of the old counter is incorrect.
+                let first = period.saturating_sub(self.clocks[ch]).max(1);
+                if count < first {
+                    self.clocks[ch] += count;
+                    continue;
+                }
+                let steps = 1 + (count - first) / period;
+                self.clocks[ch] = (count - first) % period;
+                self.phases[ch] = (self.phases[ch] + steps as usize) & 31;
+                if ch == 3 && ports[0x8e] & 16 != 0 {
+                    let tap = [14, 10, 13, 4, 8, 6, 9, 11][(ports[0x8e] & 7) as usize];
+                    for _ in 0..steps {
+                        let bit = (!(self.lfsr >> 7 ^ self.lfsr >> tap)) & 1;
+                        self.lfsr = ((self.lfsr << 1) | bit) & 0x7fff;
+                    }
+                }
+            }
+            if sweep {
+                self.sweep_clock += count;
+                if self.sweep_clock == 8192 {
+                    self.sweep_clock = 0;
+                    self.sweep_ticks += 1;
+                    if self.sweep_ticks > ports[0x8d] & 31 {
+                        self.sweep_ticks = 0;
+                        let frequency = u16::from_le_bytes([ports[0x84], ports[0x85]])
+                            .wrapping_add(ports[0x8c] as i8 as u16)
+                            & 2047;
+                        [ports[0x84], ports[0x85]] = frequency.to_le_bytes();
+                    }
+                }
+            }
+            self.sample_clock += count;
+            if self.sample_clock == 128 {
+                self.sample_clock = 0;
+                self.hyper_sample(ports);
+                self.sample(ram, ports);
+            }
+            remaining -= count;
+        }
+    }
+    fn tick_clocks(&mut self, cycles: u32, ram: &[u8], ports: &mut [u8; 256]) {
         for _ in 0..cycles {
             let control = ports[0x90];
             for ch in 0..4 {
@@ -199,6 +269,62 @@ mod tests {
             ports[0x88 + ch] = 0xff;
         }
         (Audio::default(), ram, ports)
+    }
+    #[test]
+    fn batched_audio_matches_clocked_state_and_pcm_across_register_changes() {
+        let mut seed = 0x853c49e6u32;
+        let mut next = || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 16) as u8
+        };
+        for control in [0, 1, 2, 4, 8, 15, 0x20, 0x44, 0x88, 0xff] {
+            let (mut batched, mut ram, mut ports) = setup();
+            let mut clocked = Audio::default();
+            for byte in &mut ram {
+                *byte = next();
+            }
+            for iteration in 0..90 {
+                // Include frequency shortening, disable/resume, ordinary/fast
+                // sweep transitions, all noise taps and Hyper Voice controls.
+                ports[0x90] = if iteration % 3 == 0 { next() } else { control };
+                for port in [
+                    0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c,
+                    0x8e, 0x8f, 0x91, 0x94, 0x95, 0x9e, 0x68, 0x69, 0x6a,
+                ] {
+                    ports[port] = next();
+                }
+                if iteration % 4 == 0 {
+                    ports[0x8d] = next();
+                    batched.write(0x8d, ports[0x8d]);
+                    clocked.write(0x8d, ports[0x8d]);
+                }
+                if iteration % 7 == 0 {
+                    batched.write(0x8e, ports[0x8e]);
+                    clocked.write(0x8e, ports[0x8e]);
+                }
+                let count = [0, 1, 2, 127, 128, 129, 8191, 8192, 8193][iteration % 9];
+                let mut reference_ports = ports;
+                batched.tick(count, &ram, &mut ports);
+                clocked.tick_clocks(count, &ram, &mut reference_ports);
+                assert_eq!(
+                    ports, reference_ports,
+                    "control {control:x}, iteration {iteration}"
+                );
+                assert_eq!(
+                    batched, clocked,
+                    "control {control:x}, iteration {iteration}"
+                );
+                if iteration % 13 == 0 {
+                    assert_eq!(batched.drain(), clocked.drain());
+                }
+            }
+        }
+        let (mut batched, ram, mut ports) = setup();
+        let mut clocked = Audio::default();
+        let mut reference_ports = ports;
+        batched.tick(700_000, &ram, &mut ports);
+        clocked.tick_clocks(700_000, &ram, &mut reference_ports);
+        assert_eq!(batched, clocked); // Includes bounded-output queue rollover.
     }
     #[test]
     fn disabled_is_silent_and_each_wave_channel_produces_deterministic_stereo() {
