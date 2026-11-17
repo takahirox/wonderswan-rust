@@ -5,6 +5,8 @@ mod audio;
 mod bus;
 mod cartridge;
 mod cpu;
+#[cfg(test)]
+mod deferred_tests;
 mod eeprom;
 #[cfg(test)]
 mod gdma_tests;
@@ -299,6 +301,7 @@ impl Machine {
             let line = self.bus.raster_line as usize;
             let count = remaining.min(256 - (self.bus.cycles % 256) as u32);
             if self.bus.cycles % 256 + count as u64 == 256 {
+                self.bus.sync_devices();
                 self.video.line_end(&self.bus, &mut self.framebuffer, line);
             }
             let frame = self.frame_number();
@@ -328,14 +331,18 @@ impl Machine {
                     } else {
                         cycles
                     };
-                    self.advance(cycles);
+                    if !self.bus.defer_tick(cycles) {
+                        self.advance(cycles);
+                    }
                 }
                 Err(error) => {
+                    self.bus.sync_devices();
                     self.fault = Some(error.clone());
                     return Err(error);
                 }
             }
         }
+        self.bus.sync_devices();
         Ok(())
     }
 }
@@ -364,6 +371,7 @@ mod scheduling_tests {
                 fast.set_buttons(buttons);
                 reference.set_buttons(buttons);
                 fast.run_frame().unwrap();
+                reference.video.invalidate_cache();
                 let end = reference.frame_number() + 1;
                 while reference.frame_number() < end {
                     let cycles = reference.cpu.step(&mut reference.bus).unwrap();

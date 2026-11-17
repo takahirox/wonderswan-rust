@@ -12,6 +12,7 @@ if (!values.baseline || !values.optimized || !values.output) {
   throw new Error('usage: wasm-throughput.mjs --baseline PKG --optimized PKG --output JSON [--browser EXECUTABLE] [--frames 1000] [--repeats 5]');
 }
 const frames=Number(values.frames), repeats=Number(values.repeats);
+const replay=process.env.WS_PERF_INPUT_REPLAY !== undefined;
 if (![frames,repeats].every(n=>Number.isInteger(n)&&n>0)) throw new Error('frames/repeats must be positive integers');
 const packages=[];
 for (const label of ['baseline','optimized']) {
@@ -26,7 +27,7 @@ for (const path of ['web/public/demo/beacon-trail.ws','fixtures/generated/sram12
 const browser=await chromium.launch({headless:true,...(values.browser ? {executablePath:values.browser} : {})});
 try {
   const page=await browser.newPage();
-  const samples=await page.evaluate(async ({packages,roms,frames,repeats})=>{
+  const samples=await page.evaluate(async ({packages,roms,frames,repeats,replay})=>{
     const runners=[];
     for (const pkg of packages) {
       const url=URL.createObjectURL(new Blob([pkg.bindings],{type:'text/javascript'}));
@@ -52,6 +53,7 @@ try {
             let pcm,rgba,sampleValues=0,frameBytes=0;
             const start=performance.now();
             for (let f=0;f<frames;f++) {
+              if (replay) m.set_buttons([32,64,128,16][Math.floor(f/64)%4]);
               m.run_frame();pcm=m.audio_samples();rgba=m.framebuffer();
               sampleValues+=pcm.length;frameBytes+=rgba.length;
             }
@@ -65,7 +67,7 @@ try {
       }
     }
     return rows;
-  },{packages,roms,frames,repeats});
+  },{packages,roms,frames,repeats,replay});
   const summary=[];
   for (const rom of roms) {
     const matching=samples.filter(s=>s.rom===rom.path);
@@ -78,6 +80,6 @@ try {
       summary.push({stage,rom:rom.path,median_us:median,min_us:times[0],max_us:times.at(-1)});
     }
   }
-  await writeFile(values.output,JSON.stringify({browser:await browser.version(),frames,warmup:120,repeats,summary,samples},null,2)+'\n');
+  await writeFile(values.output,JSON.stringify({browser:await browser.version(),frames,warmup:120,repeats,input_replay:replay,summary,samples},null,2)+'\n');
   for (const s of summary) console.log(`${s.stage}: ${s.rom}: ${s.median_us.toFixed(3)} us/frame`);
 } finally {await browser.close();}

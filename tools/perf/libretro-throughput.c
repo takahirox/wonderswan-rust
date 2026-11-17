@@ -12,6 +12,7 @@
 static const void *last_video;
 static unsigned last_width, last_height, bytes_per_pixel = 2;
 static size_t last_pitch, samples, video_frames;
+static unsigned held_button = 100;
 static uint64_t hash(const void *data, size_t size, uint64_t h) {
     const unsigned char *p = data;
     for (size_t i = 0; i < size; ++i) h = (h ^ p[i]) * UINT64_C(0x100000001b3);
@@ -49,7 +50,7 @@ static size_t audio(const int16_t *data, size_t frames) {
 static void audio_one(int16_t l, int16_t r) { (void)l; (void)r; samples += 2; }
 static void poll(void) {}
 static int16_t input(unsigned port, unsigned device, unsigned index, unsigned id) {
-    (void)port; (void)device; (void)index; (void)id; return 0;
+    return port == 0 && device == RETRO_DEVICE_JOYPAD && index == 0 && id == held_button;
 }
 static double now(void) {
     struct timespec ts;
@@ -82,7 +83,13 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < warmup; ++i) p_retro_run();
     samples = video_frames = 0;
     double start = now();
-    for (unsigned i = 0; i < frames; ++i) p_retro_run();
+    bool replay = getenv("WS_PERF_INPUT_REPLAY") != NULL;
+    const unsigned directions[] = {RETRO_DEVICE_ID_JOYPAD_RIGHT, RETRO_DEVICE_ID_JOYPAD_DOWN,
+        RETRO_DEVICE_ID_JOYPAD_LEFT, RETRO_DEVICE_ID_JOYPAD_UP};
+    for (unsigned i = 0; i < frames; ++i) {
+        if (replay) held_button = directions[i / 64 % 4];
+        p_retro_run();
+    }
     double elapsed = now() - start;
     if (!last_video || video_frames != frames || !samples) { fprintf(stderr, "missing video/audio output\n"); return 1; }
     uint64_t video_hash = UINT64_C(0xcbf29ce484222325);

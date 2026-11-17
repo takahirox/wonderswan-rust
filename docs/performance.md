@@ -1,5 +1,9 @@
 # Core performance investigation (Issue #99)
 
+The following is the original measurement record. Further optimization in
+[Issue #102's follow-up](performance-parity.md) reaches comparable native
+throughput on these workloads, including a moving-input replay.
+
 Measured on 2026-11-17, starting from `9fcf981`. The independently implemented
 core is **2.22× faster on Beacon Trail and 7.37× faster on the audio/sprite
 compatibility cartridge** after successive changes. It now matches or exceeds

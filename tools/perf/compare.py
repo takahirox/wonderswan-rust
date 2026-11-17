@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 import platform
 import statistics
 import subprocess
@@ -42,6 +43,7 @@ def main():
     if len({r[0] for r in runners}) != len(runners):
         parser.error("runner labels must be unique")
     rows = []
+    replay = "WS_PERF_INPUT_REPLAY" in os.environ
     excluded = []
     diagnostics = []
     for rom in WORKLOADS:
@@ -54,7 +56,10 @@ def main():
             diagnostics.append(dict(stage=label, rom=rom, result=row))
             markers = row.get("markers")
             expected = [3, 8, 0] if "beacon-trail" in rom else [0x600d, 1] if "hyper" in rom else [1]
-            if markers is not None and markers[:len(expected)] != expected:
+            valid = markers is None or markers[:len(expected)] == expected
+            if replay and "beacon-trail" in rom and markers is not None:
+                valid = 2 <= markers[0] <= 25 and 2 <= markers[1] <= 14 and 0 <= markers[2] <= 3
+            if not valid:
                 if native:
                     raise RuntimeError(f"native workload failed: {label}/{rom}: {markers}")
                 excluded.append(dict(stage=label, rom=rom, reason="cartridge success markers did not match", markers=markers))
@@ -89,6 +94,7 @@ def main():
     result = {
         "host": dict(system=platform.system(), release=platform.release(), machine=platform.machine()),
         "frames_requested": args.frames, "warmup": args.warmup, "repeats": args.repeats,
+        "input_replay": replay,
         "rom_sha256": {rom: hashlib.sha256((ROOT / rom).read_bytes()).hexdigest() for rom in WORKLOADS},
         "summary": summary, "samples": rows,
         "diagnostics": diagnostics, "excluded": excluded,

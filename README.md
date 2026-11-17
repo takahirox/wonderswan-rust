@@ -178,7 +178,8 @@ Wasm and reload after Rust changes; Vite handles TypeScript/CSS updates. Generat
 Both dependency lockfiles are committed.
 
 For native core throughput and comparisons with pinned Beetle/Oswan builds, see
-[the performance investigation](docs/performance.md). Run a headless measurement
+[the current performance results](docs/performance-parity.md) and
+[the original investigation](docs/performance.md). Run a headless measurement
 with video and audio generation enabled using:
 
 ```sh

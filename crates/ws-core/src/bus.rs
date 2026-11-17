@@ -32,6 +32,11 @@ pub(crate) struct Bus {
     gdma_started: bool,
     sdma: SoundDma,
     sound_stall: u32,
+    pending_cycles: u32,
+    pub video_generation: u64,
+    pub palette_generation: u64,
+    pub video_row_generations: [u64; crate::FRAME_HEIGHT],
+    used_tile_blocks: [std::cell::Cell<bool>; 2048],
     fault: Option<Error>,
 }
 impl Bus {
@@ -74,6 +79,11 @@ impl Bus {
             gdma_started: false,
             sdma: SoundDma::default(),
             sound_stall: 0,
+            pending_cycles: 0,
+            video_generation: 1,
+            palette_generation: 1,
+            video_row_generations: [1; crate::FRAME_HEIGHT],
+            used_tile_blocks: std::array::from_fn(|_| std::cell::Cell::new(false)),
             fault: None,
         }
     }
@@ -223,6 +233,7 @@ impl Bus {
         if self.ports[0x48] & 0x80 == 0 {
             return None;
         }
+        self.sync_devices();
         let mut source =
             u32::from_le_bytes([self.ports[0x40], self.ports[0x41], self.ports[0x42], 0]);
         let mut destination = u16::from_le_bytes([self.ports[0x44], self.ports[0x45]]);
@@ -238,8 +249,8 @@ impl Bus {
         // Read the complete word before writing it, preserving directional overlap.
         let lo = self.read_mapped(source as usize);
         let hi = self.read_mapped(source as usize + 1);
-        self.ram[destination as usize] = lo;
-        self.ram[destination as usize + 1] = hi;
+        self.write_ram(destination as usize, lo);
+        self.write_ram(destination as usize + 1, hi);
         let reverse = self.ports[0x48] & 0x40 != 0;
         source = if reverse {
             source.wrapping_sub(2)
@@ -264,9 +275,12 @@ impl Bus {
     }
     pub fn write(&mut self, address: u32, value: u8) {
         let a = address as usize & 0xfffff;
+        if a < 0x4000 {
+            self.sync_devices();
+        }
         self.account(a);
         if a < 65536 && (a < 0x4000 || self.color_mode()) {
-            self.ram[a] = value;
+            self.write_ram(a, value);
         }
         if (0x10000..0x20000).contains(&a) {
             let bank = self.bank(0xc1, 0xd1);
@@ -286,6 +300,46 @@ impl Bus {
     }
     pub fn take_fault(&mut self) -> Result<(), Error> {
         self.fault.take().map_or(Ok(()), Err)
+    }
+    fn write_ram(&mut self, address: usize, value: u8) {
+        if self.ram[address] == value {
+            return;
+        }
+        let color = self.color_mode();
+        let tiles = if color && self.ports[0x60] & 64 != 0 {
+            0x4000..0xc000
+        } else {
+            0x2000..if color { 0x6000 } else { 0x4000 }
+        };
+        if tiles.contains(&address) && self.used_tile_blocks[address / 32].get() {
+            self.video_generation = self.video_generation.wrapping_add(1);
+        } else {
+            for layer in 0..2 {
+                let base = usize::from((self.ports[7] >> (layer * 4)) & if color { 15 } else { 7 })
+                    * 0x800;
+                if self.ports[0] & (1 << layer) != 0 && (base..base + 0x800).contains(&address) {
+                    let map_y = (address - base) / 64 * 8;
+                    let first = map_y.wrapping_sub(self.ports[0x11 + layer * 2] as usize);
+                    for offset in 0..8 {
+                        let y = first.wrapping_add(offset) & 255;
+                        if y < crate::FRAME_HEIGHT {
+                            self.video_row_generations[y] =
+                                self.video_row_generations[y].wrapping_add(1);
+                        }
+                    }
+                }
+            }
+        }
+        if address >= 0xfe00 {
+            self.palette_generation = self.palette_generation.wrapping_add(1);
+        }
+        self.ram[address] = value;
+    }
+    /// A 32-byte block covers one 4bpp or two 2bpp tiles. Retaining historical
+    /// use is conservative: unreferenced RAM (including stacks) need not dirty
+    /// cached rows, while every decoded tile remains tracked for later writes.
+    pub fn use_tile_block(&self, address: usize) {
+        self.used_tile_blocks[address / 32].set(true);
     }
     pub fn request(&mut self, bit: u8) {
         self.ports[0xb4] |= self.ports[0xb2] & (1 << bit);
@@ -321,6 +375,7 @@ impl Bus {
         }
     }
     pub fn tick(&mut self, mut cycles: u32) {
+        self.sync_devices();
         if self.model == Model::Mono || self.ports[0x52] & 0x80 == 0 {
             self.tick_devices(cycles);
             return;
@@ -349,7 +404,27 @@ impl Bus {
             }
         }
     }
-    fn tick_devices(&mut self, cycles: u32) {
+    /// Defer devices only within a scanline, with no possible DMA/IRQ event.
+    /// CPU-visible time progresses immediately; I/O and wave RAM writes flush
+    /// the previous device interval before observing or replacing its inputs.
+    pub fn defer_tick(&mut self, cycles: u32) -> bool {
+        if cycles < 256 - (self.cycles % 256) as u32
+            && (self.model == Model::Mono || self.ports[0x52] & 0x80 == 0)
+        {
+            self.cycles += u64::from(cycles);
+            self.pending_cycles += cycles;
+            true
+        } else {
+            false
+        }
+    }
+    pub fn sync_devices(&mut self) {
+        let cycles = std::mem::take(&mut self.pending_cycles);
+        if cycles != 0 {
+            self.clock_devices(cycles);
+        }
+    }
+    fn clock_devices(&mut self, cycles: u32) {
         if self.rtc_wait > 0 {
             self.rtc_wait = self.rtc_wait.saturating_sub(cycles);
             if self.rtc_wait == 0 {
@@ -369,14 +444,17 @@ impl Bus {
                 self.rtc_ready = true;
             }
         }
-        let before = self.cycles / 256;
-        self.cycles += cycles as u64;
         self.audio.tick(cycles, &self.ram, &mut self.ports);
         self.internal_eeprom
             .tick(cycles, &mut self.console_data[self.model.index()]);
         if let Some(cart) = &mut self.cartridge {
             self.eeprom.tick(cycles, cart);
         }
+    }
+    fn tick_devices(&mut self, cycles: u32) {
+        let before = self.cycles / 256;
+        self.cycles += cycles as u64;
+        self.clock_devices(cycles);
         for _ in before + 1..=self.cycles / 256 {
             // Register writes take effect at line end, including shortening
             // below the current line. See docs/lcd-timing.md for edge policies.
@@ -396,8 +474,9 @@ impl Bus {
                 self.timer_tick(1);
                 let base =
                     ((self.ports[4] & if self.color_mode() { 63 } else { 31 }) as usize) << 9;
-                for i in 0..512 {
-                    self.sprites[i] = self.ram[(base + i) & 65535];
+                if self.sprites != self.ram[base..base + 512] {
+                    self.sprites.copy_from_slice(&self.ram[base..base + 512]);
+                    self.video_generation = self.video_generation.wrapping_add(1);
                 }
             }
         }
@@ -419,6 +498,9 @@ impl Bus {
         }
     }
     pub fn input(&mut self, port: u16) -> Result<u8, Error> {
+        if port != 2 {
+            self.sync_devices();
+        }
         self.accesses
             .set(self.accesses.get() + 1 + u32::from(port >= 0xc0 && (self.ports[0x60] & 8 != 0)));
         match port {
@@ -505,6 +587,15 @@ impl Bus {
         }
     }
     pub fn output(&mut self, port: u16, value: u8) -> Result<(), Error> {
+        self.sync_devices();
+        if matches!(port, 0..=1 | 5..=0x13 | 0x20..=0x3f | 0x60)
+            && self.ports[port as usize] != value
+        {
+            self.video_generation = self.video_generation.wrapping_add(1);
+        }
+        if matches!(port, 0x14 | 0x1c..=0x1f) && self.ports[port as usize] != value {
+            self.palette_generation = self.palette_generation.wrapping_add(1);
+        }
         self.accesses
             .set(self.accesses.get() + 1 + u32::from(port >= 0xc0 && (self.ports[0x60] & 8 != 0)));
         match port {

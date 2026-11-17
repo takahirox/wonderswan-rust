@@ -37,7 +37,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let mut sample_count = 0;
     let mut last_audio = Vec::new();
-    for _ in 0..frames {
+    let replay = env::var_os("WS_PERF_INPUT_REPLAY").is_some();
+    for frame in 0..frames {
+        if replay {
+            machine.set_buttons([32, 64, 128, 16][frame / 64 % 4]);
+        }
         machine.run_frame()?;
         last_audio = machine.audio_samples();
         sample_count += black_box(&last_audio).len();
