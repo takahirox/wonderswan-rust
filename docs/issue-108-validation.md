@@ -94,3 +94,21 @@ inputs under `fixtures/`, outside the published site.
 
 These production checks were not performed. Optional physical-mobile validation
 was not performed. No push, PR, merge or Issue comment was made by this node.
+
+## Publication integration validation
+
+During publication, `main` had advanced to `150516c` (the Retro CRT default
+change). Merged that revision into the PR branch and resolved the overlapping
+display test by retaining the new default-shader assertions while loading the
+independent local keypad fixture. No bundled cartridge path was restored.
+
+On the combined tree, `npm ci`, the release Wasm build with the documented rustup
+PATH, `npm run build`, the complete `npm run test:browser` and complete
+`npm run test:compat` all passed. Both browser suites ran sequentially against
+production preview at `http://127.0.0.1:4287/wonderswan-rust/`. JavaScript syntax
+and Git whitespace checks passed, and the production artifact still contains
+only HTML, CSS, JavaScript and Wasm, with no ROM files. Rust and fixture content
+did not change during integration; their checks above were reused.
+
+PR #109 publishes this work. No merge or production verification was performed;
+the required post-merge checks remain pending.

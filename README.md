@@ -74,12 +74,13 @@ validation does not establish that deployment has happened.
    A manually paused game stays paused.
    Keyboard gameplay is active only while the canvas has focus.
    **Display effect** switches live, including while paused: **Clean** keeps exact
-   nearest-neighbor pixels; **LCD Light** (the new-visitor default with WebGL2) adds
+   nearest-neighbor pixels; **LCD Light** adds
    subtle native pixel cells, softness and weak persistence; **LCD Authentic**
    strengthens the matrix and response with modest reflective mono, softer Color,
    and clearer/lower-ghosting SwanCrystal presets. These are aesthetic approximations,
-   not measured LCD calibration. **Retro CRT** adds a restrained decorative mask and
-   scanlines; a WonderSwan did not have a CRT. Effects change presentation only.
+   not measured LCD calibration. **Retro CRT** (the new-visitor default with WebGL2)
+   adds a restrained decorative mask and scanlines; a WonderSwan had an LCD, not a
+   CRT. Effects change presentation only.
    The choice is saved under `wonderswan:display:v1`, separately from saves, console
    EEPROM, RTC and audio preferences. Unavailable/failed WebGL2 and context loss
    report a nonblocking notice and use the playable 2D Clean display; an explicit

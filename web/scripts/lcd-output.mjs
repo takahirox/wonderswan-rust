@@ -95,10 +95,27 @@ export async function lcdOutputChecks(browser, base, errors) {
   console.log('LCD output probe: literal adjacent rows 38/39/40 and 142/143, retained tile identities, transparency/sprites, line40/144 palette writes and fresh restart CPU markers passed on all three production Wasm models');
 }
 
+// Record even attempted preference mutations, including when storage is denied.
+function observeDisplayPreferences(fault) {
+  const key = 'wonderswan:display:v1';
+  if (fault === 'invalid-storage') localStorage.setItem(key,'invalid');
+  window.displayPreferenceChanges = [];
+  for (const method of ['setItem','removeItem','clear']) {
+    const original = Storage.prototype[method];
+    Storage.prototype[method] = function(...args) {
+      if (method === 'clear' || args[0] === key) window.displayPreferenceChanges.push([method,...args]);
+      if (fault === 'denied-storage') throw new Error('denied');
+      return original.apply(this,args);
+    };
+  }
+  if (fault === 'denied-storage') Storage.prototype.getItem = () => { throw new Error('denied'); };
+}
+
 // Observe the production shader, injecting small synthetic RGBA patterns only at
 // its upload boundary. No test API or modified core/cartridge is shipped.
 async function displayEffectsChecks(browser, base, errors) {
   const context = await browser.newContext({viewport:{width:1440,height:1000}});
+  await context.addInitScript(observeDisplayPreferences);
   await context.addInitScript(() => {
     window.displayProbe = {pattern:null, uploads:0, histories:[], draws:0, allocations:0, capture:false, samples:null};
     const p = window.displayProbe;
@@ -168,18 +185,25 @@ async function displayEffectsChecks(browser, base, errors) {
   try {
     await page.goto(base);
     await ready();
-    assert.equal(await page.locator('#display-effect').inputValue(),'lcd-light','fresh visitor default');
-    assert.equal(await actual(),'lcd-light','shader is required in this Chromium check, never silently skipped');
+    assert.equal(await page.locator('#display-effect').inputValue(),'retro-crt','fresh visitor default');
+    assert.equal(await actual(),'retro-crt','shader is required in this Chromium check, never silently skipped');
+    assert.equal(await page.locator('#screen-effect').isVisible(),true);
+    assert.equal(await page.evaluate(() => localStorage.getItem('wonderswan:display:v1')),null);
+    assert.deepEqual(await page.evaluate(() => window.displayPreferenceChanges),[],'startup does not save a preference');
     assert.equal(await page.locator('#display-notice').textContent(),'');
     assert.equal(await page.locator('#empty-state').isVisible(),true);
+    // Feed the default shader a flat frame before any explicit preset choice.
+    await page.evaluate(() => { window.displayProbe.pattern = 'flat'; });
     await page.locator('#rom').setInputFiles(fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws',import.meta.url)));
     await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
     await page.locator('#settings').click();
     await page.locator('#debug-toggle').check();
     const counter = await page.locator('#debug-frames').textContent();
     const sound = await page.locator('#sound-status').textContent();
+    const defaultCrt = await snapshot();
+    assert.ok(defaultCrt.some(pixel => pixel[0] > 0),'default CRT draws visible pixels');
+    assert.notDeepEqual(defaultCrt[0],defaultCrt[1],'default CRT renders a mask on a flat source');
     // Flat cells isolate matrix detail from cartridge content; the edge isolates softness.
-    await page.evaluate(() => { window.displayProbe.pattern = 'flat'; });
     await select('lcd-light');
     const light = await snapshot();
     assert.ok(light[1][0] > light[0][0]+2,'native cell center brighter than edge');
@@ -190,6 +214,7 @@ async function displayEffectsChecks(browser, base, errors) {
     assert.ok(authentic[1][0]-authentic[0][0] > light[1][0]-light[0][0],'stronger authentic cell grid');
     await select('retro-crt');
     const crt = await snapshot();
+    assert.deepEqual(defaultCrt,crt,'fresh default renders the existing Retro CRT shader');
     assert.notDeepEqual(crt,light);
     assert.notDeepEqual(crt,authentic);
     await page.evaluate(() => { window.displayProbe.pattern = 'alpha'; });
@@ -305,19 +330,17 @@ async function displayEffectsChecks(browser, base, errors) {
     assert.match(await page.locator('#error').textContent(),/Could not restart/);
     assert.equal(await page.evaluate(() => window.displayProbe.uploads),uploads,'rejected model does not change history');
     assert.deepEqual(await snapshot(),retained,'rejected model preserves panel pixels');
-    await page.locator('#settings').click();
-    await select('clean');
-    await page.locator('#help-close').click();
-    await page.reload();
-    await ready();
-    assert.equal(await page.locator('#display-effect').inputValue(),'clean','explicit Clean persists');
-    assert.equal(await actual(),'clean');
-    await page.locator('#settings').click();
-    await select('lcd-authentic');
-    await page.locator('#help-close').click();
-    await page.reload();
-    await ready();
-    assert.equal(await actual(),'lcd-authentic','LCD preference persists');
+    for (const mode of ['clean','lcd-light','retro-crt','lcd-authentic']) {
+      await page.locator('#settings').click();
+      await select(mode);
+      await page.locator('#help-close').click();
+      await page.reload();
+      await ready();
+      assert.equal(await page.locator('#display-effect').inputValue(),mode,`${mode} selection persists`);
+      assert.equal(await actual(),mode,`${mode} output persists`);
+      assert.equal(await page.evaluate(() => localStorage.getItem('wonderswan:display:v1')),mode);
+      assert.deepEqual(await page.evaluate(() => window.displayPreferenceChanges),[],'reload does not rewrite the saved choice');
+    }
 
     // Real context loss/restoration, with a playable native canvas during loss.
     await page.locator('#rom').setInputFiles(fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws',import.meta.url)));
@@ -341,12 +364,8 @@ async function displayEffectsChecks(browser, base, errors) {
   // prove Clean remains functional when shader creation cannot succeed at all.
   for (const fault of ['unavailable','compile','link','draw','invalid-storage','denied-storage']) {
     const isolated = await browser.newContext();
+    await isolated.addInitScript(observeDisplayPreferences,fault);
     await isolated.addInitScript(fault => {
-      if (fault === 'invalid-storage') localStorage.setItem('wonderswan:display:v1','invalid');
-      if (fault === 'denied-storage') {
-        Storage.prototype.getItem = () => { throw new Error('denied'); };
-        Storage.prototype.setItem = () => { throw new Error('denied'); };
-      }
       const get = HTMLCanvasElement.prototype.getContext;
       HTMLCanvasElement.prototype.getContext = function(type,...args) {
         if (type === 'webgl2' && fault === 'unavailable') return null;
@@ -362,7 +381,13 @@ async function displayEffectsChecks(browser, base, errors) {
       await page.goto(base);
       await page.waitForFunction(() => !document.querySelector('#model').disabled);
       const fallback = ['unavailable','compile','link','draw'].includes(fault);
-      assert.equal(await page.locator('#screen').getAttribute('data-effect'),fallback ? 'clean' : 'lcd-light');
+      assert.equal(await page.locator('#screen').getAttribute('data-effect'),fallback ? 'clean' : 'retro-crt');
+      assert.equal(await page.locator('#display-effect').inputValue(),fallback && fault !== 'draw' ? 'clean' : 'retro-crt');
+      assert.equal(await page.locator('#screen-effect').isVisible(),!fallback);
+      assert.deepEqual(await page.evaluate(() => window.displayPreferenceChanges),[],`${fault}: no startup preference writes`);
+      if (fault !== 'denied-storage') {
+        assert.equal(await page.evaluate(() => localStorage.getItem('wonderswan:display:v1')),fault === 'invalid-storage' ? 'invalid' : null);
+      }
       if (fallback) assert.match(await page.locator('#display-notice').textContent(),/Clean fallback/);
       await page.locator('#rom').setInputFiles(fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws',import.meta.url)));
       await page.waitForFunction(() => {
@@ -370,9 +395,13 @@ async function displayEffectsChecks(browser, base, errors) {
         return ctx.getImageData(3,3,1,1).data[0]===0 && document.querySelector('#rom-status').textContent === 'Running';
       });
       await page.locator('#settings').click();
+      if (!fallback) {
+        await page.locator('#display-effect').selectOption('lcd-light');
+        assert.equal(await page.locator('#screen').getAttribute('data-effect'),'lcd-light',`${fault}: live switching still works`);
+      }
       await page.locator('#display-effect').selectOption('clean');
       assert.equal(await page.locator('#screen').getAttribute('data-effect'),'clean');
     } finally { await isolated.close(); }
   }
-  console.log('Display effects: real native-cell/softness/preset pixels, per-emulated-frame response, paused redraw/allocation stability, model tint, scaling, persistence, restart, invalid load, context restore and shader/storage fallback passed');
+  console.log('Display effects: rendered CRT default without startup preference writes, all saved presets, real native-cell/softness/preset pixels, per-emulated-frame response, paused redraw/allocation stability, model tint, scaling, restart, invalid load, context restore and shader/storage fallback passed');
 }
