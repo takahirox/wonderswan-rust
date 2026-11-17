@@ -8,6 +8,7 @@ The LCD history still advances for every emulated frame.
 
 The subsequent [reference playback comparison](audio-playback-comparison.md)
 examines frontend buffering and the remaining long-term clock-drift limitation.
+That limitation is addressed by the later [clock-drift correction](audio-clock-drift.md).
 
 ## Scheduling and resource limits
 

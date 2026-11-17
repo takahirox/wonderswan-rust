@@ -25,10 +25,13 @@ const profiles=[
   {name:'clean-jitter80',effect:'clean',block:80},
   {name:'lcd-jitter80-cpu8',effect:'lcd-light',block:80,cpu:8},
   {name:'crt-jitter80-cpu8',effect:'retro-crt',block:80,cpu:8},
+  {name:'clean-rate-fast',effect:'clean',sampleRate:24024},
+  {name:'clean-rate-slow',effect:'clean',sampleRate:23976},
+  {name:'crt-rate-fast-jitter80-cpu8',effect:'retro-crt',sampleRate:24024,block:80,cpu:8},
   {name:'candidate-15hz',effect:'clean',hz:15,candidate:true},
   {name:'candidate-jitter80',effect:'clean',block:80,candidate:true},
 ];
-const selected=values.profiles ? profiles.filter(p=>values.profiles.split(',').includes(p.name)) : profiles.filter(p=>!p.candidate);
+const selected=values.profiles ? profiles.filter(p=>values.profiles.split(',').includes(p.name)) : profiles.filter(p=>!p.candidate&&!p.sampleRate);
 assert.ok(selected.length,'no matching profiles');
 if(values.profiles) assert.equal(selected.length,new Set(values.profiles.split(',')).size,'unknown profile');
 const romPath=resolve(values.rom);
@@ -59,25 +62,28 @@ try {
     });
     await page.addInitScript(({profile})=>{
       localStorage.setItem('wonderswan:display:v1',profile.effect);
-      const probe=window.audioTiming={enabled:false,packets:[],callbacks:[],wasm:[],values:0,active:0,peak:0,nonzero:0,cancelled:0,glMs:0,glCalls:0};
+      const probe=window.audioTiming={enabled:false,packets:[],callbacks:[],wasm:[],values:0,active:0,peak:0,nonzero:0,cancelled:0,rateChanges:0,blocks:[],glMs:0,glCalls:0};
       const Native=window.AudioContext;
       window.AudioContext=class extends Native{
         constructor(...args){super(...args);window.measuredAudioContext=this;}
         createBufferSource(){
           const node=super.createBufferSource(),start=node.start.bind(node),stop=node.stop.bind(node);
-          let active=false,scheduledAt=0,scheduledEnd=0;
+          let active=false,scheduledAt=0,scheduledEnd=0,scheduledRate=1;
           const ended=()=>{if(active){active=false;probe.active--;}};
           node.addEventListener('ended',ended);
+          node.addEventListener('ended',()=>{if(node.playbackRate.value!==scheduledRate)probe.rateChanges++;});
           node.stop=(...args)=>{
             if(probe.enabled&&active)probe.cancelled+=Math.max(0,scheduledEnd-Math.max(scheduledAt,this.currentTime));
             ended();return stop(...args);
           };
           node.start=(when,...args)=>{
             if(probe.enabled){
-              probe.packets.push({at:this.currentTime,when,duration:node.buffer.duration});
+              probe.packets.push({at:this.currentTime,when,duration:node.buffer.duration/node.playbackRate.value,
+                frames:node.buffer.length,rate:node.playbackRate.value,sample_rate:node.buffer.sampleRate});
               if(node.buffer.getChannelData(0).some(x=>x!==0))probe.nonzero++;
             }
-            scheduledAt=when;scheduledEnd=when+node.buffer.duration;
+            scheduledRate=node.playbackRate.value;
+            scheduledAt=when;scheduledEnd=when+node.buffer.duration/scheduledRate;
             active=true;probe.active++;probe.peak=Math.max(probe.peak,probe.active);
             return start(when,...args);
           };
@@ -87,7 +93,7 @@ try {
       // Preserve the native Wasm functions/memory/tables, replacing only observed calls.
       const wrap=result=>{
         const exports={...result.instance.exports};
-        for(const name of ['webmachine_run_frame','webmachine_audio_samples','webmachine_framebuffer']){
+        for(const name of ['webmachine_run_frame','webmachine_audio_samples','webmachine_framebuffer','webmachine_sample_rate']){
           const original=exports[name];
           exports[name]=(...args)=>{
             const start=performance.now(),ret=original(...args);
@@ -99,7 +105,7 @@ try {
                 probe.lastPixels=[[0,0],[9,9],[16,16]].map(([x,y])=>Array.from(pixels.slice((y*224+x)*4,(y*224+x)*4+4)));
               }
             }
-            return ret;
+            return name==='webmachine_sample_rate'&&profile.sampleRate ? profile.sampleRate : ret;
           };
         }
         return {...result,instance:{exports}};
@@ -141,7 +147,8 @@ try {
       window.beginAudioMeasurement=()=>{
         probe.enabled=true;probe.start=performance.now();probe.audioStart=window.measuredAudioContext.currentTime;
         if(profile.block)probe.blockTimer=setInterval(()=>{
-          const until=performance.now()+profile.block;while(performance.now()<until){}
+          const start=performance.now(),until=start+profile.block;while(performance.now()<until){}
+          probe.blocks.push(performance.now()-start);
         },500);
       };
       window.endAudioMeasurement=()=>{
@@ -172,25 +179,39 @@ try {
     assert.deepEqual(raw.lastPixels[0],[0,255,0,255],'probe must render its green success signal');
     if(basename(romPath)==='sram128-2003.ws')assert.deepEqual(raw.lastPixels.slice(1),[[255,0,0,255],[0,0,255,255]],'missing color window/sprite');
     assert.equal(patches,profile.candidate?3:0);
-    let previous=null,gaps=0,gapMs=0,maxGap=0,starvedMs=0,earlyMs=0;
+    let previous=null,lastSubmission=null,gaps=0,gapMs=0,maxGap=0,starvedMs=0,earlyMs=0,maxSubmissionGap=0;
+    const gapDetails=[];
     for(const packet of raw.packets){
+      if(lastSubmission!==null)maxSubmissionGap=Math.max(maxSubmissionGap,(packet.at-lastSubmission)*1000);
       if(previous!==null){
         const gap=Math.max(0,packet.when-previous)*1000;
         if(gap>.01){gaps++;gapMs+=gap;maxGap=Math.max(maxGap,gap);
+          if(gapDetails.length<8)gapDetails.push({gap_ms:gap,submission_gap_ms:(packet.at-lastSubmission)*1000,
+            prior_tail_lead_ms:(previous-lastSubmission)*1000});
           starvedMs+=Math.max(0,packet.at-previous)*1000;
           if(previous>packet.at)earlyMs+=gap;
         }
       }
       previous=packet.when+packet.duration;
+      lastSubmission=packet.at;
     }
     const intervals=raw.callbacks.slice(1).map((r,i)=>r.time-raw.callbacks[i].time);
     const row={profile:profile.name,cpu_rate:profile.cpu??1,raf_limit:profile.hz??null,block_ms:profile.block??0,
       candidate:!!profile.candidate,bundle_sha256:bundleHash,seconds:raw.ms/1000,audio_seconds:raw.audioSeconds,
+      injected_sample_rate:profile.sampleRate??null,
       display:raw.display,display_notice:raw.notice,context_sample_rate:raw.sampleRate,base_latency:raw.baseLatency,
       output_latency:raw.outputLatency,raf_hz:raw.callbacks.length*1000/raw.ms,frames:raw.wasm.length,
       probe_pixels:raw.lastPixels,
       emulated_fps:raw.wasm.length*1000/raw.ms,generated_pcm_seconds:raw.values/2/24000,
-      scheduled_pcm_seconds:raw.packets.reduce((n,p)=>n+p.duration,0),packets:raw.packets.length,nonzero_packets:raw.nonzero,
+      scheduled_pcm_seconds:raw.packets.reduce((n,p)=>n+p.frames/24000,0),
+      scheduled_playback_seconds:raw.packets.reduce((n,p)=>n+p.duration,0),
+      min_playback_rate:raw.packets.reduce((v,p)=>Math.min(v,p.rate),Infinity),
+      max_playback_rate:raw.packets.reduce((v,p)=>Math.max(v,p.rate),0),
+      settled_mean_rate:raw.packets.slice(Math.floor(raw.packets.length*.75)).reduce((s,p)=>s+p.rate,0)/raw.packets.slice(Math.floor(raw.packets.length*.75)).length,
+      rate_changes_after_start:raw.rateChanges,packets:raw.packets.length,nonzero_packets:raw.nonzero,
+      max_submission_gap_ms:maxSubmissionGap,max_injected_block_ms:raw.blocks.reduce((v,n)=>Math.max(v,n),0),
+      min_start_lead_ms:raw.packets.reduce((v,p)=>Math.min(v,(p.when-p.at)*1000),Infinity),
+      gap_details:gapDetails,
       cancelled_pcm_seconds:raw.cancelled,
       source_peak:raw.peak,wasm_ms_p50:percentile(raw.wasm,.5),wasm_ms_p95:percentile(raw.wasm,.95),
       callback_ms_p50:percentile(raw.callbacks.map(r=>r.ms),.5),callback_ms_p95:percentile(raw.callbacks.map(r=>r.ms),.95),
@@ -204,6 +225,9 @@ try {
       assert.equal(row.gap_count,0,'scheduled playback must remain contiguous');
       assert.ok(Math.abs(row.generated_pcm_seconds-row.scheduled_pcm_seconds)<1/24000,'drained PCM must not be dropped');
       assert.ok(row.cancelled_pcm_seconds<1/24000,'future PCM must not be cancelled during playback');
+      assert.equal(row.rate_changes_after_start,0,'scheduled sources must keep their fixed rates');
+      assert.ok(row.min_playback_rate>=Math.fround(.995)&&row.max_playback_rate<=Math.fround(1.005),'bounded output correction');
+      if(profile.sampleRate&&seconds>=60)assert.ok(Math.abs(row.settled_mean_rate-24000/profile.sampleRate)<.0005,'learn injected rate mismatch');
       assert.ok(Math.abs(row.generated_pcm_seconds-row.seconds)<.12,'PCM supply must track real time, allowing the final stall/packet phase');
       assert.ok(row.source_peak<=32,'source resources must remain bounded');
     }
