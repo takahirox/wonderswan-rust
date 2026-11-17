@@ -125,12 +125,12 @@ models or restarts. Browser ROM/save handling must remain local.
 
 ## Existing interval audit and limits
 
-All fixture/demo assembly was searched for division. Prior executed division
+All fixture assembly was searched for division. Prior executed division
 opcodes occur in `divide.asm`, which checks arithmetic/FLAGS/history without an
 absolute division interval. Existing multiplication timing bodies have no
 division. Shift, I/O, word transfers, direct/indirect CALL/JMP, returns/IRET,
-Jcc/JCXZ, LOOP and IRQ timed bodies contain no division. Demo has none. Existing
-fixture/demo bytes and every unrelated interval/tolerance remain unchanged.
+Jcc/JCXZ, LOOP and IRQ timed bodies contain no division. Existing
+fixture bytes and every unrelated interval/tolerance remain unchanged.
 
 Existing arithmetic matrices now select literal 15/17/23/24 residuals. Register
 alias assertions become 17/19 or 25/26. Word scheduler budgets become 25/26.

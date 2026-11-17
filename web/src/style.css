@@ -45,8 +45,7 @@ canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50
 #screen:focus-visible + #screen-effect { outline: 2px solid var(--accent); outline-offset: 4px; }
 [data-orientation="vertical"] canvas { transform: translate(-50%, -50%) rotate(-90deg); }
 #empty-state { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; background: #090b0d; text-align: center; padding: 16px; }
-#empty-state .eyebrow { color: var(--accent); letter-spacing: .18em; font-size: 12px; font-weight: 650; }
-#empty-state > p:nth-child(2) { font-size: clamp(17px, 3vw, 25px); }
+#empty-state > p:first-child { font-size: clamp(17px, 3vw, 25px); }
 #empty-state .hint { font-size: 12px; }
 .toolbar, .playback, .tools { display: flex; flex-wrap: wrap; gap: 8px; }
 .toolbar { justify-content: space-between; margin-top: 20px; }
@@ -82,12 +81,10 @@ dialog { width: min(540px, calc(100% - 32px)); max-height: calc(100dvh - 32px); 
 dialog::backdrop { background: #000b; }
 dialog h2 { font-size: 20px; }
 dialog h3 { font-size: 14px; margin-top: 24px; }
-dialog p, .links { font-size: 14px; color: #bbc0cb; margin-top: 10px; }
+dialog p { font-size: 14px; color: #bbc0cb; margin-top: 10px; }
 .key-guide { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
 .key-guide dd { margin: 0; }
 a { color: var(--accent); text-underline-offset: 3px; }
-.links { padding-left: 18px; }
-.links li { margin-block: 8px; }
 .debug-setting { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 20px; }
 .debug-setting label { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
 input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); }

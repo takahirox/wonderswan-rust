@@ -2,6 +2,7 @@
 // Independent literal rows from the source-included line-polling cartridge.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
 const vectors = [
@@ -193,7 +194,7 @@ async function displayEffectsChecks(browser, base, errors) {
     assert.equal(await page.locator('#empty-state').isVisible(),true);
     // Feed the default shader a flat frame before any explicit preset choice.
     await page.evaluate(() => { window.displayProbe.pattern = 'flat'; });
-    await page.locator('#demo').click();
+    await page.locator('#rom').setInputFiles(fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws',import.meta.url)));
     await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
     await page.locator('#settings').click();
     await page.locator('#debug-toggle').check();
@@ -202,7 +203,7 @@ async function displayEffectsChecks(browser, base, errors) {
     const defaultCrt = await snapshot();
     assert.ok(defaultCrt.some(pixel => pixel[0] > 0),'default CRT draws visible pixels');
     assert.notDeepEqual(defaultCrt[0],defaultCrt[1],'default CRT renders a mask on a flat source');
-    // Flat cells isolate matrix detail from game content; the edge isolates softness.
+    // Flat cells isolate matrix detail from cartridge content; the edge isolates softness.
     await select('lcd-light');
     const light = await snapshot();
     assert.ok(light[1][0] > light[0][0]+2,'native cell center brighter than edge');
@@ -342,7 +343,7 @@ async function displayEffectsChecks(browser, base, errors) {
     }
 
     // Real context loss/restoration, with a playable native canvas during loss.
-    await page.locator('#demo').click();
+    await page.locator('#rom').setInputFiles(fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws',import.meta.url)));
     await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
     await page.evaluate(() => {
       const gl=document.querySelector('#screen-effect').getContext('webgl2');
@@ -388,10 +389,10 @@ async function displayEffectsChecks(browser, base, errors) {
         assert.equal(await page.evaluate(() => localStorage.getItem('wonderswan:display:v1')),fault === 'invalid-storage' ? 'invalid' : null);
       }
       if (fallback) assert.match(await page.locator('#display-notice').textContent(),/Clean fallback/);
-      await page.locator('#demo').click();
+      await page.locator('#rom').setInputFiles(fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws',import.meta.url)));
       await page.waitForFunction(() => {
         const ctx=document.querySelector('#screen').getContext('2d');
-        return ctx.getImageData(27,65,1,1).data[0]===0 && document.querySelector('#rom-status').textContent === 'Running';
+        return ctx.getImageData(3,3,1,1).data[0]===0 && document.querySelector('#rom-status').textContent === 'Running';
       });
       await page.locator('#settings').click();
       if (!fallback) {

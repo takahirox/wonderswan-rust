@@ -21,7 +21,7 @@ for (const label of ['baseline','optimized']) {
 }
 const root=new URL('../../',import.meta.url);
 const roms=[];
-for (const path of ['web/public/demo/beacon-trail.ws','fixtures/generated/sram128-2003.ws','fixtures/generated/sound-hyper.ws']) {
+for (const path of ['fixtures/generated/sram128-2003.ws','fixtures/generated/sound-hyper.ws']) {
   roms.push({path,bytes:[...await readFile(new URL(path,root))]});
 }
 const browser=await chromium.launch({headless:true,...(values.browser ? {executablePath:values.browser} : {})});
