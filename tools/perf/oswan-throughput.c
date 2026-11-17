@@ -11,8 +11,13 @@
 #include "WSApu.h"
 
 static size_t presented, samples;
+static size_t measured_start;
+static int replay;
 void graphics_paint(void) { ++presented; }
-uint32_t WsInputGetState(void) { return 0; }
+uint32_t WsInputGetState(void) {
+    const unsigned directions[] = {5, 6, 7, 4};
+    return replay ? 1u << directions[(presented - measured_start) / 64 % 4] : 0;
+}
 void WsLoadEeprom(void) {}
 void WsSaveEeprom(void) {}
 void WsRelease(void) {}
@@ -62,6 +67,8 @@ int main(int argc, char **argv) {
     apuInit(); WsReset();
     while (presented < warmup) run();
     size_t before = presented; samples = 0;
+    measured_start = before;
+    replay = getenv("WS_PERF_INPUT_REPLAY") != NULL;
     double start = now();
     while (presented - before < frames) run();
     double elapsed = now() - start;

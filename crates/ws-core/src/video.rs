@@ -1,4 +1,6 @@
 use crate::{bus::Bus, FRAME_HEIGHT, FRAME_WIDTH};
+#[cfg(test)]
+mod cache_tests;
 
 fn word(bus: &Bus, address: usize) -> u16 {
     u16::from_le_bytes([bus.ram[address & 65535], bus.ram[(address + 1) & 65535]])
@@ -160,6 +162,7 @@ fn tile_row(bus: &Bus, entry: u16, y: usize, sprite: bool) -> [Option<Pixel>; 8]
     let y = if entry & 0x8000 != 0 { 7 - y } else { y };
     let planes = if four { 4 } else { 2 };
     let address = (if four { 0x4000 } else { 0x2000 }) + tile * planes * 8 + y * planes;
+    bus.use_tile_block(address);
     let palette = if sprite {
         8 + ((entry as usize >> 9) & 7)
     } else {
@@ -367,23 +370,52 @@ mod row_tests {
     }
 }
 
-#[derive(Default)]
 pub(crate) struct Pipeline {
-    pending: Option<(usize, [Pixel; FRAME_WIDTH])>,
+    pending: Option<(usize, [Pixel; FRAME_WIDTH], (u64, u64))>,
+    rows: Vec<[Pixel; FRAME_WIDTH]>,
+    generations: [(u64, u64); FRAME_HEIGHT],
+    translated_generations: [(u64, u64, u64); FRAME_HEIGHT],
+}
+impl Default for Pipeline {
+    fn default() -> Self {
+        Self {
+            pending: None,
+            rows: vec![[Pixel::Shade(0); FRAME_WIDTH]; FRAME_HEIGHT],
+            generations: [(0, 0); FRAME_HEIGHT],
+            translated_generations: [(0, 0, 0); FRAME_HEIGHT],
+        }
+    }
 }
 impl Pipeline {
     pub(crate) fn line_end(&mut self, bus: &Bus, pixels: &mut [u8], line: usize) {
-        if let Some((y, row)) = self.pending.take() {
+        if let Some((y, row, generation)) = self.pending.take() {
             if line == y + 1 {
-                translate_line(bus, pixels, y, row);
+                let key = (generation.0, generation.1, bus.palette_generation);
+                // A Pipeline belongs to exactly one Machine framebuffer, which
+                // already retains this row. Preserve the delayed palette stage:
+                // composition and translation have independent generations.
+                if self.translated_generations[y] != key {
+                    translate_line(bus, pixels, y, row);
+                    self.translated_generations[y] = key;
+                }
             }
         }
         if line < FRAME_HEIGHT {
-            self.pending = Some((line, compose_line(bus, line)));
+            let key = (bus.video_generation, bus.video_row_generations[line]);
+            if self.generations[line] != key {
+                self.rows[line] = compose_line(bus, line);
+                self.generations[line] = key;
+            }
+            self.pending = Some((line, self.rows[line], self.generations[line]));
         }
     }
     pub(crate) fn frame_wrap(&mut self) {
         self.pending = None;
+    }
+    #[cfg(test)]
+    pub(crate) fn invalidate_cache(&mut self) {
+        self.generations.fill((0, 0));
+        self.translated_generations.fill((0, 0, 0));
     }
 }
 
