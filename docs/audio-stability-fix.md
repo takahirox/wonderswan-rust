@@ -6,6 +6,9 @@ latest display state. Low presentation frequency no longer imposes a four-frame
 audio-production ceiling. Audio is submitted before per-frame display work.
 The LCD history still advances for every emulated frame.
 
+The subsequent [reference playback comparison](audio-playback-comparison.md)
+examines frontend buffering and the remaining long-term clock-drift limitation.
+
 ## Scheduling and resource limits
 
 - The producer wakes within a requested maximum of 8 ms. Each turn starts at
