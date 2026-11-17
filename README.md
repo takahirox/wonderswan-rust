@@ -186,6 +186,9 @@ with video and audio generation enabled using:
 cargo run -p ws-core --example throughput --release --locked -- web/public/demo/beacon-trail.ws 120 3000 crystal
 ```
 
+For browser playback under low frame delivery and main-thread stalls, see the
+[audio stability investigation and diagnostic commands](docs/audio-stability.md).
+
 To rebuild the game after editing `demo/game.asm` or `demo/graphics.py`, from root:
 
 ```sh
