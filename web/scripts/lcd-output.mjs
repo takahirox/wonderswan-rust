@@ -167,8 +167,8 @@ async function displayEffectsChecks(browser, base, errors) {
   try {
     await page.goto(base);
     await ready();
-    assert.equal(await page.locator('#display-effect').inputValue(),'lcd-light','fresh visitor default');
-    assert.equal(await actual(),'lcd-light','shader is required in this Chromium check, never silently skipped');
+    assert.equal(await page.locator('#display-effect').inputValue(),'retro-crt','fresh visitor default');
+    assert.equal(await actual(),'retro-crt','shader is required in this Chromium check, never silently skipped');
     assert.equal(await page.locator('#display-notice').textContent(),'');
     assert.equal(await page.locator('#empty-state').isVisible(),true);
     await page.locator('#demo').click();
@@ -361,7 +361,7 @@ async function displayEffectsChecks(browser, base, errors) {
       await page.goto(base);
       await page.waitForFunction(() => !document.querySelector('#model').disabled);
       const fallback = ['unavailable','compile','link','draw'].includes(fault);
-      assert.equal(await page.locator('#screen').getAttribute('data-effect'),fallback ? 'clean' : 'lcd-light');
+      assert.equal(await page.locator('#screen').getAttribute('data-effect'),fallback ? 'clean' : 'retro-crt');
       if (fallback) assert.match(await page.locator('#display-notice').textContent(),/Clean fallback/);
       await page.locator('#demo').click();
       await page.waitForFunction(() => {
