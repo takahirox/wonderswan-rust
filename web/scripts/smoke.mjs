@@ -47,13 +47,12 @@ async function expectTile(x, y, expected) {
   }
   assert.deepEqual(await tile(x,y), expected, `tile ${x},${y}`);
 }
-// Wait for two rendering opportunities with the input held/released. A wall
-// timeout can expire without a tick under load, leaving a tap unobserved or a
-// prior tile redraw pending. Two callbacks also stay within the player's
-// eight-frame repeat delay, even with the scheduler's four-frame catch-up bound.
+// Wait for two elapsed rendering intervals with input held/released. A wall
+// timeout can expire without a tick, and the first callback after load/resume
+// only initializes the clock. Three callbacks allow the ROM to observe input.
 async function inputFrames() {
   await page.evaluate(() => new Promise(resolve => {
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   }));
 }
 async function tap(key) {
@@ -161,6 +160,8 @@ try {
   await tap('ArrowRight');
   assert.equal(await frame(), paused);
   await page.locator('#pause').click();
+  // Let the ROM observe released input and clear its retained repeat delay.
+  await inputFrames();
   await tap('ArrowDown');
   await expectTile(4,9,player);
   await page.locator('#reset').click();
@@ -185,6 +186,7 @@ try {
   });
   assert.equal(await page.locator('#pause').textContent(), 'Resume');
   await page.locator('#pause').click();
+  await inputFrames(); // Start the resumed frame clock before the short WASD tap.
   await tap('d');
   await expectTile(4,8,player);
   await page.locator('#reset').click();

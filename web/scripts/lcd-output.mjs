@@ -158,7 +158,8 @@ async function displayEffectsChecks(browser, base, errors) {
       window.displayProbe.capture = true;
       window.displayProbe.samples = null;
       const frame = document.querySelector('#display');
-      frame.style.width = frame.style.width === '100%' ? 'calc(100% - 1px)' : '100%';
+      // The initial CSS width is already 100%; change geometry on the first call.
+      frame.style.width = frame.style.width === 'calc(100% - 1px)' ? '100%' : 'calc(100% - 1px)';
     });
     await page.waitForFunction(() => window.displayProbe.samples !== null);
     return page.evaluate(() => window.displayProbe.samples);
