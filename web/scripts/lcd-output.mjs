@@ -117,7 +117,7 @@ async function displayEffectsChecks(browser, base, errors) {
   const context = await browser.newContext({viewport:{width:1440,height:1000}});
   await context.addInitScript(observeDisplayPreferences);
   await context.addInitScript(() => {
-    window.displayProbe = {pattern:null, uploads:0, histories:[], draws:0, allocations:0, capture:false, samples:null};
+    window.displayProbe = {pattern:null, uploads:0, histories:[], draws:0, historyDraws:0, allocations:0, capture:false, samples:null};
     const p = window.displayProbe;
     const upload = WebGL2RenderingContext.prototype.texSubImage2D;
     WebGL2RenderingContext.prototype.texSubImage2D = function(...args) {
@@ -142,6 +142,7 @@ async function displayEffectsChecks(browser, base, errors) {
     WebGL2RenderingContext.prototype.drawArrays = function(...args) {
       draw.apply(this,args);
       if (this.getParameter(this.FRAMEBUFFER_BINDING)) {
+        p.historyDraws++;
         if (p.pattern === 'alternating') {
           const pixel = new Uint8Array(4);
           this.readPixels(100,64,1,1,this.RGBA,this.UNSIGNED_BYTE,pixel);
@@ -201,6 +202,7 @@ async function displayEffectsChecks(browser, base, errors) {
     const counter = await page.locator('#debug-frames').textContent();
     const sound = await page.locator('#sound-status').textContent();
     const defaultCrt = await snapshot();
+    assert.equal(await page.evaluate(() => window.displayProbe.historyDraws),0,'CRT presents directly from the source texture');
     assert.ok(defaultCrt.some(pixel => pixel[0] > 0),'default CRT draws visible pixels');
     assert.notDeepEqual(defaultCrt[0],defaultCrt[1],'default CRT renders a mask on a flat source');
     // Flat cells isolate matrix detail from cartridge content; the edge isolates softness.

@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--frames", type=int, default=3000)
     parser.add_argument("--warmup", type=int, default=120)
     parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument("--keypad", action="store_true", help="also measure the CPU-active keypad fixture without held buttons")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.frames <= 0 or args.repeats <= 0 or args.warmup < 0:
@@ -43,9 +44,12 @@ def main():
         parser.error("runner labels must be unique")
     rows = []
     replay = "WS_PERF_INPUT_REPLAY" in os.environ
+    if args.keypad and replay:
+        parser.error("--keypad requires static input because reference keypad mappings differ")
+    workloads = WORKLOADS + (["fixtures/generated/keypad-horizontal.ws"] if args.keypad else [])
     excluded = []
     diagnostics = []
-    for rom in WORKLOADS:
+    for rom in workloads:
         eligible = [r for r in runners if not (r[0] == "oswan" and "hyper" in rom)]
         verified = []
         for runner in eligible:
@@ -54,7 +58,10 @@ def main():
             row = json.loads(subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=120, check=True).stdout)
             diagnostics.append(dict(stage=label, rom=rom, result=row))
             markers = row.get("markers")
-            expected = [0x600d, 1] if "hyper" in rom else [1]
+            if "keypad" in rom:
+                expected = [0x1000, 0x3020, 0x5040]
+            else:
+                expected = [0x600d, 1] if "hyper" in rom else [1]
             valid = markers is None or markers[:len(expected)] == expected
             if not valid:
                 if native:
@@ -80,7 +87,7 @@ def main():
             if len({r[key] for r in native_rows}) != 1:
                 raise RuntimeError(f"native output changed: {rom}/{key}")
     summary = []
-    for rom in WORKLOADS:
+    for rom in workloads:
         for label, *_ in runners:
             values = [r["us_per_frame"] for r in rows if r["stage"] == label and r["rom"] == rom]
             if not values:
@@ -92,7 +99,7 @@ def main():
         "host": dict(system=platform.system(), release=platform.release(), machine=platform.machine()),
         "frames_requested": args.frames, "warmup": args.warmup, "repeats": args.repeats,
         "input_replay": replay,
-        "rom_sha256": {rom: hashlib.sha256((ROOT / rom).read_bytes()).hexdigest() for rom in WORKLOADS},
+        "rom_sha256": {rom: hashlib.sha256((ROOT / rom).read_bytes()).hexdigest() for rom in workloads},
         "summary": summary, "samples": rows,
         "diagnostics": diagnostics, "excluded": excluded,
     }

@@ -255,7 +255,10 @@ fn source_mapping_sram_slow_byte_rom_banks_and_twenty_bit_wrap() {
         b.ports[0x89], 0x31,
         "mapper flash read window shared with CPU"
     );
-    b.cartridge.as_mut().unwrap().bytes = vec![0; 512 * 65536];
+    b.cartridge
+        .as_mut()
+        .unwrap()
+        .replace_fixture_bytes(vec![0; 512 * 65536].into_boxed_slice());
     b.cartridge.as_mut().unwrap().bytes[257 * 65536] = 0x7c;
     b.output(0xd2, 1).unwrap();
     b.output(0xd3, 1).unwrap();

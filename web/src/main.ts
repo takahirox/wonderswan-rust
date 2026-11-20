@@ -90,6 +90,7 @@ async function main() {
   let lastTime = 0;
   let elapsed = 0;
   let dirty = false;
+  let framePending = false;
   const pressed = new Set<string>();
   const pointers = new Map<number, HTMLButtonElement>();
   const activated = new Map<string, HTMLButtonElement>();
@@ -113,8 +114,16 @@ async function main() {
     activated.clear();
     updateButtons();
   }
+  function captureFrame() {
+    framePending = false;
+    const pixels = machine.framebuffer();
+    const rgba = pixels.buffer instanceof ArrayBuffer
+      ? new Uint8ClampedArray(pixels.buffer, pixels.byteOffset, pixels.byteLength)
+      : new Uint8ClampedArray(pixels);
+    display.advance(rgba, machine.model());
+  }
   function draw() {
-    display.advance(new Uint8ClampedArray(machine.framebuffer()), machine.model());
+    captureFrame();
     display.present();
   }
   function state() {
@@ -145,6 +154,7 @@ async function main() {
   }
   function setRunning(value: boolean) {
     const wasRunning = running;
+    if (framePending) captureFrame();
     running = value && loaded !== null && !faulted && !document.hidden && !help.open;
     if (running && !wasRunning) display.resetHistory();
     if (animation !== null) cancelAnimationFrame(animation);
@@ -164,6 +174,7 @@ async function main() {
     refresh();
   }
   function failed(error: unknown) {
+    framePending = false;
     faulted = true;
     errorStatus.textContent = `Execution stopped: ${message(error)} Try Restart or load another ROM.`;
     setRunning(false);
@@ -172,7 +183,11 @@ async function main() {
     animation = null;
     if (!running) return;
     try {
-      if (dirty) { display.present(); dirty = false; }
+      if (dirty) {
+        if (framePending) captureFrame();
+        display.present();
+        dirty = false;
+      }
       animation = requestAnimationFrame(present);
     } catch (error) { failed(error); }
   }
@@ -182,7 +197,7 @@ async function main() {
     const time = performance.now();
     // Presentation cadence must not determine how much PCM is produced. Bound
     // both backlog and work per turn after stalls; a suspended page is paused.
-    elapsed = Math.min(elapsed + time - lastTime, 100);
+    elapsed = Math.min(elapsed + time - lastTime, sound.catchUpMs);
     lastTime = time;
     syncClock();
     try {
@@ -192,7 +207,10 @@ async function main() {
         if (elapsed < frameDuration) break;
         machine.run_frame();
         sound.push(machine.audio_samples(), machine.sample_rate());
-        display.advance(new Uint8ClampedArray(machine.framebuffer()), machine.model());
+        // LCD mixes each emulated frame into its history. Clean and CRT only
+        // need the latest frame when the browser is about to present it.
+        if (display.tracksHistory) captureFrame();
+        else framePending = true;
         elapsed -= frameDuration;
         frames++;
       }

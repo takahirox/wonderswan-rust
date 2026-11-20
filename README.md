@@ -190,6 +190,8 @@ For reference frontend/device playback strategies and remaining synchronization
 work, see the [audio playback comparison](docs/audio-playback-comparison.md).
 The [clock-drift correction](docs/audio-clock-drift.md) documents current output
 feedback, long-run regressions and rate/pitch tradeoffs.
+The [browser playback comparison](docs/browser-playback-parity.md) records
+matched core throughput, real Web Audio scheduling and the CRT and stall fixes.
 
 To rebuild development probes after editing their assembly, run
 `python3 fixtures/build.py` and `python3 fixtures/build.py --check` from the root.

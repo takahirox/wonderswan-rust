@@ -17,6 +17,7 @@ const profiles=[
   {name:'clean',effect:'clean'},
   {name:'lcd',effect:'lcd-light'},
   {name:'crt',effect:'retro-crt'},
+  {name:'crt-10hz',effect:'retro-crt',hz:10},
   {name:'clean-cpu8',effect:'clean',cpu:8},
   {name:'lcd-cpu8',effect:'lcd-light',cpu:8},
   {name:'clean-15hz',effect:'clean',hz:15},
@@ -25,13 +26,14 @@ const profiles=[
   {name:'clean-jitter80',effect:'clean',block:80},
   {name:'lcd-jitter80-cpu8',effect:'lcd-light',block:80,cpu:8},
   {name:'crt-jitter80-cpu8',effect:'retro-crt',block:80,cpu:8},
+  {name:'crt-jitter120-cpu8',effect:'retro-crt',block:120,cpu:8,recovery:true},
   {name:'clean-rate-fast',effect:'clean',sampleRate:24024},
   {name:'clean-rate-slow',effect:'clean',sampleRate:23976},
   {name:'crt-rate-fast-jitter80-cpu8',effect:'retro-crt',sampleRate:24024,block:80,cpu:8},
   {name:'candidate-15hz',effect:'clean',hz:15,candidate:true},
   {name:'candidate-jitter80',effect:'clean',block:80,candidate:true},
 ];
-const selected=values.profiles ? profiles.filter(p=>values.profiles.split(',').includes(p.name)) : profiles.filter(p=>!p.candidate&&!p.sampleRate);
+const selected=values.profiles ? profiles.filter(p=>values.profiles.split(',').includes(p.name)) : profiles.filter(p=>!p.candidate&&!p.sampleRate&&!p.recovery);
 assert.ok(selected.length,'no matching profiles');
 if(values.profiles) assert.equal(selected.length,new Set(values.profiles.split(',')).size,'unknown profile');
 const romPath=resolve(values.rom);
@@ -62,7 +64,7 @@ try {
     });
     await page.addInitScript(({profile})=>{
       localStorage.setItem('wonderswan:display:v1',profile.effect);
-      const probe=window.audioTiming={enabled:false,packets:[],callbacks:[],wasm:[],values:0,active:0,peak:0,nonzero:0,cancelled:0,rateChanges:0,blocks:[],glMs:0,glCalls:0};
+      const probe=window.audioTiming={enabled:false,packets:[],callbacks:[],wasm:[],values:0,active:0,peak:0,nonzero:0,cancelled:0,rateChanges:0,blocks:[],glMs:0,glCalls:0,uploads:0,draws:0,framebufferReads:0};
       const Native=window.AudioContext;
       window.AudioContext=class extends Native{
         constructor(...args){super(...args);window.measuredAudioContext=this;}
@@ -101,6 +103,7 @@ try {
               if(name==='webmachine_run_frame')probe.wasm.push(performance.now()-start);
               if(name==='webmachine_audio_samples')probe.values+=ret[1];
               if(name==='webmachine_framebuffer'){
+                probe.framebufferReads++;
                 const pixels=new Uint8Array(exports.memory.buffer,ret[0],ret[1]);
                 probe.lastPixels=[[0,0],[9,9],[16,16]].map(([x,y])=>Array.from(pixels.slice((y*224+x)*4,(y*224+x)*4+4)));
               }
@@ -116,16 +119,13 @@ try {
       WebAssembly.instantiate=async(...args)=>{
         const result=await instantiate(...args);return result.instance?wrap(result):result;
       };
-      for(const Type of [window.WebGLRenderingContext,window.WebGL2RenderingContext]){
-        if(!Type)continue;
-        for(const name of ['drawArrays','texSubImage2D']){
-          const original=Type.prototype[name];
-          Type.prototype[name]=function(...args){
-            const start=performance.now(),ret=original.apply(this,args);
-            if(probe.enabled){probe.glMs+=performance.now()-start;probe.glCalls++;}
-            return ret;
-          };
-        }
+      for(const [name,count] of [['drawArrays','draws'],['texSubImage2D','uploads']]){
+        const original=WebGL2RenderingContext.prototype[name];
+        WebGL2RenderingContext.prototype[name]=function(...args){
+          const start=performance.now(),ret=original.apply(this,args);
+          if(probe.enabled){probe.glMs+=performance.now()-start;probe.glCalls++;probe[count]++;}
+          return ret;
+        };
       }
       // Gate owned RAF requests without blocking Web Audio's rendering thread.
       const raf=requestAnimationFrame.bind(window),cancel=cancelAnimationFrame.bind(window);
@@ -186,7 +186,7 @@ try {
       if(previous!==null){
         const gap=Math.max(0,packet.when-previous)*1000;
         if(gap>.01){gaps++;gapMs+=gap;maxGap=Math.max(maxGap,gap);
-          if(gapDetails.length<8)gapDetails.push({gap_ms:gap,submission_gap_ms:(packet.at-lastSubmission)*1000,
+          if(gapDetails.length<8)gapDetails.push({gap_ms:gap,at_seconds:packet.at-raw.audioStart,submission_gap_ms:(packet.at-lastSubmission)*1000,
             prior_tail_lead_ms:(previous-lastSubmission)*1000});
           starvedMs+=Math.max(0,packet.at-previous)*1000;
           if(previous>packet.at)earlyMs+=gap;
@@ -216,19 +216,23 @@ try {
       source_peak:raw.peak,wasm_ms_p50:percentile(raw.wasm,.5),wasm_ms_p95:percentile(raw.wasm,.95),
       callback_ms_p50:percentile(raw.callbacks.map(r=>r.ms),.5),callback_ms_p95:percentile(raw.callbacks.map(r=>r.ms),.95),
       raf_interval_ms_p95:percentile(intervals,.95),gl_call_ms:raw.glMs,gl_calls:raw.glCalls,
+      gl_uploads:raw.uploads,gl_draws:raw.draws,framebuffer_reads:raw.framebufferReads,
       gap_count:gaps,gap_ms:gapMs,max_gap_ms:maxGap,already_starved_ms:starvedMs,early_reanchor_gap_ms:earlyMs,errors};
     rows.push(row);
     await writeFile(values.output,JSON.stringify({revision:values.revision,browser:await browser.version(),
       rom:values.rom,rom_sha256:hash(rom),rows},null,2)+'\n');
     console.log(`${row.profile}: ${row.emulated_fps.toFixed(2)} fps; ${row.gap_ms.toFixed(1)} ms gaps; PCM ${row.scheduled_pcm_seconds.toFixed(3)}/${row.generated_pcm_seconds.toFixed(3)} s; callback p95 ${row.callback_ms_p95.toFixed(1)} ms`);
     if(values.check){
-      assert.equal(row.gap_count,0,'scheduled playback must remain contiguous');
+      if(profile.recovery){
+        assert.ok(row.gap_count<=1,'at most one gap before the reserve adapts');
+        assert.ok(row.gap_details.every(g=>g.at_seconds<2),'no gaps after the initial recovery');
+      }else assert.equal(row.gap_count,0,'scheduled playback must remain contiguous');
       assert.ok(Math.abs(row.generated_pcm_seconds-row.scheduled_pcm_seconds)<1/24000,'drained PCM must not be dropped');
       assert.ok(row.cancelled_pcm_seconds<1/24000,'future PCM must not be cancelled during playback');
       assert.equal(row.rate_changes_after_start,0,'scheduled sources must keep their fixed rates');
       assert.ok(row.min_playback_rate>=Math.fround(.995)&&row.max_playback_rate<=Math.fround(1.005),'bounded output correction');
       if(profile.sampleRate&&seconds>=60)assert.ok(Math.abs(row.settled_mean_rate-24000/profile.sampleRate)<.0005,'learn injected rate mismatch');
-      assert.ok(Math.abs(row.generated_pcm_seconds-row.seconds)<.12,'PCM supply must track real time, allowing the final stall/packet phase');
+      assert.ok(Math.abs(row.generated_pcm_seconds-row.seconds)<(profile.recovery?.17:.12),'PCM supply must track real time, allowing the final stall/packet phase');
       assert.ok(row.source_peak<=32,'source resources must remain bounded');
     }
     await context.close();
