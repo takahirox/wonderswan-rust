@@ -55,12 +55,22 @@ pub struct Header {
 }
 #[derive(Clone, Debug)]
 pub struct Cartridge {
-    pub bytes: Vec<u8>,
+    pub bytes: Box<[u8]>,
+    rom_mask: usize,
+    rom_gap: usize,
     pub header: Header,
     pub save: Vec<u8>,
     pub rtc: Option<crate::rtc::Rtc>,
 }
 impl Cartridge {
+    #[cfg(test)]
+    pub fn replace_fixture_bytes(&mut self, bytes: Box<[u8]>) {
+        let capacity = bytes.len().next_power_of_two();
+        self.rom_mask = capacity - 1;
+        self.rom_gap = capacity - bytes.len();
+        self.bytes = bytes;
+    }
+
     pub fn parse(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() < 131_072 || bytes.len() > 67_108_864 {
             return Err(Error::new(format!("Expected a 128 KiB–64 MiB WonderSwan ROM; file size is {} bytes. Use an exact raw image matching its header ROM size (including 3 MiB and 6 MiB).", bytes.len())));
@@ -136,8 +146,11 @@ impl Cartridge {
                 "Cartridge checksum mismatch: header {checksum:04X}, calculated {actual:04X}."
             )));
         }
+        let capacity = bytes.len().next_power_of_two();
         Ok(Self {
-            bytes: bytes.to_vec(),
+            bytes: bytes.into(),
+            rom_mask: capacity - 1,
+            rom_gap: capacity - bytes.len(),
             rtc: (h[13] == 1).then(crate::rtc::Rtc::default),
             save: vec![0xff; save.len()],
             header: Header {
@@ -167,14 +180,11 @@ impl Cartridge {
     pub fn rom(&self, bank: usize, offset: usize) -> u8 {
         // Wrap in the rounded address space, then top-align the original image.
         // FF in the leading gap is an emulation policy, not electrical open bus.
-        let capacity = self.bytes.len().next_power_of_two();
-        let address = ((bank << 16) | offset) & (capacity - 1);
-        let gap = capacity - self.bytes.len();
-        if address < gap {
-            0xff
-        } else {
-            self.bytes[address - gap]
-        }
+        let address = ((bank << 16) | offset) & self.rom_mask;
+        self.bytes
+            .get(address.wrapping_sub(self.rom_gap))
+            .copied()
+            .unwrap_or(0xff)
     }
 }
 

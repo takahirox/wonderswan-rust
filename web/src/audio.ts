@@ -1,6 +1,7 @@
 // Contiguous PCM with a bounded reserve for main-thread scheduling jitter.
 const preferenceKey = "wonderswan:audio:v1";
-const reserveSeconds = 0.1;
+const normalReserve = 0.1;
+const recoveryReserve = 0.16;
 const rateLimit = 0.005;
 const bound = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
 export class Sound {
@@ -11,7 +12,8 @@ export class Sound {
   private next = 0;
   private underruns = 0;
   private overruns = 0;
-  private filteredLead = reserveSeconds;
+  private reserve = normalReserve;
+  private filteredLead = normalReserve;
   private rateBias = 0;
   private outputRate = 1;
   private playing = false;
@@ -29,6 +31,7 @@ export class Sound {
   }
   get muted() { return this.silent; }
   get volume() { return this.level; }
+  get catchUpMs() { return this.reserve * 1000; }
   get timing() {
     return { underruns: this.underruns, overruns: this.overruns, sources: this.sources.size,
       queuedSeconds: Math.max(0, this.next - (this.context?.currentTime ?? 0)),
@@ -93,7 +96,7 @@ export class Sound {
           this.gain = gain;
           context.onstatechange = () => {
             if (this.context !== context) return;
-            if (context.state !== "running") this.clearQueue();
+            if (context.state !== "running") this.resetQueue();
             this.changed();
           };
         } catch (error) {
@@ -133,7 +136,7 @@ export class Sound {
     this.resetRate();
   }
   private resetRate() {
-    this.filteredLead = reserveSeconds;
+    this.filteredLead = this.reserve;
     this.rateBias = 0;
     this.outputRate = 1;
   }
@@ -141,7 +144,7 @@ export class Sound {
     // Two-second low-pass plus PI feedback in processed PCM time. Do not chase
     // individual timer callbacks or burst arrivals after a short main-thread stall.
     this.filteredLead += (lead - this.filteredLead) * seconds / (2 + seconds);
-    const error = this.filteredLead - reserveSeconds;
+    const error = this.filteredLead - this.reserve;
     const requested = this.rateBias + 0.2 * error;
     // Do not wind the integral up against a saturated correction after a burst.
     if (Math.abs(requested) < rateLimit || requested * error < 0)
@@ -151,8 +154,12 @@ export class Sound {
     // Each source keeps its chosen rate forever.
     this.outputRate += bound(wanted - this.outputRate, 0.0005 * seconds);
   }
-  private stop() {
+  private resetQueue() {
+    this.reserve = normalReserve;
     this.clearQueue();
+  }
+  private stop() {
+    this.resetQueue();
     if (this.context?.state === "running") void this.context.suspend().catch(() => {});
   }
   pause() { this.playing = false; this.stop(); this.changed(); }
@@ -189,8 +196,13 @@ export class Sound {
       this.clearQueue();
     }
     if (this.next <= now) {
-      if (this.next !== 0) this.underruns++;
-      this.next = now + reserveSeconds;
+      if (this.next !== 0) {
+        this.underruns++;
+        // A real underrun is evidence that this playback session needs more
+        // headroom. Keep it until pause, mute, or context suspension.
+        this.reserve = recoveryReserve;
+      }
+      this.next = now + this.reserve;
       this.resetRate();
     } else this.adjustRate(this.next - now, samples.length / 2 / rate);
     const length = samples.length / 2;

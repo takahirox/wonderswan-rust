@@ -26,7 +26,7 @@ fn raw_sizes_validate_exact_headers_and_checksums_without_padding() {
         for mapper in [0, 1] {
             let bytes = marked(size, mapper);
             let c = Cartridge::parse(&bytes).unwrap();
-            assert_eq!(c.bytes, bytes);
+            assert_eq!(&*c.bytes, bytes.as_slice());
             assert_eq!(c.header.rom_size, size);
             assert_eq!(
                 c.header.checksum,
@@ -154,7 +154,7 @@ fn top_aligned_bank_markers_cover_both_interfaces_and_rounded_aliases() {
             }
             // All mappings are read-only; the original checksum and bytes survive.
             b.write(0x20000, 0);
-            assert_eq!(b.cartridge.as_ref().unwrap().bytes, bytes);
+            assert_eq!(&*b.cartridge.as_ref().unwrap().bytes, bytes.as_slice());
         }
     }
 }
@@ -271,7 +271,7 @@ fn failed_raw_replacements_and_model_changes_preserve_live_machine_and_all_recor
                 assert_eq!(m.bus.cycles, 77);
                 assert_eq!(m.bus.console_data, records);
                 assert_eq!(format!("{:?}", m.cpu), cpu);
-                assert_eq!(m.bus.cartridge.as_ref().unwrap().bytes, bytes);
+                assert_eq!(&*m.bus.cartridge.as_ref().unwrap().bytes, bytes.as_slice());
                 assert!(m.save_data().iter().all(|b| *b == 0x77));
             }
             assert!(m.change_model(Model::Mono).is_err());
@@ -281,7 +281,7 @@ fn failed_raw_replacements_and_model_changes_preserve_live_machine_and_all_recor
             assert_eq!(m.bus.cycles, 77);
             assert_eq!(m.bus.console_data, records);
             assert_eq!(format!("{:?}", m.cpu), cpu);
-            assert_eq!(m.bus.cartridge.as_ref().unwrap().bytes, bytes);
+            assert_eq!(&*m.bus.cartridge.as_ref().unwrap().bytes, bytes.as_slice());
             assert!(m.save_data().iter().all(|b| *b == 0x77));
             // Mono rejects a valid incompatible replacement before any mutation.
             let mut mono = Machine::new(Model::Mono);
@@ -298,7 +298,10 @@ fn failed_raw_replacements_and_model_changes_preserve_live_machine_and_all_recor
             assert_eq!(format!("{:?}", mono.cpu), cpu);
             assert_eq!(mono.bus.ports, ports);
             assert_eq!(mono.bus.console_data, records);
-            assert_eq!(mono.bus.cartridge.as_ref().unwrap().bytes, running);
+            assert_eq!(
+                &*mono.bus.cartridge.as_ref().unwrap().bytes,
+                running.as_slice()
+            );
             assert!(mono.save_data().iter().all(|b| *b == 0x88));
         }
     }

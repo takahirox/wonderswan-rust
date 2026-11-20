@@ -275,7 +275,9 @@ impl Bus {
     }
     pub fn write(&mut self, address: u32, value: u8) {
         let a = address as usize & 0xfffff;
-        if a < 0x4000 {
+        // The audio mixer reads the selected 64-byte waveform window only.
+        // Other RAM writes can leave the previous device clocks pending.
+        if a >> 6 == usize::from(self.ports[0x8f]) {
             self.sync_devices();
         }
         self.account(a);
@@ -498,7 +500,7 @@ impl Bus {
         }
     }
     pub fn input(&mut self, port: u16) -> Result<u8, Error> {
-        if port != 2 {
+        if !matches!(port, 2 | 0xb5) {
             self.sync_devices();
         }
         self.accesses
@@ -587,7 +589,9 @@ impl Bus {
         }
     }
     pub fn output(&mut self, port: u16, value: u8) -> Result<(), Error> {
-        self.sync_devices();
+        if port != 0xb5 {
+            self.sync_devices();
+        }
         if matches!(port, 0..=1 | 5..=0x13 | 0x20..=0x3f | 0x60)
             && self.ports[port as usize] != value
         {
@@ -854,8 +858,10 @@ mod tests {
     fn mapper_shared_banks_mirror_and_extended_registers_alias_at_boundaries() {
         for mapper in [0, 1] {
             let mut b = bus(0, mapper);
-            b.cartridge.as_mut().unwrap().bytes =
-                (0..256).flat_map(|n| vec![n as u8; 65536]).collect();
+            b.cartridge
+                .as_mut()
+                .unwrap()
+                .replace_fixture_bytes((0..256).flat_map(|n| vec![n as u8; 65536]).collect());
             assert_eq!(b.read(0xffff0), 255);
             out(&mut b, 0xc2, 254);
             out(&mut b, 0xc3, 255);
@@ -870,7 +876,7 @@ mod tests {
         let mut b = bus(3, 1);
         // Original generated bank markers distinguish all ten bank bits.
         let c = b.cartridge.as_mut().unwrap();
-        c.bytes = vec![0; 64 * 1024 * 1024];
+        c.replace_fixture_bytes(vec![0; 64 * 1024 * 1024].into_boxed_slice());
         for bank in 0..1024 {
             c.bytes[bank * 65536] = (bank & 255) as u8;
             c.bytes[bank * 65536 + 1] = (bank >> 8) as u8;

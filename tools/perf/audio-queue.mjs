@@ -6,8 +6,8 @@ import {parseArgs} from 'node:util';
 import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 
-const {values}=parseArgs({options:{module:{type:'string'},'drift-output':{type:'string'}}});
-if(!values.module)throw new Error('usage: audio-queue.mjs --module COMPILED_AUDIO_MJS [--drift-output JSON]');
+const {values}=parseArgs({options:{module:{type:'string'},'drift-output':{type:'string'},revision:{type:'string',default:'working-tree'}}});
+if(!values.module)throw new Error('usage: audio-queue.mjs --module COMPILED_AUDIO_MJS [--drift-output JSON] [--revision LABEL]');
 const {Sound}=await import(pathToFileURL(resolve(values.module)));
 class Node {
   connect(){} disconnect(){this.disconnected=true;}
@@ -57,7 +57,16 @@ assert.ok(context.nodes.slice(0,-10).every(n=>n.disconnected),'completed nodes r
 // A real starvation must recover once, with the configured bounded reserve.
 context.currentTime+=.5;sound.push(pcm,24000);
 assert.equal(sound.timing.underruns,1);
-assert.ok(Math.abs(context.nodes.at(-1).when-context.currentTime-.1)<1e-9);
+assert.ok(Math.abs(context.nodes.at(-1).when-context.currentTime-.16)<1e-9);
+assert.equal(sound.catchUpMs,160,'a real underrun increases the catch-up window');
+// After its first underrun the same session can span repeated 120 ms losses
+// of producer access, while each burst supplies every elapsed packet.
+for(let burst=0;burst<30;burst++){
+  context.currentTime+=10*T;
+  for(let i=0;i<10;i++)sound.push(pcm,24000);
+}
+assert.equal(sound.timing.underruns,1,'enlarged reserve spans recurring stalls');
+assert.equal(sound.timing.overruns,0,'recovery bursts remain within the queue bounds');
 // Deliberate overproduction triggers explicit recovery and accepts the new PCM.
 const before=context.nodes.length;
 for(let i=0;i<100;i++)sound.push(pcm,24000);
@@ -67,6 +76,7 @@ assert.ok(sound.timing.queuedSeconds<=.25+T+1e-9);
 // Lifecycle clears queued sound; old ended callbacks cannot resurrect it.
 sound.pause();assert.equal(context.state,'suspended');assert.equal(sound.timing.sources,0);
 assert.equal(sound.timing.playbackRate,1,'pause resets rate feedback');
+assert.equal(sound.catchUpMs,100,'the next session starts with normal latency');
 assert.ok(context.nodes.every(n=>n.stopped && n.disconnected));
 const paused=context.nodes.length;sound.push(pcm,24000);assert.equal(context.nodes.length,paused);
 sound.resume();await Promise.resolve();sound.push(pcm,24000);
@@ -142,7 +152,7 @@ if(values['drift-output']){
     assert.ok(Math.abs(row.settled_mean_rate-expected)<.0001,`${row.scenario}: learn clock ratio`);
   }
   const sha=data=>createHash('sha256').update(data).digest('hex');
-  await writeFile(values['drift-output'],JSON.stringify({project_revision:'clock-drift-fix-on-949dacf',
+  await writeFile(values['drift-output'],JSON.stringify({project_revision:values.revision,
     source_sha256:sha(await readFile(new URL('../../web/src/audio.ts',import.meta.url))),
     compiled_module_sha256:sha(await readFile(resolve(values.module))),
     model:'Actual compiled Sound with float32 fixed source rates; periodic/burst PCM producer and independent mocked audio clock; ended events withheld; no CPU, device, render-quantum or measured oscillator model',

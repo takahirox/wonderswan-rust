@@ -1,5 +1,8 @@
 # Bounded audio clock-drift correction (Issue #115)
 
+The subsequent [browser playback comparison](browser-playback-parity.md)
+documents the reserve that the player now selects after an underrun.
+
 The [reference comparison](audio-playback-comparison.md) identified a persistent
 clock mismatch that a fixed jitter reserve cannot absorb indefinitely. At the
 `949dacf` baseline, a simulated audio clock 100 ppm faster than the producer

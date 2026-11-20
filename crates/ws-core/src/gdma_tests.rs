@@ -248,7 +248,7 @@ fn rom_sources_use_both_banked_windows_and_linear_mapping_across_boundaries() {
     // The extended high bank bits must use the very same map as CPU reads.
     let c = b.cartridge.as_mut().unwrap();
     c.header.mapper = Mapper::Bandai2003;
-    c.bytes = vec![0; 512 * 65536];
+    c.replace_fixture_bytes(vec![0; 512 * 65536].into_boxed_slice());
     c.bytes[257 * 65536..257 * 65536 + 2].copy_from_slice(&[0xab, 0xcd]);
     b.output(0xd2, 1).unwrap();
     b.output(0xd3, 1).unwrap();

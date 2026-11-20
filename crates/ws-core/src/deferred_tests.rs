@@ -34,10 +34,23 @@ fn deferred_devices_match_eager_io_wave_writes_and_dma_boundaries() {
         reference.tick(count);
         // Raster readback needs current CPU time without forcing devices.
         assert_eq!(fast.input(2).unwrap(), reference.input(2).unwrap());
+        if n % 3 == 0 {
+            let selection = (n as u8) & 0x70;
+            fast.output(0xb5, selection).unwrap();
+            reference.output(0xb5, selection).unwrap();
+            assert_eq!(fast.input(0xb5).unwrap(), reference.input(0xb5).unwrap());
+            fast.write(0x0800 + n as u32, n as u8);
+            reference.write(0x0800 + n as u32, n as u8);
+        }
         if n % 7 == 0 {
-            let a = (n % 64) as u32;
+            let a = 64 * u32::from(fast.ports[0x8f]) + (n % 64) as u32;
             fast.write(a, n as u8);
             reference.write(a, n as u8);
+        }
+        if n % 23 == 0 {
+            let wave_page = if n % 2 == 0 { 0xff } else { 0 };
+            fast.output(0x8f, wave_page).unwrap();
+            reference.output(0x8f, wave_page).unwrap();
         }
         if n % 11 == 0 {
             for p in [0x84, 0x85, 0x92, 0x93, 0x96, 0x99] {

@@ -129,11 +129,16 @@ class ShaderPanel {
 
   reset() { this.seeded = false; }
 
-  advance(pixels: Uint8ClampedArray, effect: DisplayEffect, model: number) {
+  upload(pixels: Uint8ClampedArray) {
     const gl = this.gl;
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.source);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  }
+
+  advance(pixels: Uint8ClampedArray, decay: number) {
+    const gl = this.gl;
+    this.upload(pixels);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.history[this.current]);
     const next = 1 - this.current;
@@ -142,7 +147,6 @@ class ShaderPanel {
     gl.useProgram(this.historyProgram);
     gl.uniform1i(this.uniforms.sourceImage, 0);
     gl.uniform1i(this.uniforms.previousImage, 1);
-    const decay = effect === "lcd-light" || effect === "lcd-authentic" ? response[effect][model] : 0;
     gl.uniform1f(this.uniforms.decay, this.seeded ? decay : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.current = next;
@@ -155,7 +159,7 @@ class ShaderPanel {
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.useProgram(this.panelProgram);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.history[this.current]);
+    gl.bindTexture(gl.TEXTURE_2D, effect === "retro-crt" ? this.source : this.history[this.current]);
     gl.uniform1i(this.uniforms.panelImage, 0);
     gl.uniform2f(this.uniforms.outputSize, gl.drawingBufferWidth, gl.drawingBufferHeight);
     const authentic = effect === "lcd-authentic";
@@ -176,6 +180,7 @@ export class Display {
   private pixels: Uint8ClampedArray<ArrayBuffer> = new Uint8ClampedArray(width * height * 4);
   private model = 2;
   private scale = 1;
+  private crtUploadPending = true;
 
   constructor(private clean: HTMLCanvasElement, private output: HTMLCanvasElement,
     private notice: (message: string) => void) {
@@ -206,6 +211,7 @@ export class Display {
       this.gl = this.output.getContext("webgl2", { antialias: false, depth: false, stencil: false, premultipliedAlpha: false });
       if (!this.gl) throw new Error("WebGL2 unavailable");
       this.panel = new ShaderPanel(this.gl);
+      this.crtUploadPending = true;
       this.notice("");
     } catch {
       this.fallback("Display effects unavailable. Clean fallback active.");
@@ -220,17 +226,22 @@ export class Display {
 
   resetHistory() { this.panel?.reset(); }
 
+  get tracksHistory() {
+    return this.panel !== null && (this.effect === "lcd-light" || this.effect === "lcd-authentic");
+  }
+
   // Call once per emulated frame, including each frame in a catch-up tick.
   advance(pixels: Uint8ClampedArray<ArrayBuffer>, model: string) {
     this.pixels = pixels;
     this.model = model === "mono" ? 0 : model === "color" ? 1 : 2;
-    if (this.effect !== "clean") this.seed();
+    this.crtUploadPending = true;
+    this.seed();
   }
 
   private seed() {
-    if (!this.panel || this.effect === "clean") return;
+    if (!this.panel || (this.effect !== "lcd-light" && this.effect !== "lcd-authentic")) return;
     try {
-      this.panel.advance(this.pixels, this.effect, this.model);
+      this.panel.advance(this.pixels, response[this.effect][this.model]);
       if (this.gl!.getError() !== this.gl!.NO_ERROR) throw new Error("Display upload failed");
     } catch { this.fallback("Display effects stopped. Clean fallback active."); }
   }
@@ -238,6 +249,7 @@ export class Display {
   select(effect: DisplayEffect) {
     if (!effects.includes(effect)) return;
     this.effect = effect;
+    this.crtUploadPending = true;
     try { localStorage.setItem(preferenceKey, effect); } catch { /* Keep the live choice. */ }
     this.resetHistory();
     this.seed();
@@ -263,6 +275,10 @@ export class Display {
     this.context.putImageData(new ImageData(this.pixels, width, height), 0, 0);
     if (this.panel && this.effect !== "clean") {
       try {
+        if (this.effect === "retro-crt" && this.crtUploadPending) {
+          this.panel.upload(this.pixels);
+          this.crtUploadPending = false;
+        }
         this.panel.present(this.effect, this.model);
         if (this.gl!.getError() !== this.gl!.NO_ERROR) throw new Error("Display draw failed");
         this.output.hidden = false;
