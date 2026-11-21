@@ -352,6 +352,39 @@ mod scheduling_tests {
     use super::*;
 
     #[test]
+    fn sequential_wide_rom_opcodes_keep_hblank_handler_within_one_line() {
+        let mut rom = cartridge::tests::rom(131072, 0, 0);
+        let mut handler = vec![0x90; 102];
+        handler.extend([0xb8, 1, 0, 0xe7, 0xa4]); // Reload the one-shot timer to one.
+        handler.extend([0x90; 10]);
+        handler.extend([0xb0, 0x80, 0xe6, 0xb6]); // Acknowledge this HBlank.
+        handler.extend([0xfe, 0x06, 0, 4, 0xcf]); // INC byte [0400]; IRET.
+        rom[65536..65536 + handler.len()].copy_from_slice(&handler);
+
+        for (rom_flags, expected) in [(0, 1), (4, 158)] {
+            let flags_offset = rom.len() - 4;
+            rom[flags_offset] = rom_flags;
+            cartridge::tests::checksum(&mut rom);
+            let mut m = Machine::new(Model::Color);
+            m.load_rom(&rom).unwrap();
+            m.bus.ram[0x1c..0x20].copy_from_slice(&[0, 0, 0, 0xf0]);
+            m.bus.ram[0x1000..0x1003].copy_from_slice(&[0xf4, 0xeb, 0xfd]); // HLT; JMP HLT.
+            m.cpu.segments[1] = 0;
+            m.cpu.segments[3] = 0;
+            m.cpu.ip = 0x1000;
+            m.cpu.flags |= 0x200;
+            m.bus.output(0xb2, 0x80).unwrap();
+            m.bus.output_word(0xa4, 1).unwrap();
+            m.bus.output(0xa2, 1).unwrap();
+
+            // At 8 bits the next timer edge arrives between reload and ACK.
+            // At 16 bits the ISR completes on each of the 158 entered lines.
+            m.run_frame().unwrap();
+            assert_eq!(m.bus.ram[0x400], expected, "ROM flags {rom_flags:02x}");
+        }
+    }
+
+    #[test]
     fn halted_event_scheduling_matches_single_clock_machine_execution() {
         let keypad: &[u8] = include_bytes!("../../../fixtures/generated/keypad-horizontal.ws");
         let compat: &[u8] = include_bytes!("../../../fixtures/generated/sram128-2003.ws");

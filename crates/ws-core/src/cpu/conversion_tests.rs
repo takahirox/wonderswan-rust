@@ -104,7 +104,7 @@ fn vectors(conversion: u8) {
                         let ram = b.ram.clone();
                         let ports = b.ports;
                         let save = b.cartridge.as_ref().map(|cart| cart.save.clone());
-                        let access = if location == 2 { 4 } else { 2 };
+                        let access = if location == 1 { 1 } else { 2 };
                         let execution = if opcode == 0xd4 { 16 } else { 1 };
                         assert_eq!(c.instruction_step(&mut b).unwrap(), execution + access);
                         registers[0] = result;

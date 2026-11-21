@@ -192,24 +192,16 @@ fn return_mapped_fetch_stack_prefixes_waits_and_rep_diagnostics() {
                                             } else {
                                                 1
                                             };
-                                            let byte = if cs == 0 {
-                                                1
-                                            } else if cs == 0x1000 {
-                                                sram_lane
-                                            } else {
-                                                lane
+                                            let fetch = match cs {
+                                                0 => {
+                                                    code.len() as u32
+                                                        - u32::from(
+                                                            immediate && (count + 1) % 2 == 0,
+                                                        )
+                                                }
+                                                0x1000 => code.len() as u32 * sram_lane,
+                                                _ => rom_fetch_clocks(c.ip, code.len(), a0),
                                             };
-                                            let word = if (count + 1) % 2 == 1 {
-                                                2 * byte
-                                            } else if cs == 0 {
-                                                1
-                                            } else if cs == 0x1000 {
-                                                2 * sram_lane
-                                            } else {
-                                                aligned
-                                            };
-                                            let fetch = (count as u32 + 1) * byte
-                                                + if immediate { word } else { 0 };
                                             let stack = u32::from(words)
                                                 * if ss == 0x20 {
                                                     internal
@@ -279,15 +271,15 @@ fn return_instruction_offset_bank_and_twenty_bit_wraps() {
             if model != Model::Mono {
                 b.output(0x60, mode).unwrap();
             }
-            for (control, lane, aligned) in [(0, 1, 2), (4, 1, 1), (8, 2, 4), (12, 2, 2)] {
+            for control in [0, 4, 8, 12] {
                 b.output(0xa0, control).unwrap();
-                for (cs, ip, addresses, immediate_cost) in [
-                    (0x2000, 0xffff, [0x2ffff, 0x20000, 0x20001], aligned),
-                    (0x2000, 0xfffe, [0x2fffe, 0x2ffff, 0x20000], 2 * lane),
-                    (0x2800, 0x7fff, [0x2ffff, 0x30000, 0x30001], aligned),
-                    (0x2800, 0x7ffe, [0x2fffe, 0x2ffff, 0x30000], 2 * lane),
-                    (0xffff, 0xf, [0xfffff, 0, 1], 1),
-                    (0xffff, 0xe, [0xffffe, 0xfffff, 0], lane + 1),
+                for (cs, ip, addresses) in [
+                    (0x2000, 0xffff, [0x2ffff, 0x20000, 0x20001]),
+                    (0x2000, 0xfffe, [0x2fffe, 0x2ffff, 0x20000]),
+                    (0x2800, 0x7fff, [0x2ffff, 0x30000, 0x30001]),
+                    (0x2800, 0x7ffe, [0x2fffe, 0x2ffff, 0x30000]),
+                    (0xffff, 0xf, [0xfffff, 0, 1]),
+                    (0xffff, 0xe, [0xffffe, 0xfffff, 0]),
                 ] {
                     for (opcode, words, even, _, immediate) in FORMS {
                         for target in [0x1200u16, 0x1201] {
@@ -307,7 +299,9 @@ fn return_instruction_offset_bank_and_twenty_bit_wraps() {
                             regs[4] += 2 * words + u16::from(immediate);
                             let ram = b.ram.clone();
                             let ports = b.ports;
-                            let fetch = lane + if immediate { immediate_cost } else { 0 };
+                            let bytes = if immediate { 3 } else { 1 };
+                            let fetch = mapped_fetch_clocks(&addresses[..bytes], control)
+                                - u32::from(cs == 0xffff && ip == 0xf && immediate);
                             let residual = even - if immediate { 3 } else { 1 } - u32::from(words);
                             assert_eq!(
                                 c.instruction_step(&mut b).unwrap(),

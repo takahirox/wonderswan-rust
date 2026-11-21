@@ -166,9 +166,7 @@ fn literal_mapped_rom_banks_width_waits_and_prefix_alignment() {
             if model != Model::Mono {
                 b.output(0x60, mode | 0x0a).unwrap();
             }
-            for (control, lane, word_even, word_odd) in
-                [(0, 1, 2, 2), (4, 1, 1, 2), (8, 2, 4, 4), (12, 2, 2, 4)]
-            {
+            for control in [0, 4, 8, 12] {
                 b.output(0xa0, control).unwrap();
                 for start in [0x1000u16, 0x1001] {
                     for count in 0..=7 {
@@ -202,19 +200,7 @@ fn literal_mapped_rom_banks_width_waits_and_prefix_alignment() {
                                     .collect();
                                 mapped_code(&mut b, &addresses, &code);
                                 b.output(0xa0, control).unwrap();
-                                // Literal lane costs supplied above: an explicit immediate
-                                // word starts opposite the opcode parity. Prefixes are bytes.
-                                let word = if (usize::from(start) + count) % 2 == 1 {
-                                    word_even
-                                } else {
-                                    word_odd
-                                };
-                                let fetch = (count as u32 + 1) * lane
-                                    + match opcode {
-                                        0xeb => lane,
-                                        0xe9 => word,
-                                        _ => 2 * word,
-                                    };
+                                let fetch = rom_fetch_clocks(start, code.len(), control);
                                 let execution = if opcode == 0xea { 7 } else { 4 };
                                 c.segments[1] = 0x2000;
                                 c.ip = start;
@@ -261,7 +247,7 @@ fn literal_ip_immediate_bank_and_twenty_bit_wraps() {
             if model != Model::Mono {
                 b.output(0x60, mode).unwrap();
             }
-            for (control, lane) in [(0, 1), (4, 1), (8, 2), (12, 2)] {
+            for control in [0, 4, 8, 12] {
                 b.output(0xa0, control).unwrap();
                 for (cs, ip, addresses) in [
                     (
@@ -318,48 +304,13 @@ fn literal_ip_immediate_bank_and_twenty_bit_wraps() {
                             } else {
                                 ip.wrapping_add(code.len() as u16).wrapping_add(relative)
                             };
-                            // Explicit independent fetch counts for each boundary layout.
-                            let words = match (cs, ip) {
-                                (0xffff, 0xf) => {
-                                    if opcode == 0xea {
-                                        2
-                                    } else {
-                                        1
-                                    }
-                                }
-                                (0xffff, 0xe) => {
-                                    if opcode == 0xea {
-                                        lane + 3
-                                    } else {
-                                        lane + 1
-                                    }
-                                }
-                                (_, 0xfffe | 0x7ffe) => {
-                                    if opcode == 0xea {
-                                        4 * lane
-                                    } else {
-                                        2 * lane
-                                    }
-                                }
-                                _ => {
-                                    let aligned_word =
-                                        if control & 4 != 0 { lane } else { 2 * lane };
-                                    if opcode == 0xea {
-                                        2 * aligned_word
-                                    } else {
-                                        aligned_word
-                                    }
-                                }
+                            let aligned_ram_words = match (cs, ip, opcode) {
+                                (0xffff, 0xf, 0xe9) => 1,
+                                (0xffff, 0xf, 0xea) => 2,
+                                _ => 0,
                             };
-                            let fetch = if opcode == 0xeb {
-                                if cs == 0xffff && ip == 0xf {
-                                    lane + 1
-                                } else {
-                                    2 * lane
-                                }
-                            } else {
-                                lane + words
-                            };
+                            let fetch = mapped_fetch_clocks(&addresses[..code.len()], control)
+                                - aligned_ram_words;
                             assert_eq!(c.step(&mut b).unwrap(), fetch + if opcode == 0xea { 7 } else { 4 } + u32::from(target & 1),
                                 "{model:?}/{mode:x}/{control:x}/{cs:x}:{ip:x}/{opcode:x}/{operand:x}");
                             assert_eq!(b.accesses.get(), fetch);

@@ -133,14 +133,18 @@ fn ordinary_io_literal_all_encodings_state_lengths_masks_and_fetch_waits() {
                             (true, true) => 9,
                         };
                         let fetches = if immediate { 2 } else { 1 };
-                        let wait = if rom && control & 8 != 0 { fetches } else { 0 };
+                        let fetch = if rom {
+                            rom_fetch_clocks(0, fetches, control)
+                        } else {
+                            fetches as u32
+                        };
                         let start = c.ip;
                         assert_eq!(
                             c.step(&mut b).unwrap(),
-                            total + wait,
+                            total - fetches as u32 + fetch,
                             "{model:?}/{mode:x} {opcode:x}/{port:x} ROM={rom} A0={control:x}"
                         );
-                        assert_eq!(b.accesses.get(), fetches + wait + if split { 2 } else { 1 });
+                        assert_eq!(b.accesses.get(), fetch + if split { 2 } else { 1 });
                         assert_eq!(c.registers, registers);
                         assert_eq!((c.ip, c.flags), (start + fetches as u16, 0xfed7));
                         assert_eq!(c.segments, segments);
@@ -219,18 +223,15 @@ fn ordinary_io_live_runtime_round_trips_cartridge_width_and_each_wait_once() {
                                 } else {
                                     1
                                 };
-                                let fetch_wait = if rom && control & 8 != 0 {
-                                    if immediate {
-                                        2
-                                    } else {
-                                        1
-                                    }
+                                let bytes = if immediate { 2 } else { 1 };
+                                let fetch = if rom {
+                                    rom_fetch_clocks(0, bytes, control)
                                 } else {
-                                    0
+                                    bytes as u32
                                 };
                                 assert_eq!(
                                     c.step(&mut b).unwrap(),
-                                    base + if wait != 0 { lanes } else { 0 } + fetch_wait
+                                    base - bytes as u32 + fetch + if wait != 0 { lanes } else { 0 }
                                 );
                                 assert_eq!(c.flags, 0xf002);
                                 if output {

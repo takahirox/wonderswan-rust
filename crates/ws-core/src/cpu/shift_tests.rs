@@ -247,7 +247,7 @@ fn shift_mapped_fetch_wait_prefix_and_addressing_accounting() {
                 if model != Model::Mono {
                     b.output(0x60, mode | wait).unwrap();
                 }
-                for (a0, rom_lane) in [(0, 1), (4, 1), (8, 2), (12, 2)] {
+                for a0 in [0, 4, 8, 12] {
                     b.output(0xa0, a0).unwrap();
                     let sram_lane = if model != Model::Mono && wait != 0 {
                         2
@@ -347,14 +347,11 @@ fn shift_mapped_fetch_wait_prefix_and_addressing_accounting() {
                                                 if wide {
                                                     expected[index + 1] = (value >> 8) as u8;
                                                 }
-                                                let fetch = code.len() as u32
-                                                    * if cs == 0 {
-                                                        1
-                                                    } else if cs == 0x1000 {
-                                                        sram_lane
-                                                    } else {
-                                                        rom_lane
-                                                    };
+                                                let fetch = match cs {
+                                                    0 => code.len() as u32,
+                                                    0x1000 => code.len() as u32 * sram_lane,
+                                                    _ => rom_fetch_clocks(c.ip, code.len(), a0),
+                                                };
                                                 let transfer = if selected == 0x1000 {
                                                     sram_lane * if wide { 2 } else { 1 }
                                                 } else if wide && bp {
@@ -506,17 +503,14 @@ fn shift_fetch_offset_and_twenty_bit_wraps() {
     ] {
         let (mut c, mut b) = setup(Model::Color, 0x80, &[]);
         mapped_code(&mut b, &addresses, &[0xc1, 0xe0, 32]);
-        for (a0, lane) in [(0, 1), (4, 1), (8, 2), (12, 2)] {
+        for a0 in [0, 4, 8, 12] {
             b.output(0xa0, a0).unwrap();
             c.segments[1] = cs;
             c.ip = ip;
             c.registers[0] = 0x4000;
             c.flags = 0xf002;
             let ram = b.ram.clone();
-            let fetch = addresses
-                .iter()
-                .map(|a| if *a >= 0x20000 { lane } else { 1 })
-                .sum::<u32>();
+            let fetch = mapped_fetch_clocks(&addresses, a0);
             assert_eq!(c.instruction_step(&mut b).unwrap(), fetch + 3);
             assert_eq!(b.accesses.get(), fetch);
             assert_eq!(

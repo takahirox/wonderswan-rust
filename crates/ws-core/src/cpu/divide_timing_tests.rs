@@ -174,15 +174,11 @@ fn division_mapped_fetch_wait_prefix_and_addressing_accounting() {
                                             (0xf7, 6) => 23,
                                             _ => 24,
                                         };
-                                        let lane = if cs == 0 {
-                                            1
-                                        } else if cs == 0x1000 {
-                                            sram_byte
-                                        } else {
-                                            rom_byte
+                                        let fetch = match cs {
+                                            0 => code.len() as u32,
+                                            0x1000 => code.len() as u32 * sram_byte,
+                                            _ => rom_fetch_clocks(c.ip, code.len(), a0),
                                         };
-                                        // All F6/F7 instruction bytes are separately fetched.
-                                        let fetch = code.len() as u32 * lane;
                                         let operand = if opcode == 0xf6 {
                                             if selected == 0x1000 {
                                                 sram_byte
@@ -294,7 +290,7 @@ fn division_register_forms_mapped_fetches_at_both_parities() {
             }
             for cs in [0u16, 0x1000, 0x2000] {
                 for start in [0x1000u16, 0x1001] {
-                    for (a0, lane, _word) in [(0, 1, 2), (4, 1, 1), (8, 2, 4), (12, 2, 2)] {
+                    for a0 in [0, 4, 8, 12] {
                         b.output(0xa0, a0).unwrap();
                         for (code, residual, ax, dx, flags) in [
                             (&[0xf6, 0xf3][..], 15, 0x0103, 0, 0xf002),
@@ -318,18 +314,14 @@ fn division_register_forms_mapped_fetches_at_both_parities() {
                             c.registers[2] = 0;
                             c.registers[3] = 2;
                             c.flags = 0xf002;
-                            let byte = if cs == 0 {
-                                1
-                            } else if cs == 0x1000 {
-                                if model != Model::Mono && wait != 0 {
-                                    2
-                                } else {
-                                    1
+                            let fetch = match cs {
+                                0 => code.len() as u32,
+                                0x1000 => {
+                                    code.len() as u32
+                                        * (1 + u32::from(model != Model::Mono && wait != 0))
                                 }
-                            } else {
-                                lane
+                                _ => rom_fetch_clocks(start, code.len(), a0),
                             };
-                            let fetch = code.len() as u32 * byte;
                             let ram = b.ram.clone();
                             let save = b.cartridge.as_ref().unwrap().save.clone();
                             assert_eq!(c.instruction_step(&mut b).unwrap(), fetch + residual);

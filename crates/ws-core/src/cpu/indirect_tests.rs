@@ -339,17 +339,12 @@ fn mapped_rom_fetch_pointer_prefixes_live_a0_and_invalid_forms() {
                                                     far,
                                                 );
                                             }
-                                            let lane = if cs == 0 { 1 } else { byte };
-                                            let fetch = (count as u32 + 2) * lane
-                                                + if (start as usize + count) & 1 == 0 {
-                                                    if cs == 0 {
-                                                        1
-                                                    } else {
-                                                        word
-                                                    }
-                                                } else {
-                                                    2 * lane
-                                                };
+                                            let fetch = if cs == 0 {
+                                                code.len() as u32
+                                                    - u32::from((start as usize + count) & 1 == 0)
+                                            } else {
+                                                rom_fetch_clocks(start, code.len(), a0)
+                                            };
                                             let reads = if ds == 0 {
                                                 1 + u32::from(pointer & 1)
                                             } else if pointer & 1 == 0 {
@@ -444,34 +439,16 @@ fn literal_instruction_and_pointer_offset_bank_and_twenty_bit_wraps() {
                 b.output(0x60, mode).unwrap();
             }
             for (a0, lane, word) in [(0, 1, 2), (4, 1, 1), (8, 2, 4), (12, 2, 2)] {
-                for (cs, ip, addresses, fetch) in [
-                    (
-                        0x2000,
-                        0xffff,
-                        [0x2ffff, 0x20000, 0x20001, 0x20002],
-                        4 * lane,
-                    ),
-                    (
-                        0x2000,
-                        0xfffe,
-                        [0x2fffe, 0x2ffff, 0x20000, 0x20001],
-                        2 * lane + word,
-                    ),
-                    (
-                        0x2800,
-                        0x7fff,
-                        [0x2ffff, 0x30000, 0x30001, 0x30002],
-                        4 * lane,
-                    ),
-                    (
-                        0x2800,
-                        0x7ffe,
-                        [0x2fffe, 0x2ffff, 0x30000, 0x30001],
-                        2 * lane + word,
-                    ),
-                    (0xffff, 0xf, [0xfffff, 0, 1, 2], lane + 3),
-                    (0xffff, 0xe, [0xffffe, 0xfffff, 0, 1], 2 * lane + 1),
+                for (cs, ip, addresses) in [
+                    (0x2000, 0xffff, [0x2ffff, 0x20000, 0x20001, 0x20002]),
+                    (0x2000, 0xfffe, [0x2fffe, 0x2ffff, 0x20000, 0x20001]),
+                    (0x2800, 0x7fff, [0x2ffff, 0x30000, 0x30001, 0x30002]),
+                    (0x2800, 0x7ffe, [0x2fffe, 0x2ffff, 0x30000, 0x30001]),
+                    (0xffff, 0xf, [0xfffff, 0, 1, 2]),
+                    (0xffff, 0xe, [0xffffe, 0xfffff, 0, 1]),
                 ] {
+                    let fetch =
+                        mapped_fetch_clocks(&addresses, a0) - u32::from(cs == 0xffff && ip == 0xe);
                     for (ds, pointer, paddresses, near_reads, far_reads) in [
                         (
                             0x2000,
@@ -727,7 +704,7 @@ fn mapped_sram_pointer_and_stack_waits_wraps_and_actual_returns() {
 fn physical_stack_wrap_and_mapped_nonzero_caller_retf() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let (mut c, mut b) = setup(model);
-        for (a0, lane, word) in [(0, 1, 2), (4, 1, 1), (8, 2, 4), (12, 2, 2)] {
+        for (a0, lane) in [(0, 1), (4, 1), (8, 2), (12, 2)] {
             for far in [false, true] {
                 mapped_code(
                     &mut b,
@@ -746,11 +723,12 @@ fn physical_stack_wrap_and_mapped_nonzero_caller_retf() {
                 regs[4] = if far { 0xd } else { 0xf };
                 let writes = if far { 3 * lane + 1 } else { lane + 1 };
                 let reads = if far { 2 } else { 1 };
+                let fetch = rom_fetch_clocks(0x1001, 4, a0);
                 assert_eq!(
                     c.instruction_step(&mut b).unwrap(),
-                    4 * lane + reads + writes + if far { 8 } else { 4 }
+                    fetch + reads + writes + if far { 8 } else { 4 }
                 );
-                assert_eq!(b.accesses.get(), 4 * lane + reads + writes);
+                assert_eq!(b.accesses.get(), fetch + reads + writes);
                 assert_eq!(
                     (c.registers, c.segments, c.ip, c.flags),
                     (
@@ -775,7 +753,7 @@ fn physical_stack_wrap_and_mapped_nonzero_caller_retf() {
             let regs = c.registers;
             assert_eq!(
                 c.instruction_step(&mut b).unwrap(),
-                2 * lane + word + 2 + 2 + 8
+                rom_fetch_clocks(0x1000, 4, a0) + 2 + 2 + 8
             );
             assert_eq!(&b.ram[0x29fc..0x2a00], &[4, 0x10, 0, 0x20]);
             assert_eq!(c.instruction_step(&mut b).unwrap(), 9);

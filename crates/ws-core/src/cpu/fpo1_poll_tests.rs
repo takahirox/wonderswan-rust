@@ -117,7 +117,7 @@ fn poll_preserves_literal_patterns_and_carry_for_following_adc() {
 #[test]
 fn fpo1_poll_mapped_fetches_live_a0_and_ip_physical_wraps() {
     for (model, color) in modes() {
-        for (control, rom_byte_cost) in [(0, 1), (4, 1), (8, 2), (12, 2)] {
+        for control in [0, 4, 8, 12] {
             for opcode in [0x9b, 0xd8, 0xd9, 0xda, 0xdb, 0xdc, 0xdd, 0xde, 0xdf] {
                 // Explicit physical address pairs: normal ROM, mapped bank
                 // boundary, IP wrap within CS, and FFFFF -> RAM physical wrap.
@@ -151,13 +151,9 @@ fn fpo1_poll_mapped_fetches_live_a0_and_ip_physical_wraps() {
                     b.output(0xa0, control).unwrap(); // live control, independent of header
                     c.segments[1] = cs;
                     c.ip = ip;
-                    let fetch = if opcode == 0x9b {
-                        rom_byte_cost
-                    } else if addresses[1] == 0 {
-                        rom_byte_cost + 1
-                    } else {
-                        rom_byte_cost * 2
-                    };
+                    let count = if opcode == 0x9b { 1 } else { 2 };
+                    let addresses = addresses.map(|a| a as u32);
+                    let fetch = mapped_fetch_clocks(&addresses[..count], control);
                     let execution = if opcode == 0x9b { 9 } else { 1 };
                     assert_eq!(c.step(&mut b).unwrap(), execution + fetch);
                     assert_eq!(b.accesses.get(), fetch);
