@@ -420,6 +420,8 @@ mod scheduling_tests {
                 assert_eq!(fast.bus.ram, reference.bus.ram);
                 assert_eq!(fast.bus.ports, reference.bus.ports);
                 assert_eq!(fast.bus.sprites, reference.bus.sprites);
+                assert_eq!(fast.bus.sprite_first, reference.bus.sprite_first);
+                assert_eq!(fast.bus.sprite_count, reference.bus.sprite_count);
                 for port in 0xa8..=0xab {
                     assert_eq!(
                         fast.bus.input(port).unwrap(),

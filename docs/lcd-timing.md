@@ -175,3 +175,44 @@ Five interleaved 6,000-frame native throughput runs put the keypad fixture at
 measured 7.717 → 7.632 µs and the Hyper Voice fixture 8.996 → 9.133 µs. The
 project's final frame, RAM and PCM hashes matched before and after on the timed
 fixtures. The frame and PCM counts matched as well.
+
+## Sprite range capture (Issue #121)
+
+The line-144 snapshot includes the sprite table entries, the seven-bit first
+index and the count capped at 128. CPU reads of ports 05 and 06 return the latest
+written values. Visible rows use the captured range. A range-only change also
+invalidates the cached composition when the snapshot is taken.
+
+In the local Wild Card replay, frame 3868 entered rendering with a previously
+captured count of zero. At line 24 the cartridge switched the table base from
+2C00 to 2E00 and wrote count 54. The live count exposed part of the old table
+for that frame. A second observed transition raised the count from 4 to 58 at
+line 95 and briefly drew a stale card. Capturing the range alongside the entries
+removed all 14 isolated changes in the 14,000-frame replay.
+
+| Isolated changes across 14,000 frames | Before | After | Beetle | Oswan |
+| --- | ---: | ---: | ---: | ---: |
+| Wild Card | 14 | 0 | 1 | 1 |
+| Final Fantasy II | 0 | 0 | 0 | — |
+
+The extended replays continue the Issue #119 inputs. Wild Card taps A every 137
+frames from 6040 through 13849. Final Fantasy II taps A every 93 frames from
+6060 through 12198, then holds Right, Down, Left and Up in a loop for 32 frames
+each from 12300, with 110 frames between starts. The detector and RGB444
+comparison are the same as in the earlier replays. Oswan's capture counts its
+video callbacks.
+
+Shifting Wild Card's recurring A taps by −7 or +5 frames produced 13 isolated
+changes per run before the fix and zero after. The production Retro CRT player
+also replayed frames 3800 through 4000 of the original sequence. Chromium
+reported zero isolated changes and zero page errors during that check.
+
+Keeping the snapshot operation off the per-line path brought the native keypad
+median to 179.621 µs/frame. The previous core measured 177.219 µs/frame in the
+same interleaved run. The three timed fixtures retained matching final frames,
+RAM, PCM and frame/sample counts.
+
+Beetle and Oswan both capture the selected range with the entries at line 142.
+The project captures that state at its existing line-144 boundary. A probe that
+moved only the entry capture to line 142 still reproduced all 14 changes.
+[Beetle sprite capture](https://github.com/libretro/beetle-wswan-libretro/blob/4b01295838ea89e3f1355bbe4cb5cf98aa6108cd/mednafen/wswan/gfx.c) · [Oswan sprite capture](https://github.com/gameblabla/oswan/blob/efea1326dc4f0477a6a7b704f7f7f6f5a1cc6f33/main/emu/WS.c)
