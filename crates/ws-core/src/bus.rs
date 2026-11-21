@@ -19,6 +19,7 @@ pub(crate) struct Bus {
     pub audio: Audio,
     pub sprites: [u8; 512],
     pub accesses: std::cell::Cell<u32>,
+    rom_fetch_high: std::cell::Cell<u32>,
     eeprom: Eeprom,
     pub console_data: [Vec<u8>; 3],
     internal_eeprom: InternalEeprom,
@@ -66,6 +67,7 @@ impl Bus {
             audio: Audio::default(),
             sprites: [0; 512],
             accesses: std::cell::Cell::new(0),
+            rom_fetch_high: std::cell::Cell::new(0),
             eeprom: Eeprom::default(),
             console_data: [Model::Mono, Model::Color, Model::Crystal].map(initial_data),
             internal_eeprom: InternalEeprom::default(),
@@ -98,6 +100,7 @@ impl Bus {
         self.ports[0xa0] = (self.ports[0xa0] & 0x83)
             | (u8::from(cartridge.header.rom_word_bus) << 2)
             | (u8::from(cartridge.header.rom_wait) << 3);
+        self.discard_rom_fetch();
         self.cartridge = Some(cartridge);
         self.reset_internal_eeprom();
     }
@@ -196,6 +199,24 @@ impl Bus {
         let a = address as usize & 0xfffff;
         self.account(a);
         self.read_mapped(a)
+    }
+
+    pub fn fetch_instruction_byte(&self, address: u32) -> u8 {
+        if address < 0x20000 || self.ports[0xa0] & 4 == 0 {
+            return self.read(address);
+        }
+        // An aligned 16-bit cartridge fetch supplies both sequential bytes.
+        // Keep the timing of the second lane across instruction boundaries.
+        if address & 1 == 0 {
+            self.rom_fetch_high.set(address + 1);
+        } else if self.rom_fetch_high.replace(0) == address {
+            return self.read_mapped(address as usize);
+        }
+        self.read(address)
+    }
+
+    pub fn discard_rom_fetch(&self) {
+        self.rom_fetch_high.set(0);
     }
     /// Shared mapping without CPU bus accounting (both DMAs have their own costs).
     fn read_mapped(&self, a: usize) -> u8 {
@@ -591,6 +612,9 @@ impl Bus {
     pub fn output(&mut self, port: u16, value: u8) -> Result<(), Error> {
         if port != 0xb5 {
             self.sync_devices();
+        }
+        if matches!(port, 0xa0 | 0xc0 | 0xc2..=0xc3 | 0xcf | 0xd2..=0xd5) {
+            self.discard_rom_fetch();
         }
         if matches!(port, 0..=1 | 5..=0x13 | 0x20..=0x3f | 0x60)
             && self.ports[port as usize] != value

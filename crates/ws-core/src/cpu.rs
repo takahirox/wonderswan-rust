@@ -81,6 +81,38 @@ fn normalize_flags(flags: u16) -> u16 {
     (flags & WRITABLE_FLAGS) | FIXED_FLAGS
 }
 
+#[cfg(test)]
+fn rom_fetch_clocks(start: u16, bytes: usize, control: u8) -> u32 {
+    let transfers = if control & 4 == 0 {
+        bytes
+    } else {
+        (usize::from(start & 1) + bytes).div_ceil(2)
+    };
+    transfers as u32 * (1 + u32::from(control & 8 != 0))
+}
+
+#[cfg(test)]
+fn mapped_fetch_clocks(addresses: &[u32], control: u8) -> u32 {
+    // Literal physical addresses may include a segment wrap or RAM lanes.
+    // Count the distinct ROM word slots and leave explicit RAM word operands
+    // to the callers that exercise them.
+    let mut previous_slot = None;
+    let mut clocks = 0;
+    for &address in addresses {
+        let rom = address >= 0x20000;
+        let slot = if rom && control & 4 != 0 {
+            address & !1
+        } else {
+            address
+        };
+        if previous_slot != Some(slot) {
+            clocks += 1 + u32::from(rom && control & 8 != 0);
+        }
+        previous_slot = Some(slot);
+    }
+    clocks
+}
+
 /// Intel register order: AX CX DX BX SP BP SI DI; segments ES CS SS DS.
 #[derive(Clone, Debug)]
 pub struct Cpu {
@@ -134,7 +166,7 @@ impl Cpu {
         ((segment as u32 * 16) + offset as u32) & 0xfffff
     }
     fn byte(&mut self, bus: &Bus) -> u8 {
-        let value = bus.read(Self::physical(self.segments[1], self.ip));
+        let value = bus.fetch_instruction_byte(Self::physical(self.segments[1], self.ip));
         self.ip = self.ip.wrapping_add(1);
         value
     }
@@ -143,7 +175,9 @@ impl Cpu {
         let lo = self.byte(bus);
         let second = Self::physical(self.segments[1], self.ip);
         let hi = self.byte(bus);
-        bus.word_transfer(first, second);
+        if first < 0x20000 {
+            bus.word_transfer(first, second);
+        }
         u16::from_le_bytes([lo, hi])
     }
     fn reg(&self, r: usize, wide: bool) -> u16 {
@@ -324,6 +358,7 @@ impl Cpu {
     }
 
     fn interrupt(&mut self, bus: &mut Bus, vector: u8) {
+        bus.discard_rom_fetch();
         // Fetch both vector words before stack writes can overwrite the table.
         let target_ip = self.read(bus, Operand::Memory(0, vector as u16 * 4), true);
         let target_cs = self.read(bus, Operand::Memory(0, vector as u16 * 4 + 2), true);
@@ -511,9 +546,10 @@ impl Cpu {
             0x70..=0x7f => {
                 let displacement = self.byte(bus) as i8 as u16;
                 if self.condition(opcode & 15) {
+                    bus.discard_rom_fetch();
                     self.ip = self.ip.wrapping_add(displacement);
                     // Appendix A Note 5: taken odd destinations add a clock.
-                    // Actual opcode/displacement fetches are charged separately.
+                    // The bus accounts for fetches independently of execution.
                     // Independent vectors: docs/jcc-timing.md.
                     execution = 4 + u32::from(self.ip & 1);
                 }
@@ -637,6 +673,7 @@ impl Cpu {
                         if self.registers[1] != 0
                             && (!compare || (self.flags & ZF != 0) == (repeat == 0xf3))
                         {
+                            bus.discard_rom_fetch();
                             self.ip = start;
                         }
                     }
@@ -670,6 +707,7 @@ impl Cpu {
             }
             0xc2 | 0xc3 | 0xca | 0xcb => {
                 let adjust = if opcode & 1 == 0 { self.word(bus) } else { 0 };
+                bus.discard_rom_fetch();
                 self.ip = self.pop(bus);
                 if opcode & 8 != 0 {
                     self.segments[1] = self.pop(bus);
@@ -711,6 +749,7 @@ impl Cpu {
                         }
                 };
                 if take {
+                    bus.discard_rom_fetch();
                     self.ip = self.ip.wrapping_add(displacement);
                 }
                 // Appendix A: DBNZ is 5/2 decoded clocks; DBNZE/DBNZNE
@@ -774,6 +813,7 @@ impl Cpu {
                 if opcode == 0xe8 {
                     self.push(bus, self.ip);
                 }
+                bus.discard_rom_fetch();
                 self.ip = self.ip.wrapping_add(displacement);
                 // BR near uses four decoded clocks; CALL near uses five
                 // including its normal stack write, already charged by push.
@@ -784,11 +824,13 @@ impl Cpu {
             0xea => {
                 let offset = self.word(bus);
                 self.segments[1] = self.word(bus);
+                bus.discard_rom_fetch();
                 self.ip = offset;
                 execution = 7 + u32::from(self.ip & 1);
             }
             0xeb => {
                 let displacement = self.byte(bus) as i8 as u16;
+                bus.discard_rom_fetch();
                 self.ip = self.ip.wrapping_add(displacement);
                 // Appendix A, Table A-1 and Note 5; see docs/jmp-timing.md.
                 execution = 4 + u32::from(self.ip & 1);
@@ -823,6 +865,7 @@ impl Cpu {
                         if op == 2 {
                             self.push(bus, self.ip);
                         }
+                        bus.discard_rom_fetch();
                         self.ip = value;
                         // Decoded near CALL/JMP includes normal operand/stack
                         // transfers already charged above. Add their common
@@ -842,6 +885,7 @@ impl Cpu {
                         // the pointer may overlap the newly written stack frame.
                         let value = self.read(bus, dest, true);
                         let cs = self.read(bus, Operand::Memory(s, o.wrapping_add(2)), true);
+                        bus.discard_rom_fetch();
                         self.segments[1] = cs;
                         self.ip = value;
                         // Decoded far CALL/JMP costs 12/10, including four/two
@@ -1008,6 +1052,7 @@ impl Cpu {
                 let cs = self.word(bus);
                 self.push(bus, self.segments[1]);
                 self.push(bus, self.ip);
+                bus.discard_rom_fetch();
                 self.ip = ip;
                 self.segments[1] = cs;
                 // Ten decoded clocks include two aligned stack writes.
@@ -1094,6 +1139,7 @@ impl Cpu {
                 }
             }
             0xcf => {
+                bus.discard_rom_fetch();
                 self.ip = self.pop(bus);
                 self.segments[1] = self.pop(bus);
                 let previous_if = self.flags & IF;
@@ -2161,29 +2207,54 @@ mod compatibility_tests {
                     "data {segment:04x}:{offset:04x}/{control}"
                 );
             }
-            // Actual MOV AX,imm16: opcode fetch + aligned/unaligned operand word.
+            // A cold MOV AX,imm16 occupies two aligned ROM words in either parity.
             let cart = b.cartridge.as_mut().unwrap();
             cart.bytes[65536..65543].copy_from_slice(&[0x90, 0xb8, 0x34, 0x12, 0xb8, 0x78, 0x56]);
             c.segments[1] = 0x2000;
-            for (ip, value, operand_cost) in [
-                (
-                    1,
-                    0x1234,
-                    if control & 4 != 0 {
-                        byte_cost
-                    } else {
-                        2 * byte_cost
-                    },
-                ),
-                (4, 0x5678, 2 * byte_cost),
-            ] {
+            for (ip, value) in [(1, 0x1234), (4, 0x5678)] {
                 c.ip = ip;
-                assert_eq!(c.step(&mut b).unwrap(), 1 + byte_cost + operand_cost);
+                b.discard_rom_fetch();
+                assert_eq!(
+                    c.step(&mut b).unwrap(),
+                    1 + rom_fetch_clocks(ip, 3, control)
+                );
                 assert_eq!(c.registers[0], value);
             }
             b.cartridge.as_mut().unwrap().bytes[65536..65543].fill(0x31);
         }
     }
+    #[test]
+    fn wide_rom_fetch_survives_fallthrough_and_is_discarded_on_transfer() {
+        let mut b = Bus::new(Model::Color);
+        let mut cart =
+            crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 0, 0))
+                .unwrap();
+        // NOP; INC BX; JMP NEAR +0; INC CX. Both odd targets are adjacent.
+        cart.bytes[..6].copy_from_slice(&[0x90, 0x43, 0xe9, 0, 0, 0x41]);
+        cart.bytes[65537] = 0x42; // The next bank supplies INC DX instead.
+        b.insert_cartridge(cart);
+        b.output(0xa0, 12).unwrap();
+        b.output(0xc2, 0).unwrap();
+        let mut c = Cpu {
+            segments: [0, 0x2000, 0, 0],
+            ..Cpu::default()
+        };
+
+        assert_eq!(c.step(&mut b).unwrap(), 3);
+        assert_eq!(c.step(&mut b).unwrap(), 1);
+        assert_eq!(c.registers[3], 1);
+        c.step(&mut b).unwrap();
+        assert_eq!(c.ip, 5);
+        assert_eq!(c.step(&mut b).unwrap(), 3);
+        assert_eq!(c.registers[1], 1);
+
+        c.ip = 0;
+        c.step(&mut b).unwrap();
+        b.output(0xc2, 1).unwrap();
+        assert_eq!(c.step(&mut b).unwrap(), 3);
+        assert_eq!(c.registers[2], 1);
+    }
+
     #[test]
     fn cycle_accounting_depends_on_instruction_operand_bus_waits_and_halt() {
         let (mut c, mut b) = setup(&[0x90, 0xb8, 1, 0, 0xa1, 0, 8, 0xf7, 0xe0, 0xf4]);

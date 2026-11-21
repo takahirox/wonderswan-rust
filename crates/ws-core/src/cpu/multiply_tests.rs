@@ -476,22 +476,14 @@ fn multiplication_mapped_fetch_wait_prefix_and_addressing_accounting() {
                                         } else {
                                             0xf002
                                         };
-                                        let lane = if cs == 0 {
-                                            1
-                                        } else if cs == 0x1000 {
-                                            sram_byte
-                                        } else {
-                                            rom_byte
-                                        };
-                                        let mut fetch = code.len() as u32 * lane;
-                                        // 69's immediate is fetched as a word; all other bytes here are separate.
-                                        if opcode == 0x69 && imm_at % 2 == 0 {
-                                            if cs == 0 {
-                                                fetch -= 1;
-                                            } else if cs >= 0x2000 {
-                                                fetch -= 2 * rom_byte - rom_even_word;
+                                        let fetch = match cs {
+                                            0 => {
+                                                code.len() as u32
+                                                    - u32::from(opcode == 0x69 && imm_at % 2 == 0)
                                             }
-                                        }
+                                            0x1000 => code.len() as u32 * sram_byte,
+                                            _ => rom_fetch_clocks(c.ip, code.len(), a0),
+                                        };
                                         let operand = if opcode == 0xf6 {
                                             if selected == 0x1000 {
                                                 sram_byte
@@ -746,7 +738,7 @@ fn multiplication_fetch_offset_and_twenty_bit_wraps() {
         ] {
             let addresses = &addresses[..code.len()];
             mapped_code(&mut b, addresses, code);
-            for (a0, lane) in [(0, 1), (4, 1), (8, 2), (12, 2)] {
+            for a0 in [0, 4, 8, 12] {
                 b.output(0xa0, a0).unwrap();
                 c.segments[1] = cs;
                 c.ip = ip;
@@ -755,12 +747,7 @@ fn multiplication_fetch_offset_and_twenty_bit_wraps() {
                 c.registers[3] = 3;
                 c.flags = 0xf002;
                 let ram = b.ram.clone();
-                // All 69 immediates in these literal boundary cases start odd;
-                // neither cross-window nor offset-wrapped bytes consolidate.
-                let fetch = addresses
-                    .iter()
-                    .map(|a| if *a >= 0x20000 { lane } else { 1 })
-                    .sum::<u32>();
+                let fetch = mapped_fetch_clocks(addresses, a0);
                 assert_eq!(c.instruction_step(&mut b).unwrap(), fetch + 3);
                 assert_eq!(b.accesses.get(), fetch);
                 assert_eq!(
@@ -962,7 +949,7 @@ fn multiplication_register_forms_mapped_fetches_at_both_parities() {
             }
             for cs in [0u16, 0x1000, 0x2000] {
                 for start in [0x1000u16, 0x1001] {
-                    for (a0, lane, word) in [(0, 1, 2), (4, 1, 1), (8, 2, 4), (12, 2, 2)] {
+                    for a0 in [0, 4, 8, 12] {
                         b.output(0xa0, a0).unwrap();
                         for code in [
                             &[0xf6, 0xe3][..],
@@ -988,25 +975,16 @@ fn multiplication_register_forms_mapped_fetches_at_both_parities() {
                             c.registers[2] = 0xabcd;
                             c.registers[3] = 2;
                             c.flags = 0xf002;
-                            let byte = if cs == 0 {
-                                1
-                            } else if cs == 0x1000 {
-                                if model != Model::Mono && wait != 0 {
-                                    2
-                                } else {
-                                    1
+                            let fetch = match cs {
+                                0 => {
+                                    code.len() as u32 - u32::from(code[0] == 0x69 && start & 1 == 0)
                                 }
-                            } else {
-                                lane
+                                0x1000 => {
+                                    code.len() as u32
+                                        * (1 + u32::from(model != Model::Mono && wait != 0))
+                                }
+                                _ => rom_fetch_clocks(start, code.len(), a0),
                             };
-                            let mut fetch = code.len() as u32 * byte;
-                            if code[0] == 0x69 && start & 1 == 0 {
-                                if cs == 0 {
-                                    fetch -= 1;
-                                } else if cs >= 0x2000 {
-                                    fetch -= 2 * byte - word;
-                                }
-                            }
                             let ram = b.ram.clone();
                             let save = b.cartridge.as_ref().unwrap().save.clone();
                             assert_eq!(c.instruction_step(&mut b).unwrap(), fetch + 3);

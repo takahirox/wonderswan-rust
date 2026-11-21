@@ -19,14 +19,12 @@ retained explicit-fetch scheduling policy, not complete silicon pipeline timing.
 | Cartridge word (always byte wide), 60.3 clear / set | 2 / 4 | 8 / 10 | 9 / 11 |
 | BF/C0 word crossing, 60.3 clear / set | 2 / 3 | 8 / 9 | 9 / 10 |
 
-For ROM instruction fetches use the actual F rather than the RAM column:
-`total = F + 6 + (T - 1) = F + T + 5`. Every opcode, immediate and prefix
-byte is fetched separately, so A0.2 does not combine an opcode with its port
-operand. Each ROM fetch costs 1 + A0.3, regardless of A0.2. Prefixes retain their
-existing fetch charge. SRAM waits at 60.1 remain in the existing memory/DMA paths;
-ordinary I/O has no memory operand. Each additional I/O lane and applicable wait
-is charged once. Failed lanes keep existing errors and preceding side effects.
-Raw bus accounting, eligibility/masks, INS/OUTS and DMA costs are unchanged.
+For ROM instructions, use `F + T + 5`. Here `F` is the cost of the instruction
+fetches and `T` is the I/O transfer charge. Each cartridge fetch costs 1 + A0.3.
+With A0.2 clear, an immediate-port instruction needs two byte fetches. With
+A0.2 set, an aligned opcode and port operand share one word fetch. A preceding
+sequential instruction can also supply the high byte of an aligned fetch.
+[Raster timing validation](lcd-timing.md#sequential-rom-fetch-timing-issue-119)
 
 ## Specification reconciliation
 

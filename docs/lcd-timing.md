@@ -120,3 +120,58 @@ Sub-line fetch/write phases, analog panel response, contrast, icons and OAM-copy
 accuracy remain outside this focused pipeline. Commercial-title impact is
 unmeasured. The implementation uses one bounded row of identities, shared by
 native and Wasm execution; browser ROM/save ownership and persistence are unchanged.
+
+## Sequential ROM fetch timing (Issue #119)
+
+The V30MZ fetch, decode and execution stages can overlap. Section 3.3 describes
+16 bytes of instruction prefetch capacity. The core now accounts for both bytes
+of an aligned 16-bit ROM instruction fetch in one transfer, including the case
+where the second byte starts the next sequential instruction. Each transfer
+uses the live A0.2 width and A0.3 wait setting. Control transfers, interrupt
+entry and ROM mapping writes discard the pending lane. This is a one-word
+timing model. Byte values always come from the live map. [V30MZ manual](https://www.renesas.com/en/document/lbr/v30mztm-hardware-preliminary)
+
+In Final Fantasy II, the last HBlank handler before raster wrap reloads its
+one-shot timer and then acknowledges the interrupt. Before the change, one
+captured handler reloaded at line 158 clock 246 and acknowledged at line 0
+clock 27. The new edge had already arrived when the acknowledgement cleared
+it. This dropped a frame of scroll writes during a dialogue-window animation.
+An original scheduler test reproduces the race using two ROM bus widths. The
+byte-wide handler executes once before losing the next edge, while the word-wide
+handler services all 158 line entries before frame wrap.
+
+The local 6,000-frame replays compare the project with Beetle `4b012958` and
+Oswan `efea1326`. Starts and buttons are applied at fixed emulated frame numbers.
+Colors are normalized to RGB444. The detector flags an isolated frame when at
+least 322 pixels change on each side and the two neighboring frames differ over
+at most 10% of the smaller change, with an eight-pixel minimum tolerance.
+
+| Replay measurement | Before | After | Beetle | Oswan |
+| --- | ---: | ---: | ---: | ---: |
+| Final Fantasy II isolated changes | 15 | 0 | 0 | 0 |
+| Wild Card isolated changes | 16 | 2 | 1 | 1 |
+| Wild Card frames per step in the opening transition | 8 | 6 | 2 | 2 |
+
+The Final Fantasy II runs reach the opening dialogue and battle. The seven
+large dialogue flashes had matching static neighboring frames across the
+project and both references. All seven flash images were absent from the new
+run. Wild Card's transition uses the same sequence of images in each core with
+the hold duration shown above. The comparison covers generated frames before
+browser presentation. A trial that reused the second lane only at instruction
+boundaries left later battle-transition flashes. The retained timing change
+also groups the instruction's own bytes. Physical-console timing is unmeasured.
+
+The Final Fantasy II replay taps Start on frames 380 and 800 and A on frames
+520 and 675. It then taps A every 90 frames from 2100 through 5430, followed
+by Right, Down, Left, Up twice from frame 5500 in 48-frame intervals. Taps last
+four emulated frames and directions last 24. Moving the recurring A taps by
+−4, +4 and +17 frames produced 14, 16 and 14 isolated changes before the fix
+and zero in each revised run. Wild Card taps A on frame 520 and every 130
+frames from 970 through 5780.
+
+Five interleaved 6,000-frame native throughput runs put the keypad fixture at
+175.932 µs per frame, about 5.6% above the prior core's 166.542 µs and within
+9.1% of Oswan's 161.259 µs. Beetle took 179.411 µs. The color/audio fixture
+measured 7.717 → 7.632 µs and the Hyper Voice fixture 8.996 → 9.133 µs. The
+project's final frame, RAM and PCM hashes matched before and after on the timed
+fixtures. The frame and PCM counts matched as well.

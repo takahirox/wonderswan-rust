@@ -152,7 +152,7 @@ fn literal_internal_rom_prefixes_a0_waits_and_ss_stack() {
                 continue;
             }
             for cs in [0, 0x2000] {
-                for (control, lane, aligned) in [(0, 1, 2), (4, 1, 1), (8, 2, 4), (12, 2, 2)] {
+                for control in [0, 4, 8, 12] {
                     for start in [0x1000u16, 0x1001] {
                         for count in 0..=7 {
                             for far in [false, true] {
@@ -191,16 +191,14 @@ fn literal_internal_rom_prefixes_a0_waits_and_ss_stack() {
                                         let mut ram = b.ram.clone();
                                         let ports = b.ports;
                                         regs[4] = frame(&mut ram, 0x20, sp, cs, next, far);
-                                        let byte = if cs == 0 { 1 } else { lane };
-                                        let word = if (usize::from(start) + count) % 2 == 0 {
-                                            2 * byte
-                                        } else if cs == 0 {
-                                            1
+                                        let fetch = if cs == 0 {
+                                            let aligned = (usize::from(start) + count) % 2 == 1;
+                                            (count as u32 + 1)
+                                                + (if aligned { 1 } else { 2 })
+                                                    * if far { 2 } else { 1 }
                                         } else {
-                                            aligned
+                                            rom_fetch_clocks(start, code.len(), control)
                                         };
-                                        let fetch = (count as u32 + 1) * byte
-                                            + word * if far { 2 } else { 1 };
                                         let writes = stack * if far { 2 } else { 1 };
                                         assert_eq!(c.instruction_step(&mut b).unwrap(),fetch+writes+if far {8} else {4}+u32::from(target&1),"{model:?}/{mode:x}/{cs:x}/{control:x}/{start:x}/{count}/{far}/{sp:x}");
                                         assert_eq!(b.accesses.get(), fetch + writes);
@@ -251,17 +249,15 @@ fn literal_call_ip_bank_and_twenty_bit_fetch_wraps() {
             if model == Model::Mono && mode != 0 {
                 continue;
             }
-            for (control, lane, aligned) in [(0, 1, 2), (4, 1, 1), (8, 2, 4), (12, 2, 2)] {
+            for control in [0, 4, 8, 12] {
                 // Explicit physical byte addresses and post-immediate IPs.
-                for (cs, ip, addresses, near_next, far_next, near_words, far_words) in [
+                for (cs, ip, addresses, near_next, far_next) in [
                     (
                         0x2000,
                         0xffff,
                         [0x2ffff, 0x20000, 0x20001, 0x20002, 0x20003],
                         2,
                         4,
-                        aligned,
-                        2 * aligned,
                     ),
                     (
                         0x2800,
@@ -269,8 +265,6 @@ fn literal_call_ip_bank_and_twenty_bit_fetch_wraps() {
                         [0x2ffff, 0x30000, 0x30001, 0x30002, 0x30003],
                         0x8002,
                         0x8004,
-                        aligned,
-                        2 * aligned,
                     ),
                     (
                         0x2800,
@@ -278,8 +272,6 @@ fn literal_call_ip_bank_and_twenty_bit_fetch_wraps() {
                         [0x2fffe, 0x2ffff, 0x30000, 0x30001, 0x30002],
                         0x8001,
                         0x8003,
-                        2 * lane,
-                        4 * lane,
                     ),
                     (
                         0x2000,
@@ -287,19 +279,9 @@ fn literal_call_ip_bank_and_twenty_bit_fetch_wraps() {
                         [0x2fffe, 0x2ffff, 0x20000, 0x20001, 0x20002],
                         1,
                         3,
-                        2 * lane,
-                        4 * lane,
                     ),
-                    (0xffff, 0xf, [0xfffff, 0, 1, 2, 3], 0x12, 0x14, 1, 2),
-                    (
-                        0xffff,
-                        0xe,
-                        [0xffffe, 0xfffff, 0, 1, 2],
-                        0x11,
-                        0x13,
-                        lane + 1,
-                        lane + 3,
-                    ),
+                    (0xffff, 0xf, [0xfffff, 0, 1, 2, 3], 0x12, 0x14),
+                    (0xffff, 0xe, [0xffffe, 0xfffff, 0, 1, 2], 0x11, 0x13),
                 ] {
                     for far in [false, true] {
                         for operand in [0u16, 2, 0x7fff, 0x8000, 0xfffd, 0xfffe, 0xffff] {
@@ -330,7 +312,17 @@ fn literal_call_ip_bank_and_twenty_bit_fetch_wraps() {
                             let mut ram = b.ram.clone();
                             let ports = b.ports;
                             regs[4] = frame(&mut ram, 0x20, 0x2800, cs, next, far);
-                            let fetch = lane + if far { far_words } else { near_words };
+                            let aligned_ram_words = if cs == 0xffff && ip == 0xf {
+                                if far {
+                                    2
+                                } else {
+                                    1
+                                }
+                            } else {
+                                0
+                            };
+                            let fetch = mapped_fetch_clocks(&addresses[..code.len()], control)
+                                - aligned_ram_words;
                             let writes = if far { 2 } else { 1 };
                             assert_eq!(
                                 c.instruction_step(&mut b).unwrap(),

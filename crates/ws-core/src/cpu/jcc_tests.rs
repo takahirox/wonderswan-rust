@@ -148,7 +148,7 @@ fn literal_mapped_bank_ip_and_twenty_bit_wrap_fetches() {
             if model != Model::Mono {
                 b.output(0x60, mode | 0x0a).unwrap();
             }
-            for (control, fetch, split_fetch) in [(0, 2, 2), (4, 2, 2), (8, 4, 3), (12, 4, 3)] {
+            for control in [0, 4, 8, 12] {
                 for (cs, ip, addresses, next, targets) in [
                     (
                         0x2000,
@@ -213,11 +213,7 @@ fn literal_mapped_bank_ip_and_twenty_bit_wrap_fetches() {
                                 let flags = c.flags;
                                 let ram = b.ram.clone();
                                 let ports = b.ports;
-                                let fetch = if addresses[1] == 0 {
-                                    split_fetch
-                                } else {
-                                    fetch
-                                };
+                                let fetch = mapped_fetch_clocks(&addresses, control);
                                 let execution = if !take {
                                     1
                                 } else if target & 1 == 0 {
@@ -259,7 +255,7 @@ fn literal_internal_and_rom_prefix_fetches_and_rep_rejection() {
                 b.output(0x60, mode).unwrap();
             }
             for cs in [0, 0x2000] {
-                for (control, lane) in [(0, 1), (4, 1), (8, 2), (12, 2)] {
+                for control in [0, 4, 8, 12] {
                     for start in [0x1000u16, 0x1001] {
                         for count in 0..=7 {
                             for opcode in (0x70..=0x7f).chain([0xe3]) {
@@ -289,8 +285,11 @@ fn literal_internal_and_rom_prefix_fetches_and_rep_rejection() {
                                         let flags = c.flags;
                                         let ram = b.ram.clone();
                                         let ports = b.ports;
-                                        let fetch =
-                                            (count as u32 + 2) * if cs == 0 { 1 } else { lane };
+                                        let fetch = if cs == 0 {
+                                            code.len() as u32
+                                        } else {
+                                            rom_fetch_clocks(start, code.len(), control)
+                                        };
                                         let execution = if !take {
                                             1
                                         } else if target & 1 == 0 {

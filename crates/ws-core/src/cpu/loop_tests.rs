@@ -85,7 +85,7 @@ fn literal_loop_mapped_fetch_waits_bank_and_ip_wraps() {
             if model != Model::Mono {
                 b.output(0x60, mode | 0x0a).unwrap();
             }
-            for (control, fetch) in [(0, 2), (4, 2), (8, 4), (12, 4)] {
+            for control in [0, 4, 8, 12] {
                 for (opcode, flags, even, odd, fall) in [
                     (0xe2, 0xf002, 5, 6, 2),
                     (0xe1, 0xf042, 6, 7, 3),
@@ -140,15 +140,8 @@ fn literal_loop_mapped_fetch_waits_bank_and_ip_wraps() {
                                 registers[1] = cx - 1;
                                 let ram = b.ram.clone();
                                 let ports = b.ports;
-                                let fetch = if addresses[1] == 0 {
-                                    if control & 8 != 0 {
-                                        3
-                                    } else {
-                                        2
-                                    }
-                                } else {
-                                    fetch
-                                };
+                                let fetch =
+                                    mapped_fetch_clocks(&addresses.map(|a| a as u32), control);
                                 let execution = if cx == 1 {
                                     fall
                                 } else if target & 1 == 0 {
