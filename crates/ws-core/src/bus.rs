@@ -18,6 +18,8 @@ pub(crate) struct Bus {
     pub model: Model,
     pub audio: Audio,
     pub sprites: [u8; 512],
+    pub sprite_first: u8,
+    pub sprite_count: u8,
     pub accesses: std::cell::Cell<u32>,
     rom_fetch_high: std::cell::Cell<u32>,
     eeprom: Eeprom,
@@ -66,6 +68,8 @@ impl Bus {
             model,
             audio: Audio::default(),
             sprites: [0; 512],
+            sprite_first: 0,
+            sprite_count: 0,
             accesses: std::cell::Cell::new(0),
             rom_fetch_high: std::cell::Cell::new(0),
             eeprom: Eeprom::default(),
@@ -495,13 +499,21 @@ impl Bus {
             if line == 144 {
                 self.request(6);
                 self.timer_tick(1);
-                let base =
-                    ((self.ports[4] & if self.color_mode() { 63 } else { 31 }) as usize) << 9;
-                if self.sprites != self.ram[base..base + 512] {
-                    self.sprites.copy_from_slice(&self.ram[base..base + 512]);
-                    self.video_generation = self.video_generation.wrapping_add(1);
-                }
+                self.latch_sprites();
             }
+        }
+    }
+    #[cold]
+    fn latch_sprites(&mut self) {
+        let base = ((self.ports[4] & if self.color_mode() { 63 } else { 31 }) as usize) << 9;
+        let entries = &self.ram[base..base + 512];
+        let first = self.ports[5] & 127;
+        let count = self.ports[6].min(128);
+        if self.sprites != entries || self.sprite_first != first || self.sprite_count != count {
+            self.sprites.copy_from_slice(entries);
+            self.sprite_first = first;
+            self.sprite_count = count;
+            self.video_generation = self.video_generation.wrapping_add(1);
         }
     }
     fn timer_tick(&mut self, index: usize) {
@@ -616,7 +628,7 @@ impl Bus {
         if matches!(port, 0xa0 | 0xc0 | 0xc2..=0xc3 | 0xcf | 0xd2..=0xd5) {
             self.discard_rom_fetch();
         }
-        if matches!(port, 0..=1 | 5..=0x13 | 0x20..=0x3f | 0x60)
+        if matches!(port, 0..=1 | 7..=0x13 | 0x20..=0x3f | 0x60)
             && self.ports[port as usize] != value
         {
             self.video_generation = self.video_generation.wrapping_add(1);

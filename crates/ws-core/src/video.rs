@@ -100,8 +100,8 @@ fn screen(bus: &Bus, layer: usize, x: usize, y: usize) -> Option<Pixel> {
 /// Compose identities, without final shade/RGB12 lookup. See docs/lcd-timing.md.
 fn compose_line_reference(bus: &Bus, y: usize) -> [Pixel; FRAME_WIDTH] {
     let mut row = [Pixel::Shade(0); FRAME_WIDTH];
-    let count = (bus.ports[6] as usize).min(128);
-    let first = bus.ports[5] as usize & 127;
+    let count = usize::from(bus.sprite_count);
+    let first = usize::from(bus.sprite_first);
     let sprites: Vec<usize> = if bus.ports[0] & 4 != 0 {
         (0..count)
             .map(|i| (first + i) & 127)
@@ -241,8 +241,8 @@ fn compose_line(bus: &Bus, y: usize) -> [Pixel; FRAME_WIDTH] {
     let front = screen_line(bus, 1, y);
     let mut sprites = [None; FRAME_WIDTH];
     if bus.ports[0] & 4 != 0 {
-        let count = (bus.ports[6] as usize).min(128);
-        let first = bus.ports[5] as usize & 127;
+        let count = usize::from(bus.sprite_count);
+        let first = usize::from(bus.sprite_first);
         let mut selected = 0;
         for n in 0..count {
             let base = ((first + n) & 127) * 4;
@@ -339,8 +339,8 @@ mod row_tests {
             }
             bus.ports[0x60] = [0, 0x80, 0xc0, 0xe0][scene / 3 % 4];
             bus.ports[0] = [0, 1, 2, 3, 7, 15, 0x27, 0x37][scene % 8];
-            bus.ports[5] = next();
-            bus.ports[6] = [0, 1, 32, 33, 128, 255][scene % 6];
+            bus.sprite_first = next() & 127;
+            bus.sprite_count = [0, 1, 31, 32, 33, 128][scene % 6];
             bus.ports[0x10] = [0, 1, 7, 255][scene % 4];
             for y in [0, 7, 128, 143] {
                 for sprite in bus.sprites.chunks_exact_mut(4) {
@@ -591,7 +591,7 @@ mod color_tests {
     fn sprites_obey_priority_list_order_windows_flips_wrap_and_32_sprite_limit() {
         let mut b = setup(0xc0);
         b.ports[0] = 7;
-        b.ports[6] = 2;
+        b.sprite_count = 2;
         tile(&mut b, 0, 1);
         tile(&mut b, 1, 2);
         tile(&mut b, 2, 3);
@@ -616,16 +616,16 @@ mod color_tests {
         assert_eq!(pixel(&b, 0, 0), [0, 0, 255, 255]);
         assert_eq!(pixel(&b, 2, 2), [255, 255, 0, 255]);
         b.ports[0] = 5;
-        b.ports[6] = 33;
+        b.sprite_count = 33;
         for i in 0..32 {
             sprite(&mut b, i, 2 | (4 << 9) | 0x2000, 240, 0);
         }
         sprite(&mut b, 32, 2 | (4 << 9) | 0x2000, 0, 0);
         assert_eq!(pixel(&b, 0, 0), [0, 255, 0, 255]);
-        b.ports[5] = 1;
+        b.sprite_first = 1;
         assert_eq!(pixel(&b, 0, 0), [0, 0, 255, 255]);
-        b.ports[5] = 0;
-        b.ports[6] = 1;
+        b.sprite_first = 0;
+        b.sprite_count = 1;
         sprite(&mut b, 0, 2 | (4 << 9) | 0x2000, 255, 255);
         assert_eq!(pixel(&b, 0, 0), [0, 0, 255, 255]);
         // A single planar pixel makes both sprite flips observable.
@@ -635,6 +635,39 @@ mod color_tests {
         sprite(&mut b, 0, 2 | (4 << 9) | 0xe000, 0, 0);
         assert_eq!(pixel(&b, 7, 7), [0, 0, 255, 255]);
         assert_eq!(pixel(&b, 0, 0), [0, 255, 0, 255]);
+    }
+    #[test]
+    fn sprite_range_controls_take_effect_with_the_next_table_snapshot() {
+        let mut b = setup(0xc0);
+        b.output(0, 4).unwrap();
+        b.output(4, 12).unwrap();
+        tile(&mut b, 0, 1);
+        palette(&mut b, 8, 1, 0x00f);
+        b.ram[0x1800..0x1808].copy_from_slice(&[0, 0, 24, 16, 0, 0, 24, 32]);
+
+        b.tick(256 * (159 + 24)); // The previous snapshot contained zero sprites.
+        let generation = b.video_generation;
+        b.output(6, 1).unwrap();
+        assert_eq!(b.input(6).unwrap(), 1);
+        assert_eq!(pixel(&b, 16, 24), [0, 0, 0, 255]);
+        assert_eq!(b.video_generation, generation);
+
+        b.tick(256 * (144 - 24));
+        assert_ne!(b.video_generation, generation); // Only the range changed.
+        assert_eq!(pixel(&b, 16, 24), [0, 0, 255, 255]);
+        assert_eq!(pixel(&b, 32, 24), [0, 0, 0, 255]);
+
+        b.output(5, 0x81).unwrap(); // Write immediately after the latch.
+        assert_eq!(b.input(5).unwrap(), 0x81);
+        assert_eq!(pixel(&b, 16, 24), [0, 0, 255, 255]);
+        b.tick(256 * 159);
+        assert_eq!(pixel(&b, 16, 24), [0, 0, 0, 255]);
+        assert_eq!(pixel(&b, 32, 24), [0, 0, 255, 255]);
+
+        b.output(6, 0xff).unwrap();
+        assert_eq!(b.input(6).unwrap(), 0xff);
+        b.tick(256 * 159);
+        assert_eq!(b.sprite_count, 128);
     }
     #[test]
     fn sprite_table_is_latched_at_vblank_and_mono_rejects_color_modes() {

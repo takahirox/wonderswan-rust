@@ -52,6 +52,7 @@ fn scene(model: Model, mode: u8) -> Machine {
         entry(&mut m, 0x1000 + n * 2, 1 | (4 << 9));
     }
     out(&mut m, 6, 3);
+    m.bus.sprite_count = 3;
     for (n, p, x, priority) in [(0, 4, 8, 0), (1, 5, 8, 0x2000), (2, 6, 16, 0x2000)] {
         let attr: u16 = 2 | (p << 9) | priority;
         m.bus.sprites[n * 4..n * 4 + 2].copy_from_slice(&attr.to_le_bytes());
