@@ -77,6 +77,7 @@ fn cached_rows_follow_cpu_dma_sprite_palette_and_mode_changes() {
             (0, 7),
         ] {
             b.output(p, v).unwrap();
+            b.tick(256);
             paint(&b, &mut cached, &mut reference, &mut actual, &mut expected);
         }
         if model != Model::Mono {

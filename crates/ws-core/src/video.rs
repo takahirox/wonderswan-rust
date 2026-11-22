@@ -192,13 +192,13 @@ fn tile_row(bus: &Bus, entry: u16, y: usize, sprite: bool) -> [Option<Pixel>; 8]
     row
 }
 
-fn screen_line(bus: &Bus, layer: usize, y: usize) -> [Option<Pixel>; FRAME_WIDTH] {
+fn screen_line(bus: &Bus, layer: usize, y: usize, scroll_x: u8) -> [Option<Pixel>; FRAME_WIDTH] {
     let mut row = [None; FRAME_WIDTH];
     if bus.ports[0] & (1 << layer) == 0 {
         return row;
     }
     let sy = (y + bus.ports[0x11 + layer * 2] as usize) & 255;
-    let scroll = bus.ports[0x10 + layer * 2] as usize;
+    let scroll = usize::from(scroll_x);
     let base =
         ((bus.ports[7] >> (layer * 4)) & if bus.color_mode() { 15 } else { 7 }) as usize * 0x800;
     let mut x = 0;
@@ -230,15 +230,15 @@ fn screen_line(bus: &Bus, layer: usize, y: usize) -> [Option<Pixel>; FRAME_WIDTH
 }
 
 /// Compose identities, without final shade/RGB12 lookup. See docs/lcd-timing.md.
-fn compose_line(bus: &Bus, y: usize) -> [Pixel; FRAME_WIDTH] {
+fn compose_line(bus: &Bus, y: usize, screen1_scroll_x: u8) -> [Pixel; FRAME_WIDTH] {
     let background = if bus.color_mode() {
         Pixel::Color(bus.ports[1])
     } else {
         Pixel::Shade(bus.ports[1] & 7)
     };
     let mut row = [background; FRAME_WIDTH];
-    let back = screen_line(bus, 0, y);
-    let front = screen_line(bus, 1, y);
+    let back = screen_line(bus, 0, y, screen1_scroll_x);
+    let front = screen_line(bus, 1, y, bus.ports[0x12]);
     let mut sprites = [None; FRAME_WIDTH];
     if bus.ports[0] & 4 != 0 {
         let count = usize::from(bus.sprite_count);
@@ -349,7 +349,7 @@ mod row_tests {
                     sprite[2] = (y as u8).wrapping_sub(next() % 12);
                     sprite[3] = [0, 7, 220, 248, 255, next()][scene % 6];
                 }
-                let row = compose_line(&bus, y);
+                let row = compose_line(&bus, y, bus.ports[0x10]);
                 assert_eq!(row, compose_line_reference(&bus, y), "scene {scene}, y {y}");
                 let mut pixels = vec![0; crate::FRAME_BYTES];
                 // Palette changes belong to translation, including mixed
@@ -403,7 +403,7 @@ impl Pipeline {
         if line < FRAME_HEIGHT {
             let key = (bus.video_generation, bus.video_row_generations[line]);
             if self.generations[line] != key {
-                self.rows[line] = compose_line(bus, line);
+                self.rows[line] = compose_line(bus, line, bus.screen1_scroll_x);
                 self.generations[line] = key;
             }
             self.pending = Some((line, self.rows[line], self.generations[line]));
@@ -422,7 +422,7 @@ impl Pipeline {
 // Static rendering helpers for composition tests only; machines use Pipeline.
 #[cfg(test)]
 fn render_line(bus: &Bus, pixels: &mut [u8], y: usize) {
-    translate_line(bus, pixels, y, compose_line(bus, y));
+    translate_line(bus, pixels, y, compose_line(bus, y, bus.ports[0x10]));
 }
 #[cfg(test)]
 fn render(bus: &Bus, pixels: &mut [u8]) {
