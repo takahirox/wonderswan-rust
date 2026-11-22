@@ -455,3 +455,39 @@ mod extended_startup_tests {
         assert!(m.cpu().halted);
     }
 }
+
+#[cfg(test)]
+mod peripheral_startup_tests {
+    use super::*;
+
+    #[test]
+    fn cartridge_initializes_nmi_control_and_reads_idle_serial_status() {
+        let mut rom = cartridge::tests::rom(131072, 0, 0);
+        let program = [
+            0x31, 0xc0, // XOR AX, AX.
+            0x8e, 0xd8, // MOV DS, AX.
+            0xe6, 0xb7, // Clear low-battery NMI control.
+            0xe4, 0xb3, // Read serial status before enabling the UART.
+            0xa2, 0x00, 0x04, // Store AL at 0400.
+            0xb0, 0xa4, // Enable the UART at 9600 baud and clear overrun.
+            0xe6, 0xb3, 0xe4, 0xb3, // Read enabled, idle UART status.
+            0xa2, 0x01, 0x04, 0xf4, // HLT.
+        ];
+        rom[65536..65536 + program.len()].copy_from_slice(&program);
+        cartridge::tests::checksum(&mut rom);
+
+        let mut m = Machine::new(Model::Color);
+        m.load_rom(&rom).unwrap();
+        m.bus.output(0xb7, 0xff).unwrap();
+        assert_eq!(m.bus.input(0xb7).unwrap(), 0x10);
+        m.run_frame().unwrap();
+        assert!(m.cpu().halted);
+        assert_eq!(&m.bus.ram[0x400..0x402], &[0, 0x84]);
+        assert_eq!(m.bus.input(0xb7).unwrap(), 0);
+
+        m.bus.output(0xb3, 0xff).unwrap();
+        assert_eq!(m.bus.input(0xb3).unwrap(), 0xc4);
+        m.bus.output(0xb3, 0x40).unwrap();
+        assert_eq!(m.bus.input(0xb3).unwrap(), 0x40);
+    }
+}

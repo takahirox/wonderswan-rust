@@ -547,6 +547,12 @@ impl Bus {
             0x43 | 0x4d | 0x51 if self.model != Model::Mono => Ok(0),
             2 => Ok(self.raster_line),
             0xb0 => Ok(self.interrupt().unwrap_or(self.ports[0xb0] & 0xf8)),
+            0xb3 => {
+                let control = self.ports[0xb3];
+                // An enabled, idle UART has an empty transmit buffer.
+                let transmit_ready = if control & 0x80 != 0 { 4 } else { 0 };
+                Ok(control | transmit_ready)
+            }
             0xb5 => {
                 let select = self.ports[0xb5] & 0x70;
                 let mut rows = 0;
@@ -616,6 +622,7 @@ impl Bus {
             | 0xa4..=0xa7
             | 0xb2
             | 0xb4
+            | 0xb7
             | 0xc0..=0xc3 => Ok(self.ports[port as usize]),
             0x60 if self.model != Model::Mono => Ok(self.ports[0x60]),
             _ => Err(Error::new(format!("Unsupported input port {port:#06x}."))),
@@ -703,8 +710,17 @@ impl Bus {
                 self.ports[0xb0] = value & 0xf8;
                 return Ok(());
             }
+            0xb3 => {
+                // Overrun clear is write-only. An idle UART never receives data.
+                self.ports[0xb3] = value & 0xc0;
+                return Ok(());
+            }
             0xb6 => {
                 self.ports[0xb4] &= !value;
+                return Ok(());
+            }
+            0xb7 => {
+                self.ports[0xb7] = value & 0x10;
                 return Ok(());
             }
             0xa4..=0xa7 => {
