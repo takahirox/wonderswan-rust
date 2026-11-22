@@ -88,7 +88,8 @@ following are explicit, deterministic compatibility policies, not silicon claims
 
 | State | Sampling policy |
 | --- | --- |
-| Tile/map data, scroll, windows, layer enables, latched OAM, sprite selection/priority and transparency | Compose at line L end using current state; retain the winning identity for every pixel of row L. Later writes never refetch or recomposite that row. |
+| Screen 1 horizontal scroll (10) | Readback reflects writes immediately. Composition uses the offset sampled at entry to row L. |
+| Tile/map data, other scroll registers, windows, layer enables, latched OAM, sprite selection/priority and transparency | Compose at line L end using current state. Retain the winning identity for every pixel of row L. Later writes never refetch or recomposite that row. |
 | Mono palette ports 20–3F | Resolve tile index to a shade identity at composition; retain that shade (all three physical models in mono mode). |
 | Mono shade LUT 1C–1F | Translate the retained shade with current LUT at line L+1 end. |
 | Color palette RAM FE00–FFFF | Retain palette/index at composition; read RGB12 at line L+1 end for supported 2bpp planar and 4bpp planar/packed modes on Color/Crystal. |

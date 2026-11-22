@@ -36,6 +36,7 @@ pub(crate) struct Bus {
     sdma: SoundDma,
     sound_stall: u32,
     pending_cycles: u32,
+    pub screen1_scroll_x: u8,
     pub video_generation: u64,
     pub palette_generation: u64,
     pub video_row_generations: [u64; crate::FRAME_HEIGHT],
@@ -86,6 +87,7 @@ impl Bus {
             sdma: SoundDma::default(),
             sound_stall: 0,
             pending_cycles: 0,
+            screen1_scroll_x: ports[0x10],
             video_generation: 1,
             palette_generation: 1,
             video_row_generations: [1; crate::FRAME_HEIGHT],
@@ -492,6 +494,12 @@ impl Bus {
                 self.raster_line += 1;
             }
             let line = self.raster_line;
+            // Screen 1 uses the horizontal scroll sampled on entry to the row.
+            let scroll_x = self.ports[0x10];
+            if scroll_x != self.screen1_scroll_x {
+                self.screen1_scroll_x = scroll_x;
+                self.video_generation = self.video_generation.wrapping_add(1);
+            }
             self.timer_tick(0);
             if line == self.ports[3] {
                 self.request(4);
@@ -635,7 +643,7 @@ impl Bus {
         if matches!(port, 0xa0 | 0xc0 | 0xc2..=0xc3 | 0xcf | 0xd2..=0xd5) {
             self.discard_rom_fetch();
         }
-        if matches!(port, 0..=1 | 7..=0x13 | 0x20..=0x3f | 0x60)
+        if matches!(port, 0..=1 | 7..=0x0f | 0x11..=0x13 | 0x20..=0x3f | 0x60)
             && self.ports[port as usize] != value
         {
             self.video_generation = self.video_generation.wrapping_add(1);

@@ -88,6 +88,25 @@ fn final_palettes(m: &mut Machine, mode: u8) {
 }
 
 #[test]
+fn screen1_scroll_write_reads_back_now_and_applies_to_the_next_row() {
+    let mut m = scene(Model::Color, 0x80);
+    out(&mut m, 0, 1);
+    final_palettes(&mut m, 0x80);
+
+    m.advance(256 + 90);
+    out(&mut m, 0x10, 32);
+    assert_eq!(m.bus.input(0x10).unwrap(), 32);
+    m.advance(256 - 90);
+    assert_eq!(pixel(&m, 0, 0), [255, 0, 0, 255]);
+
+    palette(&mut m, 0, 1, 0x0f0);
+    m.advance(256);
+    assert_eq!(pixel(&m, 0, 1), [0, 255, 0, 255]);
+    m.advance(256);
+    assert_eq!(pixel(&m, 0, 2), [102, 85, 68, 255]);
+}
+
+#[test]
 fn delayed_identities_preserve_layers_transparency_sprites_backdrop_and_palette_stage() {
     for model in MODELS {
         for mode in if model == Model::Mono {
