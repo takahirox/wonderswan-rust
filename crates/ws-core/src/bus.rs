@@ -194,6 +194,12 @@ impl Bus {
         let consolidate = self.word_port(port, true);
         let [lo, hi] = value.to_le_bytes();
         self.output(port, lo)?;
+        if port == 0x48 && self.model != Model::Mono {
+            // GDMA decodes only the control byte of a word OUT. Account for
+            // the unused high lane with the existing split-port timing.
+            self.accesses.set(self.accesses.get() + 1);
+            return Ok(());
+        }
         self.output(port.wrapping_add(1), hi)?;
         if consolidate {
             self.accesses.set(self.accesses.get() - 1);
