@@ -199,6 +199,34 @@ fn cpu_word_io_masks_source_segment_and_continues_through_real_transfer() {
 }
 
 #[test]
+fn cpu_word_out_to_gdma_control_ignores_unused_high_lane() {
+    for model in [Model::Color, Model::Crystal] {
+        for control in [0x0080, 0xa580] {
+            let mut b = Bus::new(model);
+            b.output(0x60, 0x80).unwrap();
+            b.ram[0x100..0x104].copy_from_slice(&[0x12, 0x34, 0x56, 0x78]);
+            program(&mut b, 0x100, 0x200, 4, 0);
+            b.ram[0x300..0x302].copy_from_slice(&[0xef, 0x43]); // OUT DX, AX; INC BX.
+            let mut cpu = Cpu::default();
+            cpu.segments[1] = 0;
+            cpu.ip = 0x300;
+            cpu.registers[0] = control;
+            cpu.registers[2] = 0x48;
+
+            assert_eq!(cpu.step(&mut b).unwrap(), 8);
+            assert_eq!(state(&mut b), (0x100, 0x200, 4, 0x80));
+            assert_eq!(cpu.step(&mut b).unwrap(), 7);
+            assert_eq!(cpu.step(&mut b).unwrap(), 2);
+            assert_eq!(cpu.ip, 0x301);
+            assert_eq!(&b.ram[0x200..0x204], &[0x12, 0x34, 0x56, 0x78]);
+            assert_eq!(state(&mut b), (0x104, 0x204, 0, 0));
+            assert_eq!(cpu.step(&mut b).unwrap(), 2);
+            assert_eq!(cpu.registers[3], 1);
+        }
+    }
+}
+
+#[test]
 fn ram_words_overlap_in_transfer_order_in_both_directions() {
     for reverse in [false, true] {
         let mut b = bus();

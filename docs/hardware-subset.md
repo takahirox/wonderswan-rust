@@ -139,8 +139,10 @@ DMA work or stored state. Thus word OUT/IN at 42 completes normally; only the
 low nibble written to 42 supplies source address bits 16–19, and the byte at
 43 is discarded/read as zero. This handling also applies with color mode disabled.
 Read-zero is an evidence-based emulation policy; exact electrical readback has
-not been confirmed by physical-device tests. Mono still rejects 43. Port 49 remains unsupported on all models; Sound DMA
-ports are available only on Color/Crystal as described below.
+not been confirmed by physical-device tests. Mono still rejects 43.
+A word OUT to 48 uses its low byte for GDMA control and discards the high byte
+with the existing split-port clock charge. Direct byte I/O to 49 remains
+unsupported. Sound DMA ports are available only on Color/Crystal as described below.
 
 Each word is read completely before being written, in the selected direction;
 overlaps therefore follow word transfer order. Both addresses advance by two,
@@ -207,7 +209,7 @@ bytes adjacent to 20-bit counters. Like reserved GDMA port 43, writes have no
 state or controller effects and reads return zero, including word I/O to 4C/50.
 Read-zero is a deterministic emulation policy; the reference does not specify
 the electrical value of these unused ports and no physical-console readback
-measurement is claimed. Port 49 and unrelated gaps remain unsupported.
+measurement is claimed. Unrelated Sound DMA gaps remain unsupported.
 
 While enabled, SDMA reserves **6 + N clocks every 128 clocks**, beginning at
 **117 mod 128**, including hold and ticks between rate-divided samples. N is the
