@@ -207,18 +207,42 @@ impl Bus {
         self.read_mapped(a)
     }
 
+    #[inline]
+    pub fn read_word(&self, first: u32, second: u32) -> u16 {
+        if first & 1 == 0
+            && second == first + 1
+            && (first < 0x4000 || first < 0x10000 && self.color_mode())
+        {
+            // Aligned internal RAM words require one transfer.
+            let address = first as usize;
+            self.accesses.set(self.accesses.get() + 1);
+            let pair = &self.ram[address..address + 2];
+            return u16::from_le_bytes([pair[0], pair[1]]);
+        }
+        let lo = self.read(first);
+        let hi = self.read(second);
+        self.word_transfer(first, second);
+        u16::from_le_bytes([lo, hi])
+    }
+
+    #[inline(always)]
     pub fn fetch_instruction_byte(&self, address: u32) -> u8 {
-        if address < 0x20000 || self.ports[0xa0] & 4 == 0 {
+        if address < 0x20000 {
             return self.read(address);
         }
+        let control = self.ports[0xa0];
         // An aligned 16-bit cartridge fetch supplies both sequential bytes.
         // Keep the timing of the second lane across instruction boundaries.
-        if address & 1 == 0 {
-            self.rom_fetch_high.set(address + 1);
-        } else if self.rom_fetch_high.replace(0) == address {
-            return self.read_mapped(address as usize);
+        if control & 4 != 0 {
+            if address & 1 == 0 {
+                self.rom_fetch_high.set(address + 1);
+            } else if self.rom_fetch_high.replace(0) == address {
+                return self.read_rom_mapped(address as usize);
+            }
         }
-        self.read(address)
+        self.accesses
+            .set(self.accesses.get() + 1 + u32::from(control & 8 != 0));
+        self.read_rom_mapped(address as usize)
     }
 
     pub fn discard_rom_fetch(&self) {
@@ -247,12 +271,26 @@ impl Bus {
                 255
             };
         }
-        let bank = match a >> 16 {
+        self.read_rom_bank(cart, a)
+    }
+
+    #[inline(always)]
+    fn read_rom_mapped(&self, address: usize) -> u8 {
+        let Some(cart) = &self.cartridge else {
+            return 0xff;
+        };
+        self.read_rom_bank(cart, address)
+    }
+
+    #[inline(always)]
+    fn read_rom_bank(&self, cart: &Cartridge, address: usize) -> u8 {
+        let bank = match address >> 16 {
             2 => self.bank(0xc2, 0xd3),
             3 => self.bank(0xc3, 0xd5),
-            n => ((self.ports[0xc0] as usize & if self.extended() { 63 } else { 15 }) << 4) | n,
+            // C0 writes already apply the mapper's mask.
+            page => (usize::from(self.ports[0xc0]) << 4) | page,
         };
-        cart.rom(bank, a & 65535)
+        cart.rom(bank, address & 65535)
     }
     /// One bounded DMA word, before any CPU instruction or interrupt delivery.
     /// The caller advances the same clock as for CPU execution.
