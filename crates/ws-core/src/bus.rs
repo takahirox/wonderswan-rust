@@ -7,6 +7,8 @@ use crate::{
     Error, Model,
 };
 
+const ROM_PREFETCH_WORDS: u32 = 8;
+
 pub(crate) struct Bus {
     pub ram: Vec<u8>,
     pub ports: [u8; 256],
@@ -21,6 +23,9 @@ pub(crate) struct Bus {
     pub sprite_first: u8,
     pub sprite_count: u8,
     pub accesses: std::cell::Cell<u32>,
+    rom_prefetch: std::cell::Cell<u8>,
+    prefetch_next: std::cell::Cell<u32>,
+    prefetch_limit: std::cell::Cell<u32>,
     rom_fetch_high: std::cell::Cell<u32>,
     eeprom: Eeprom,
     pub console_data: [Vec<u8>; 3],
@@ -37,6 +42,7 @@ pub(crate) struct Bus {
     sound_stall: u32,
     pending_cycles: u32,
     pub screen1_scroll_x: u8,
+    pub sprite_window: [u8; 4],
     pub video_generation: u64,
     pub palette_generation: u64,
     pub video_row_generations: [u64; crate::FRAME_HEIGHT],
@@ -72,6 +78,9 @@ impl Bus {
             sprite_first: 0,
             sprite_count: 0,
             accesses: std::cell::Cell::new(0),
+            rom_prefetch: std::cell::Cell::new(0),
+            prefetch_next: std::cell::Cell::new(0),
+            prefetch_limit: std::cell::Cell::new(ROM_PREFETCH_WORDS),
             rom_fetch_high: std::cell::Cell::new(0),
             eeprom: Eeprom::default(),
             console_data: [Model::Mono, Model::Color, Model::Crystal].map(initial_data),
@@ -88,6 +97,7 @@ impl Bus {
             sound_stall: 0,
             pending_cycles: 0,
             screen1_scroll_x: ports[0x10],
+            sprite_window: [0; 4],
             video_generation: 1,
             palette_generation: 1,
             video_row_generations: [1; crate::FRAME_HEIGHT],
@@ -234,6 +244,7 @@ impl Bus {
     #[inline(always)]
     pub fn fetch_instruction_byte(&self, address: u32) -> u8 {
         if address < 0x20000 {
+            self.rom_prefetch.set(0);
             return self.read(address);
         }
         let control = self.ports[0xa0];
@@ -246,13 +257,44 @@ impl Bus {
                 return self.read_rom_mapped(address as usize);
             }
         }
+        if control & 0x0c == 4 && self.rom_prefetch.get() != 0 {
+            self.rom_prefetch.set(self.rom_prefetch.get() - 1);
+            return self.read_rom_mapped(address as usize);
+        }
         self.accesses
             .set(self.accesses.get() + 1 + u32::from(control & 8 != 0));
         self.read_rom_mapped(address as usize)
     }
 
+    pub fn begin_instruction(&self, address: u32) {
+        if self.prefetch_next.get() != address {
+            self.rom_prefetch.set(0);
+        }
+        self.prefetch_limit.set(ROM_PREFETCH_WORDS);
+    }
+    pub fn finish_instruction(&self, next: u32, execution: u32) {
+        if self.ports[0xa0] & 0x0c == 4 && next >= 0x20000 {
+            self.prefetch_next.set(next);
+            // Use internal execution clocks for fast ROM transfers. Keep the
+            // pending high byte within the same 16-byte capacity.
+            let slots = ROM_PREFETCH_WORDS - u32::from(self.rom_fetch_high.get() == next);
+            let inherited = u32::from(self.rom_prefetch.get());
+            let offered = execution.min(self.prefetch_limit.get());
+            self.rom_prefetch
+                .set((inherited + offered).min(slots) as u8);
+        } else {
+            self.rom_prefetch.set(0);
+        }
+    }
     pub fn discard_rom_fetch(&self) {
         self.rom_fetch_high.set(0);
+        self.rom_prefetch.set(0);
+        self.prefetch_limit.set(0);
+    }
+    pub fn redirect_instruction_fetch(&self) {
+        self.discard_rom_fetch();
+        // A decoded branch can start fetching its target before it completes.
+        self.prefetch_limit.set(1);
     }
     /// Shared mapping without CPU bus accounting (both DMAs have their own costs).
     fn read_mapped(&self, a: usize) -> u8 {
@@ -544,6 +586,16 @@ impl Bus {
                 self.screen1_scroll_x = scroll_x;
                 self.video_generation = self.video_generation.wrapping_add(1);
             }
+            let window = [
+                self.ports[12],
+                self.ports[13],
+                self.ports[14],
+                self.ports[15],
+            ];
+            if self.sprite_window != window {
+                self.sprite_window = window;
+                self.video_generation = self.video_generation.wrapping_add(1);
+            }
             self.timer_tick(0);
             if line == self.ports[3] {
                 self.request(4);
@@ -585,6 +637,7 @@ impl Bus {
         }
     }
     pub fn input(&mut self, port: u16) -> Result<u8, Error> {
+        self.prefetch_limit.set(0);
         if !matches!(port, 2 | 0xb5) {
             self.sync_devices();
         }
@@ -681,6 +734,7 @@ impl Bus {
         }
     }
     pub fn output(&mut self, port: u16, value: u8) -> Result<(), Error> {
+        self.prefetch_limit.set(0);
         if port != 0xb5 {
             self.sync_devices();
         }
@@ -927,6 +981,28 @@ mod tests {
     fn out(b: &mut Bus, p: u16, v: u8) {
         b.output(p, v).unwrap();
     }
+    #[test]
+    fn rom_prefetch_stops_at_the_sixteen_byte_queue_capacity() {
+        let mut b = bus(0, 0);
+        out(&mut b, 0xa0, 4);
+
+        for (start, ready) in [(0x20000, 16), (0x20001, 15)] {
+            b.begin_instruction(0x20000);
+            if start & 1 != 0 {
+                b.fetch_instruction_byte(start - 1);
+            }
+            b.finish_instruction(start, 30);
+
+            b.accesses.set(0);
+            for address in start..start + ready {
+                b.fetch_instruction_byte(address);
+            }
+            assert_eq!(b.accesses.get(), 0);
+            b.fetch_instruction_byte(start + ready);
+            assert_eq!(b.accesses.get(), 1);
+        }
+    }
+
     #[test]
     fn all_sram_sizes_are_writable_mirrored_and_banked_separately_from_internal_ram() {
         for code in 1..=5 {

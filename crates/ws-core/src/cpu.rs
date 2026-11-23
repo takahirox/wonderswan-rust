@@ -465,6 +465,7 @@ impl Cpu {
     // Separate execution from boundary arbitration so isolated arithmetic tests
     // can inspect full FLAGS before interrupt entry clears live IF/TF.
     fn execute_instruction(&mut self, bus: &mut Bus) -> Result<(u32, bool), Error> {
+        bus.begin_instruction(Self::physical(self.segments[1], self.ip));
         let mut trap = self.flags & TF != 0;
         let mut execution = 1u32;
         let start = self.ip;
@@ -548,7 +549,7 @@ impl Cpu {
             0x70..=0x7f => {
                 let displacement = self.byte(bus) as i8 as u16;
                 if self.condition(opcode & 15) {
-                    bus.discard_rom_fetch();
+                    bus.redirect_instruction_fetch();
                     self.ip = self.ip.wrapping_add(displacement);
                     // Appendix A Note 5: taken odd destinations add a clock.
                     // The bus accounts for fetches independently of execution.
@@ -675,7 +676,7 @@ impl Cpu {
                         if self.registers[1] != 0
                             && (!compare || (self.flags & ZF != 0) == (repeat == 0xf3))
                         {
-                            bus.discard_rom_fetch();
+                            bus.redirect_instruction_fetch();
                             self.ip = start;
                         }
                     }
@@ -709,7 +710,7 @@ impl Cpu {
             }
             0xc2 | 0xc3 | 0xca | 0xcb => {
                 let adjust = if opcode & 1 == 0 { self.word(bus) } else { 0 };
-                bus.discard_rom_fetch();
+                bus.redirect_instruction_fetch();
                 self.ip = self.pop(bus);
                 if opcode & 8 != 0 {
                     self.segments[1] = self.pop(bus);
@@ -751,7 +752,7 @@ impl Cpu {
                         }
                 };
                 if take {
-                    bus.discard_rom_fetch();
+                    bus.redirect_instruction_fetch();
                     self.ip = self.ip.wrapping_add(displacement);
                 }
                 // Appendix A: DBNZ is 5/2 decoded clocks; DBNZE/DBNZNE
@@ -815,7 +816,7 @@ impl Cpu {
                 if opcode == 0xe8 {
                     self.push(bus, self.ip);
                 }
-                bus.discard_rom_fetch();
+                bus.redirect_instruction_fetch();
                 self.ip = self.ip.wrapping_add(displacement);
                 // BR near uses four decoded clocks; CALL near uses five
                 // including its normal stack write, already charged by push.
@@ -826,13 +827,13 @@ impl Cpu {
             0xea => {
                 let offset = self.word(bus);
                 self.segments[1] = self.word(bus);
-                bus.discard_rom_fetch();
+                bus.redirect_instruction_fetch();
                 self.ip = offset;
                 execution = 7 + u32::from(self.ip & 1);
             }
             0xeb => {
                 let displacement = self.byte(bus) as i8 as u16;
-                bus.discard_rom_fetch();
+                bus.redirect_instruction_fetch();
                 self.ip = self.ip.wrapping_add(displacement);
                 // Appendix A, Table A-1 and Note 5; see docs/jmp-timing.md.
                 execution = 4 + u32::from(self.ip & 1);
@@ -867,7 +868,7 @@ impl Cpu {
                         if op == 2 {
                             self.push(bus, self.ip);
                         }
-                        bus.discard_rom_fetch();
+                        bus.redirect_instruction_fetch();
                         self.ip = value;
                         // Decoded near CALL/JMP includes normal operand/stack
                         // transfers already charged above. Add their common
@@ -887,7 +888,7 @@ impl Cpu {
                         // the pointer may overlap the newly written stack frame.
                         let value = self.read(bus, dest, true);
                         let cs = self.read(bus, Operand::Memory(s, o.wrapping_add(2)), true);
-                        bus.discard_rom_fetch();
+                        bus.redirect_instruction_fetch();
                         self.segments[1] = cs;
                         self.ip = value;
                         // Decoded far CALL/JMP costs 12/10, including four/two
@@ -1054,7 +1055,7 @@ impl Cpu {
                 let cs = self.word(bus);
                 self.push(bus, self.segments[1]);
                 self.push(bus, self.ip);
-                bus.discard_rom_fetch();
+                bus.redirect_instruction_fetch();
                 self.ip = ip;
                 self.segments[1] = cs;
                 // Ten decoded clocks include two aligned stack writes.
@@ -1141,7 +1142,7 @@ impl Cpu {
                 }
             }
             0xcf => {
-                bus.discard_rom_fetch();
+                bus.redirect_instruction_fetch();
                 self.ip = self.pop(bus);
                 self.segments[1] = self.pop(bus);
                 let previous_if = self.flags & IF;
@@ -1330,6 +1331,7 @@ impl Cpu {
             }
         }
         bus.take_fault()?;
+        bus.finish_instruction(Self::physical(self.segments[1], self.ip), execution);
         Ok((execution + bus.accesses.get(), trap))
     }
 
@@ -2255,6 +2257,41 @@ mod compatibility_tests {
         b.output(0xc2, 1).unwrap();
         assert_eq!(c.step(&mut b).unwrap(), 3);
         assert_eq!(c.registers[2], 1);
+    }
+
+    #[test]
+    fn fast_rom_prefetch_overlaps_execution_and_restarts_at_a_branch_target() {
+        let mut bus = Bus::new(Model::Color);
+        let mut cart =
+            crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 0, 0))
+                .unwrap();
+        // MOV AX,1234; NOP; JMP +1; HLT; MOV AX,5678; HLT; NOP.
+        cart.bytes[..13].copy_from_slice(&[
+            0xb8, 0x34, 0x12, 0x90, 0xe9, 1, 0, 0xf4, 0xb8, 0x78, 0x56, 0xf4, 0x90,
+        ]);
+        cart.bytes[65536 + 13] = 0x42; // The new bank supplies INC DX.
+        bus.insert_cartridge(cart);
+        bus.output(0xa0, 4).unwrap();
+        bus.output(0xc2, 0).unwrap();
+        let mut cpu = Cpu {
+            segments: [0, 0x2000, 0, 0],
+            ..Cpu::default()
+        };
+
+        assert_eq!(cpu.step(&mut bus).unwrap(), 3);
+        assert_eq!(cpu.registers[0], 0x1234);
+        assert_eq!(cpu.step(&mut bus).unwrap(), 1);
+        assert_eq!(cpu.step(&mut bus).unwrap(), 4); // Two prefetched words.
+        assert_eq!(cpu.ip, 8);
+        assert_eq!(cpu.step(&mut bus).unwrap(), 2); // Only the first target word is ready.
+        assert_eq!(cpu.registers[0], 0x5678);
+
+        cpu.ip = 12;
+        assert_eq!(cpu.step(&mut bus).unwrap(), 2); // Unrelated address, cold fetch.
+
+        bus.output(0xc2, 1).unwrap();
+        assert_eq!(cpu.step(&mut bus).unwrap(), 2); // Both credit and high lane are gone.
+        assert_eq!(cpu.registers[2], 1);
     }
 
     #[test]

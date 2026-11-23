@@ -113,8 +113,10 @@ ROM byte accounting is `1 + A0.3` clocks. An aligned word with adjacent physical
 ROM addresses costs the same when A0.2 is set; otherwise it costs two byte
 transfers. Instruction operand fetches and data reads share this rule. Odd,
 segment-wrapped, 20-bit-wrapped and bank-crossing pairs are not incorrectly
-coalesced. Opcode/prefix fetches and instruction execution retain the existing
-approximation; there is no prefetch simulation or claim of exact instruction timing.
+coalesced. Sequential instruction fetches on a 16-bit ROM bus without wait
+states can overlap internal execution, up to 16 queued bytes. Branches discard
+the old path and can prefetch one word at the target. See the
+[prefetch timing model](lcd-timing.md#rom-prefetch-and-sprite-window-timing-issue-132).
 
 Configured width is separate from physical cartridge characteristics. With a
 width mismatch the current deterministic mapping still returns the same ROM
