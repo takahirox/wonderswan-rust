@@ -165,11 +165,13 @@ impl Cpu {
     pub fn physical(segment: u16, offset: u16) -> u32 {
         ((segment as u32 * 16) + offset as u32) & 0xfffff
     }
+    #[inline(always)]
     fn byte(&mut self, bus: &Bus) -> u8 {
         let value = bus.fetch_instruction_byte(Self::physical(self.segments[1], self.ip));
         self.ip = self.ip.wrapping_add(1);
         value
     }
+    #[inline(always)]
     fn word(&mut self, bus: &Bus) -> u16 {
         let first = Self::physical(self.segments[1], self.ip);
         let lo = self.byte(bus);
@@ -196,22 +198,21 @@ impl Cpu {
                 (self.registers[r & 3] & !(255 << shift)) | ((value & 255) << shift);
         }
     }
+    #[cfg_attr(target_arch = "aarch64", inline(always))]
     fn read(&self, bus: &Bus, operand: Operand, wide: bool) -> u16 {
         match operand {
             Operand::Register(r) => self.reg(r, wide),
             Operand::Memory(s, o) => {
-                let lo = bus.read(Self::physical(s, o));
+                let first = Self::physical(s, o);
                 if wide {
-                    let second = Self::physical(s, o.wrapping_add(1));
-                    let hi = bus.read(second);
-                    bus.word_transfer(Self::physical(s, o), second);
-                    u16::from_le_bytes([lo, hi])
+                    bus.read_word(first, Self::physical(s, o.wrapping_add(1)))
                 } else {
-                    lo as u16
+                    u16::from(bus.read(first))
                 }
             }
         }
     }
+    #[cfg_attr(target_arch = "aarch64", inline(always))]
     fn write(&mut self, bus: &mut Bus, operand: Operand, wide: bool, value: u16) {
         match operand {
             Operand::Register(r) => self.set_reg(r, wide, value),
@@ -230,6 +231,7 @@ impl Cpu {
             }
         }
     }
+    #[cfg_attr(target_arch = "aarch64", inline(always))]
     fn operand(&mut self, bus: &Bus, m: u8, segment: Option<usize>) -> Operand {
         let r = (m & 7) as usize;
         if m >> 6 == 3 {
