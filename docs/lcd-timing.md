@@ -129,8 +129,9 @@ The V30MZ fetch, decode and execution stages can overlap. Section 3.3 describes
 of an aligned 16-bit ROM instruction fetch in one transfer, including the case
 where the second byte starts the next sequential instruction. Each transfer
 uses the live A0.2 width and A0.3 wait setting. Control transfers, interrupt
-entry and ROM mapping writes discard the pending lane. This is a one-word
-timing model. Byte values always come from the live map. [V30MZ manual](https://www.renesas.com/en/document/lbr/v30mztm-hardware-preliminary)
+entry and ROM mapping writes discard the pending lane. Byte values always come
+from the live map. Issue #119 accounted for one word at a time. Issue #132
+extends this to overlapping transfers. [V30MZ manual](https://www.renesas.com/en/document/lbr/v30mztm-hardware-preliminary)
 
 In Final Fantasy II, the last HBlank handler before raster wrap reloads its
 one-shot timer and then acknowledges the interrupt. Before the change, one
@@ -217,3 +218,33 @@ Beetle and Oswan both capture the selected range with the entries at line 142.
 The project captures that state at its existing line-144 boundary. A probe that
 moved only the entry capture to line 142 still reproduced all 14 changes.
 [Beetle sprite capture](https://github.com/libretro/beetle-wswan-libretro/blob/4b01295838ea89e3f1355bbe4cb5cf98aa6108cd/mednafen/wswan/gfx.c) · [Oswan sprite capture](https://github.com/gameblabla/oswan/blob/efea1326dc4f0477a6a7b704f7f7f6f5a1cc6f33/main/emu/WS.c)
+
+## ROM prefetch and sprite window timing (Issue #132)
+
+The V30MZ manual describes overlapping instruction fetch, decode and execution,
+up to sixteen bytes of prefetched code, and an early fetch at a conditional
+branch destination. The core models this overlap as a bounded count of ROM
+transfers that can be supplied by earlier internal execution clocks. It applies
+to the 16-bit cartridge bus without wait states. Byte values still come from
+the live cartridge map. A control transfer drops the previous path and can
+supply one word at the destination. External interrupt entry and cartridge
+mapping changes invalidate the pending fetches. Ordinary I/O retains separately
+accounted timing. This model runs at instruction boundaries. Exact prefetch
+phases and arbitration remain unmeasured. [V30MZ manual](https://www.renesas.com/en/document/lbr/v30mztm-hardware-preliminary)
+
+The renderer captures the sprite window edges (ports 0C–0F) on entry to each
+scanline. CPU readback reflects writes immediately. Pixel composition uses the
+captured edges for the entire row, and the cache tracks changes to those edges.
+[ares sprite window](https://raw.githubusercontent.com/ares-emulator/ares/master/ares/ws/ppu/window.cpp)
+
+The old timing could delay a scanline interrupt into the next line. In Jamil's
+opening, the delayed handler left characters visible above dialogue and changed
+the shape of the bubble edges. Sampling the edges at line entry fixed the edges
+while earlier sprite leakage persisted. Earlier interrupt service from prefetch
+overlap fixed the remaining leakage. Four matched opening frames, including
+the affected dialogue, agree pixel for pixel in RGB444 with Beetle and Oswan.
+In the 7,600-frame Jamil replay, the isolated-change detector found the same
+two scripted opening transitions as Beetle. In Albert's opening, the six
+previously observed character disappearances are absent and the caption holds
+for 164 frames, as in both references. Final Fantasy II and Wild Card produced
+zero isolated changes in their 14,000-frame replays.

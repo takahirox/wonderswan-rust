@@ -107,6 +107,23 @@ fn screen1_scroll_write_reads_back_now_and_applies_to_the_next_row() {
 }
 
 #[test]
+fn sprite_window_write_reads_back_now_and_applies_to_the_next_row() {
+    let mut m = scene(Model::Color, 0xc0);
+    final_palettes(&mut m, 0xc0);
+    out(&mut m, 0, 0x0f);
+    out(&mut m, 0x0e, 31);
+    out(&mut m, 0x0f, 255);
+
+    m.advance(256 + 96);
+    out(&mut m, 0x0c, 24);
+    assert_eq!(m.bus.input(0x0c).unwrap(), 24);
+    m.advance(256 - 96 + 256);
+    assert_eq!(pixel(&m, 16, 1), [170, 85, 51, 255]);
+    m.advance(256);
+    assert_eq!(pixel(&m, 16, 2), [0, 255, 0, 255]);
+}
+
+#[test]
 fn delayed_identities_preserve_layers_transparency_sprites_backdrop_and_palette_stage() {
     for model in MODELS {
         for mode in if model == Model::Mono {

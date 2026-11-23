@@ -75,18 +75,21 @@ fn shade(bus: &Bus, index: u8) -> [u8; 4] {
     let value = 255 - ((lut >> ((index & 1) * 4)) & 15) * 17;
     [value, value, value, 255]
 }
-fn window(bus: &Bus, base: usize, x: usize, y: usize) -> bool {
-    x >= bus.ports[base] as usize
-        && x <= bus.ports[base + 2] as usize
-        && y >= bus.ports[base + 1] as usize
-        && y <= bus.ports[base + 3] as usize
+fn window(bounds: &[u8], x: usize, y: usize) -> bool {
+    x >= usize::from(bounds[0])
+        && x <= usize::from(bounds[2])
+        && y >= usize::from(bounds[1])
+        && y <= usize::from(bounds[3])
 }
 #[cfg(test)]
 fn screen(bus: &Bus, layer: usize, x: usize, y: usize) -> Option<Pixel> {
     if bus.ports[0] & (1 << layer) == 0 {
         return None;
     }
-    if layer == 1 && bus.ports[0] & 32 != 0 && window(bus, 8, x, y) == (bus.ports[0] & 16 != 0) {
+    if layer == 1
+        && bus.ports[0] & 32 != 0
+        && window(&bus.ports[8..12], x, y) == (bus.ports[0] & 16 != 0)
+    {
         return None;
     }
     let sx = (x + bus.ports[0x10 + layer * 2] as usize) & 255;
@@ -127,7 +130,7 @@ fn compose_line_reference(bus: &Bus, y: usize) -> [Pixel; FRAME_WIDTH] {
             if sx >= 8 {
                 continue;
             }
-            if bus.ports[0] & 8 != 0 && window(bus, 12, x, y) == (entry & 0x1000 != 0) {
+            if bus.ports[0] & 8 != 0 && window(&bus.ports[12..16], x, y) == (entry & 0x1000 != 0) {
                 continue;
             }
             let sy = (y as u8).wrapping_sub(bus.sprites[base + 2]);
@@ -218,7 +221,7 @@ fn screen_line(bus: &Bus, layer: usize, y: usize, scroll_x: u8) -> [Option<Pixel
             let at = x + offset;
             if layer == 1
                 && bus.ports[0] & 32 != 0
-                && window(bus, 8, at, y) == (bus.ports[0] & 16 != 0)
+                && window(&bus.ports[8..12], at, y) == (bus.ports[0] & 16 != 0)
             {
                 continue;
             }
@@ -230,7 +233,12 @@ fn screen_line(bus: &Bus, layer: usize, y: usize, scroll_x: u8) -> [Option<Pixel
 }
 
 /// Compose identities, without final shade/RGB12 lookup. See docs/lcd-timing.md.
-fn compose_line(bus: &Bus, y: usize, screen1_scroll_x: u8) -> [Pixel; FRAME_WIDTH] {
+fn compose_line(
+    bus: &Bus,
+    y: usize,
+    screen1_scroll_x: u8,
+    sprite_bounds: &[u8],
+) -> [Pixel; FRAME_WIDTH] {
     let background = if bus.color_mode() {
         Pixel::Color(bus.ports[1])
     } else {
@@ -260,7 +268,7 @@ fn compose_line(bus: &Bus, y: usize, screen1_scroll_x: u8) -> [Pixel; FRAME_WIDT
                 if x >= FRAME_WIDTH || sprites[x].is_some() {
                     continue;
                 }
-                if bus.ports[0] & 8 != 0 && window(bus, 12, x, y) == (entry & 0x1000 != 0) {
+                if bus.ports[0] & 8 != 0 && window(sprite_bounds, x, y) == (entry & 0x1000 != 0) {
                     continue;
                 }
                 // The first opaque sprite claims this location even if Screen 2
@@ -349,7 +357,7 @@ mod row_tests {
                     sprite[2] = (y as u8).wrapping_sub(next() % 12);
                     sprite[3] = [0, 7, 220, 248, 255, next()][scene % 6];
                 }
-                let row = compose_line(&bus, y, bus.ports[0x10]);
+                let row = compose_line(&bus, y, bus.ports[0x10], &bus.ports[12..16]);
                 assert_eq!(row, compose_line_reference(&bus, y), "scene {scene}, y {y}");
                 let mut pixels = vec![0; crate::FRAME_BYTES];
                 // Palette changes belong to translation, including mixed
@@ -403,7 +411,7 @@ impl Pipeline {
         if line < FRAME_HEIGHT {
             let key = (bus.video_generation, bus.video_row_generations[line]);
             if self.generations[line] != key {
-                self.rows[line] = compose_line(bus, line, bus.screen1_scroll_x);
+                self.rows[line] = compose_line(bus, line, bus.screen1_scroll_x, &bus.sprite_window);
                 self.generations[line] = key;
             }
             self.pending = Some((line, self.rows[line], self.generations[line]));
@@ -422,7 +430,12 @@ impl Pipeline {
 // Static rendering helpers for composition tests only; machines use Pipeline.
 #[cfg(test)]
 fn render_line(bus: &Bus, pixels: &mut [u8], y: usize) {
-    translate_line(bus, pixels, y, compose_line(bus, y, bus.ports[0x10]));
+    translate_line(
+        bus,
+        pixels,
+        y,
+        compose_line(bus, y, bus.ports[0x10], &bus.ports[12..16]),
+    );
 }
 #[cfg(test)]
 fn render(bus: &Bus, pixels: &mut [u8]) {
