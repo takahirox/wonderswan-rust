@@ -15,6 +15,7 @@ const romStatus = element<HTMLParagraphElement>("rom-status");
 const errorStatus = element<HTMLParagraphElement>("error");
 const canvas = element<HTMLCanvasElement>("screen");
 const player = element<HTMLElement>("player");
+const toolbar = element("controls");
 const game = element("game");
 const screenFrame = element("display");
 const orientationSelect = element<HTMLSelectElement>("orientation");
@@ -248,9 +249,13 @@ async function main() {
   }
   function focusGame() {
     canvas.focus({ preventScroll: true });
-    // Reveal the controller together with the picture whenever both fit.
-    const target = game.getBoundingClientRect().height <= window.innerHeight ? game : screenFrame;
-    target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const bounds = game.getBoundingClientRect();
+    const toolbarTop = toolbar.getBoundingClientRect().top;
+    const height = window.innerHeight;
+    // Reveal the toolbar with gameplay when both fit in the viewport.
+    const revealToolbar = toolbarTop < 0 && bounds.bottom - toolbarTop <= height;
+    const target = bounds.height <= height ? game : screenFrame;
+    target.scrollIntoView({ block: revealToolbar ? "end" : "nearest", inline: "nearest" });
   }
   function applyOrientation() {
     const preference = orientationSelect.value;

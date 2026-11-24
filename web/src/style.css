@@ -447,7 +447,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   }
 }
 
-@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 560px) {
+@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 500px) {
   :root { --page-gutter: 12px; }
   main { padding-top: max(6px, env(safe-area-inset-top)); }
   .brand { margin-bottom: 6px; }
@@ -486,6 +486,9 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   .feedback-row { display: flex; align-items: start; gap: 12px; }
   .feedback-row p { flex: 1; min-width: 0; }
   .feedback-row button { flex: none; }
+}
+
+@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 560px) {
   .cartridge {
     grid-template-columns: minmax(0, 1fr) auto minmax(266px, 1.35fr);
     align-items: center;
@@ -549,7 +552,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   }
 }
 
-@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 420px) {
+@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 400px) {
   #game:fullscreen {
     /* Put Exit in a side column so the picture can use the full safe height. */
     grid-template:
