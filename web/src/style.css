@@ -598,7 +598,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 
 @media (any-pointer: coarse) and (orientation: landscape) {
   /* The fullscreen container queries measure the content box inside the safe areas. */
-  @container fullscreen-game (width >= 272px) {
+  @container fullscreen-game (width >= 264px) {
     #game:fullscreen .action-buttons {
       /* Stagger A and B in separate columns to save height with 44px targets. */
       grid-template-rows: 24px 44px;
@@ -607,7 +607,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
     }
   }
 
-  @container fullscreen-game (width >= 272px) and ((width < 440px) or (height < 234px)) {
+  @container fullscreen-game (width >= 264px) and ((width < 440px) or (height < 234px)) {
     #game:fullscreen[data-orientation] .fullscreen-layout {
       --compact-pad-width: 136px;
       column-gap: 4px;
@@ -630,8 +630,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
     #game:fullscreen[data-orientation="vertical"] .x-pad { justify-self: end; }
 
     @container (width < 280px) {
-      /* At 272px, the pads, Start and A/B fit with 2px between columns.
-         Three full-width pad columns also let both rotated pads fit in a 108px row. */
+      /* Two 132px rotated pads can share the 108px row down to 264px. */
       #game:fullscreen[data-orientation] .fullscreen-layout {
         --compact-pad-width: 132px;
         column-gap: 2px;
@@ -642,6 +641,29 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
         grid-template-rows: 44px 20px 44px;
         column-gap: 0;
       }
+    }
+
+    @container (width < 272px) {
+      /* Start shares the top row of A/B, above B and to the left of A. */
+      #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
+        grid-template:
+          "y exit"    44px
+          "y screen"  minmax(56px, 1fr)
+          "x screen"  minmax(32px, 1fr)
+          "x actions" 92px / var(--compact-pad-width) minmax(92px, 1fr);
+      }
+      #game:fullscreen[data-orientation="horizontal"] .action-buttons {
+        grid-template-rows: 44px 44px;
+        row-gap: 4px;
+        justify-self: end;
+      }
+      #game:fullscreen[data-orientation="horizontal"] .start {
+        grid-area: actions;
+        align-self: start;
+        justify-self: start;
+        width: 44px;
+      }
+      #game:fullscreen[data-orientation="horizontal"] #exit-fullscreen { justify-self: end; }
     }
   }
 

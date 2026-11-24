@@ -131,7 +131,7 @@ function waitForFullscreenExit() {
   return page.waitForFunction(() => !document.fullscreenElement
     && !document.querySelector('#controls').inert && document.activeElement.id === 'fullscreen');
 }
-async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fullscreen = false } = {}) {
+async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fullscreen = false, tightKeypads = false } = {}) {
   // Let ResizeObserver snap the canvas edges after the grid reflows.
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const layout = await page.locator('#screen').evaluate(canvas => {
@@ -227,7 +227,8 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
         assert.ok(touch.every(target => target.top >= frame.bottom), 'horizontal controller follows the screen');
       }
     } else {
-      assert.ok(yPad.right < xPad.left && yPad.top === xPad.top && a.left < b.left);
+      assert.ok(tightKeypads ? yPad.right === xPad.left : yPad.right < xPad.left);
+      assert.ok(yPad.top === xPad.top && a.left < b.left);
       assert.ok(frame.right <= a.left && frame.right <= start.left && b.bottom <= yPad.top && start.bottom <= xPad.top);
       if (kind !== 'landscape') assert.ok(frame.bottom <= yPad.top, 'vertical keypads are below the screen');
     }
@@ -1021,6 +1022,7 @@ try {
   console.log('480×320 and 540×320 windowed gameplay fit the picture and all eleven touch controls in both orientations after selection');
 
   const compactInsets = {top:0,right:44,bottom:21,left:44};
+  const wideInsets = {...compactInsets, left:48, right:48};
   const noInsets = {top:0,right:0,bottom:0,left:0};
   async function checkCompactPicture(orientation, insets, minSize = 140) {
     const {width, height} = await checkGameplayInViewport(insets);
@@ -1051,18 +1053,21 @@ try {
       // 272px of safe width leaves room for nine sixteenths of the horizontal picture.
       [360, 300, 'horizontal', 'compact-landscape', compactInsets, 126],
       [360, 300, 'vertical', 'compact-landscape', compactInsets],
+      // Wider side insets leave only 264px, enough for two 132px keypads.
+      [360, 300, 'horizontal', 'compact-landscape', wideInsets, 126],
+      [360, 300, 'vertical', 'compact-landscape', wideInsets],
     ]) {
       await page.setViewportSize({ width, height });
       await cdp.send('Emulation.setSafeAreaInsetsOverride', {insets});
       await load(orientation === 'horizontal' ? rom : verticalRom);
       await page.locator('#fullscreen').tap();
       await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
-      await checkLayout({ orientation, kind, fullscreen:true });
+      await checkLayout({ orientation, kind, fullscreen:true, tightKeypads:insets === wideInsets });
       await checkCompactPicture(orientation, insets, minSize);
       await checkInViewport('#exit-fullscreen', insets);
       assert.ok(await page.locator('#game').evaluate(game => game.scrollHeight === game.clientHeight
         && game.scrollWidth === game.clientWidth), 'short fullscreen keeps the entire game visible without scrolling');
-      const safeArea = insets === noInsets ? '' : '-safe-area';
+      const safeArea = insets === noInsets ? '' : insets === wideInsets ? '-wide-safe-area' : '-safe-area';
       await screenshot(`mobile-${width}x${height}-${orientation}${safeArea}-fullscreen`, false);
       await page.locator('#exit-fullscreen').tap();
       await waitForFullscreenExit();
@@ -1140,6 +1145,37 @@ try {
   await checkSafeArea('horizontal',24);
   await load(verticalRom);
   await checkSafeArea('vertical',30);
+  if (await page.evaluate(() => document.fullscreenEnabled)) {
+    for (const withHelp of [false, true]) {
+      await page.evaluate(() => window.scrollTo(0,20));
+      assert.equal(await page.evaluate(() => window.scrollY), 20);
+      await page.locator('#fullscreen').tap();
+      await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
+      await page.locator('#exit-fullscreen').focus();
+      await visibility(true);
+      if (withHelp) await pageTransition('pagehide');
+      await page.evaluate(() => document.exitFullscreen());
+      await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector('#controls').inert);
+      await expectNoFrames();
+      if (withHelp) {
+        await page.locator('#settings').evaluate(button => button.click());
+        assert.equal(await page.evaluate(() => document.activeElement.id), 'help-close');
+      }
+      const beforeShow = await frames();
+      await visibility(false);
+      if (withHelp) await pageTransition('pageshow');
+      assert.equal(await page.evaluate(() => window.scrollY), 20, 'visible page restores pre-fullscreen scroll');
+      if (withHelp) {
+        assert.equal(await page.evaluate(() => document.activeElement.id), 'help-close');
+        await expectNoFrames();
+        await page.locator('#help-close').tap();
+      } else {
+        await waitForFullscreenExit();
+      }
+      await expectNewFrames(beforeShow);
+    }
+    console.log('Native fullscreen exit during simulated visibility and page transitions restores scroll and focus and preserves Help focus');
+  }
   await page.locator('#load-rom').scrollIntoViewIfNeeded();
   await checkInViewport('#load-rom');
   assert.deepEqual(errors, []);

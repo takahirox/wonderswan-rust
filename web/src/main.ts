@@ -399,10 +399,14 @@ async function main() {
     if (!event.persisted || !pageAway) return;
     pageAway = false;
     syncPlayback();
+    restoreWindowedView();
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) suspendForDeparture();
-    else syncPlayback();
+    else {
+      syncPlayback();
+      restoreWindowedView();
+    }
   });
   modelSelect.addEventListener("change", () => restart(modelSelect.value));
   resetButton.addEventListener("click", () => restart(machine.model()));
@@ -464,6 +468,14 @@ async function main() {
   }, 500);
 
   let windowedScroll: ScrollToOptions | undefined;
+  let fullscreenExitPending = false;
+  function restoreWindowedView() {
+    if (!fullscreenExitPending || pageAway || document.hidden) return;
+    fullscreenExitPending = false;
+    if (canFocusGame()) fullscreenButton.focus({ preventScroll: true });
+    if (windowedScroll) window.scrollTo(windowedScroll);
+    windowedScroll = undefined;
+  }
   fullscreenButton.addEventListener("click", async () => {
     clearKeys();
     const notice = element("fullscreen-status");
@@ -499,11 +511,12 @@ async function main() {
     clearKeys();
     if (framePending) captureFrame();
     sizeScreen();
-    if (canFocusGame()) {
-      (active ? canvas : fullscreenButton).focus({ preventScroll: true });
-      if (!active && windowedScroll) window.scrollTo(windowedScroll);
+    if (active) {
+      if (canFocusGame()) canvas.focus({ preventScroll: true });
+    } else {
+      fullscreenExitPending = true;
+      restoreWindowedView();
     }
-    if (!active) windowedScroll = undefined;
   });
   // Integer scaling where space allows; fractional nearest-neighbor scaling on narrow screens.
   function sizeScreen() {
