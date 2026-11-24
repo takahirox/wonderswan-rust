@@ -64,6 +64,7 @@ a { color: var(--accent); text-underline-offset: 3px; }
     "screen   cartridge" auto
     "toolbar  toolbar" auto
     "feedback feedback" auto
+    "storage  storage" auto
     "touch    touch" auto
     / minmax(0, 1fr) minmax(220px, 236px);
   column-gap: 20px;
@@ -142,6 +143,7 @@ canvas {
   border-radius: 9px;
 }
 #load-rom { scroll-margin-block: 6px; }
+.cartridge-warning-cue { display: none; }
 .cartridge-name { min-width: 0; }
 .cartridge h2, .model-control label { font-size: 14px; font-weight: 650; }
 #rom-title {
@@ -298,6 +300,7 @@ dialog p { margin-top: 6px; color: var(--muted); }
 }
 .cartridge-choice small { display: block; color: var(--muted); }
 #cartridge-notice {
+  grid-area: storage;
   width: min(360px, 100%);
   display: flex;
   align-items: center;
@@ -351,7 +354,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   :root { --page-gutter: 12px; }
   main { padding-top: max(8px, env(safe-area-inset-top)); }
   #player {
-    grid-template: "brand" "screen" "toolbar" "cartridge" "feedback" "touch" / minmax(0, 1fr);
+    grid-template: "brand" "screen" "toolbar" "cartridge" "feedback" "storage" "touch" / minmax(0, 1fr);
   }
   #player:fullscreen { align-content: start; }
   #player:fullscreen .screen-frame { aspect-ratio: 224 / 144; }
@@ -373,6 +376,22 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   .model-control .hint { grid-column: 1; align-self: start; }
   #touch-controls { display: flex; }
   .action-row { width: 100%; justify-content: space-between; }
+}
+
+@media (max-width: 700px) and (orientation: portrait) {
+  #player {
+    /* Keep the warning details below the controller and the cue in the existing button. */
+    grid-template-areas: "brand" "screen" "toolbar" "cartridge" "feedback" "touch" "storage";
+  }
+  #player:has(#cartridge-notice:not([hidden])) #load-rom {
+    padding-block: 3px;
+    line-height: 1.25;
+  }
+  #player:has(#cartridge-notice:not([hidden])) .cartridge-warning-cue {
+    display: block;
+    font-size: 12px;
+    font-weight: 400;
+  }
 }
 
 @media (min-width: 370px) and (max-width: 700px) and (orientation: portrait) {
@@ -398,6 +417,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
       "brand     brand     brand" auto
       ".         screen    ." var(--screen-height)
       "feedback  feedback  feedback" auto
+      "storage   storage   storage" auto
       "toolbar   toolbar   toolbar" auto
       "cartridge cartridge cartridge" auto
       / 144px minmax(0, 1fr) 144px;

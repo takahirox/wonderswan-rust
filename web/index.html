@@ -58,7 +58,10 @@
               <h2 id="cartridge-label">Cartridge</h2>
               <p id="rom-title">No ROM loaded</p>
             </div>
-            <button id="load-rom" class="primary" type="button" aria-haspopup="dialog" aria-controls="cartridge-picker" disabled>Insert cartridge</button>
+            <button id="load-rom" class="primary" type="button" aria-haspopup="dialog" aria-controls="cartridge-picker"
+              aria-describedby="cartridge-notice-message" disabled>
+              Insert cartridge<span class="cartridge-warning-cue" aria-hidden="true">Storage warning</span>
+            </button>
             <input id="rom" type="file" accept=".ws,.wsc" aria-label="Local ROM file" hidden />
             <div class="model-control">
               <label for="model">Console</label>
@@ -84,10 +87,10 @@
             <p id="console-notice" role="status"></p>
             <p id="rtc-notice" role="status"></p>
             <p id="notice" role="status"></p>
-            <div id="cartridge-notice" hidden>
-              <p id="cartridge-notice-message" role="alert"></p>
-              <button id="cartridge-notice-dismiss" type="button" aria-label="Dismiss ROM storage warning">×</button>
-            </div>
+          </div>
+          <div id="cartridge-notice" hidden>
+            <p id="cartridge-notice-message" role="alert"></p>
+            <button id="cartridge-notice-dismiss" type="button" aria-label="Dismiss ROM storage warning">×</button>
           </div>
         </div>
         <dialog id="cartridge-picker" aria-labelledby="cartridge-picker-title">

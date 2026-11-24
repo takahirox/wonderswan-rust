@@ -321,8 +321,28 @@ export async function romLibraryChecks(browser, base, errors) {
       await status(phone,'Running');
       await textIncludes(phone,'#cartridge-notice-message','Could not remember '+name);
       assert.match(await phone.locator('#notice').textContent(),/local save could not be read/);
-      await openCartridges(phone); await countRows(phone,0);
-      await textIncludes(phone,'#library-retention','Allow or free browser storage');
+      let failedName = name;
+      if (mode === 'denied') {
+        failedName = 'keypad-vertical.ws';
+        await importFile(phone,{...second,name:failedName});
+        await title(phone,failedName);
+        await status(phone,'Running');
+        await textIncludes(phone,'#cartridge-notice-message',`Could not remember ${failedName}`);
+        const buttons = await phone.locator('#touch-controls button:enabled').all();
+        assert.equal(buttons.length,11);
+        const {width,height} = phone.viewportSize();
+        const cue = phone.getByText('Storage warning',{exact:true});
+        for (const element of [phone.locator('#screen'),cue,...buttons]) {
+          const box = await element.boundingBox();
+          assert.ok(box && box.width > 0 && box.height > 0 && box.x >= 0 && box.y >= 0
+            && box.x+box.width <= width && box.y+box.height <= height,
+            `${element} fits alongside the picture, storage warning cue and touch controls (${JSON.stringify(box)})`);
+        }
+        for (const button of buttons) await button.tap({trial:true});
+      }
+      await phone.getByRole('button',{name:'Insert cartridge',exact:true,description:/Could not remember/}).tap();
+      await countRows(phone,0);
+      await textIncludes(phone,'#library-retention',`Could not remember ${failedName}. Allow or free browser storage`);
       await phone.keyboard.press('Escape');
       await phone.evaluate(() => Object.defineProperty(window,'indexedDB',window.originalIndexedDB));
     }
