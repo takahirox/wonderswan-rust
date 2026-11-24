@@ -687,12 +687,12 @@ try {
     await load(verticalRom);
   }
   await page.setViewportSize({ width:680,height:340 });
-  async function checkCompactGameplayInViewport() {
+  async function checkGameplayInViewport() {
     assert.equal(await page.evaluate(() => document.activeElement.id), 'screen');
     assert.equal(await page.evaluate(() => {
       const container = document.fullscreenElement ?? document.documentElement;
       return container.scrollWidth > container.clientWidth;
-    }), false, 'no horizontal overflow during compact landscape play');
+    }), false, 'no horizontal overflow during landscape play');
     await checkInViewport('#screen');
     const buttons = await page.locator('#touch-controls button').all();
     assert.equal(buttons.length, 11);
@@ -710,14 +710,14 @@ try {
     assert.ok((await screen.boundingBox()).y < 0, `680×340 ${mode} picker opens from a clipped screen`);
     await (await chooser).setFiles(verticalRom);
     await initial();
-    await checkCompactGameplayInViewport();
+    await checkGameplayInViewport();
 
     const model = page.locator('#model');
     await model.scrollIntoViewIfNeeded();
     assert.ok((await screen.boundingBox()).y < 0, `680×340 ${mode} Console is reached from a clipped screen`);
     await model.selectOption(mode === 'windowed' ? 'color' : 'crystal');
     await initial();
-    await checkCompactGameplayInViewport();
+    await checkGameplayInViewport();
 
     const screenBox = await screen.boundingBox();
     const toolbar = await page.locator('#controls').boundingBox();
@@ -739,11 +739,11 @@ try {
   }
   await page.setViewportSize({ width:640,height:360 });
   await load(verticalRom);
-  await checkCompactGameplayInViewport();
+  await checkGameplayInViewport();
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     await page.locator('#fullscreen').tap();
     await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
-    await checkCompactGameplayInViewport();
+    await checkGameplayInViewport();
     await page.evaluate(() => document.exitFullscreen());
     await page.waitForFunction(() => !document.fullscreenElement);
   }
@@ -785,28 +785,33 @@ try {
     await page.locator('#fullscreen').tap();
     await page.waitForFunction(() => !document.fullscreenElement);
   }
-  await page.setViewportSize({ width:320,height:568 });
-  await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets:{top:24,bottom:24,left:20,right:20} });
+  await page.setViewportSize({ width:844,height:520 });
   await page.evaluate(() => window.scrollTo(0,0));
-  await checkLayout({ kind:'portrait' });
-  async function checkSafeArea() {
+  await checkGameplayInViewport();
+  await checkLayout({ kind:'landscape' });
+
+  await page.setViewportSize({ width:320,height:568 });
+  async function checkSafeArea(orientation, inset) {
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets:{top:24,bottom:24,left:inset,right:inset} });
+    await page.evaluate(() => window.scrollTo(0,0));
+    await checkLayout({ orientation, kind:'portrait' });
     assert.deepEqual(await page.locator('main').evaluate(main => {
       const style = getComputedStyle(main);
       return [style.paddingTop,style.paddingRight,style.paddingBottom,style.paddingLeft];
-    }), ['24px','20px','24px','20px']);
+    }), ['24px',`${inset}px`,'24px',`${inset}px`]);
     for (const target of await page.locator('#display, #touch-controls button').all()) {
       const box = await target.boundingBox();
-      assert.ok(box.x >= 20 && box.x + box.width <= 300, 'game and touch targets respect simulated safe areas');
+      assert.ok(box.x >= inset && box.x + box.width <= 320 - inset,
+        `${orientation} game and touch targets respect ${inset}px side insets`);
     }
   }
-  await checkSafeArea();
+  await checkSafeArea('horizontal',24);
   await load(verticalRom);
-  await checkLayout({ orientation:'vertical', kind:'portrait' });
-  await checkSafeArea();
+  await checkSafeArea('vertical',30);
   await page.locator('#load-rom').scrollIntoViewIfNeeded();
   await checkInViewport('#load-rom');
   assert.deepEqual(errors, []);
-  console.log('375×812 and 320×568 portrait and 812×375 landscape layout, both cartridge orientations, fullscreen, all touch inputs and combined presses, and mobile Help/Debug passed');
+  console.log('375×812 and 320×568 portrait (including safe-area insets), 812×375 and 844×520 landscape, both cartridge orientations, fullscreen, touch inputs and mobile Help/Debug passed');
   await mobile.close();
   await romLibraryChecks(browser,base,errors);
   assert.deepEqual(errors, []);
