@@ -30,8 +30,8 @@ async function importFile(page, file) {
   await chooser.setFiles(file);
 }
 
-async function editRecord(page, {key, name, body}) {
-  await page.evaluate(async ({key,name,body}) => {
+async function editRecord(page, {key, name, body, missingMetadata}) {
+  await page.evaluate(async ({key,name,body,missingMetadata}) => {
     const db = await new Promise((resolve,reject) => {
       const request = indexedDB.open('wonderswan-rust:cartridges',1);
       request.onsuccess = () => resolve(request.result);
@@ -43,11 +43,12 @@ async function editRecord(page, {key, name, body}) {
         tx.oncomplete = resolve;
         tx.onabort = () => reject(tx.error);
         if (name !== undefined) tx.objectStore('cartridges').put({name},key);
+        if (missingMetadata) tx.objectStore('cartridges').delete(key);
         if (body === 'missing') tx.objectStore('roms').delete(key);
         if (body === 'mismatch') tx.objectStore('roms').put(new Uint8Array(131072),key);
       });
     } finally { db.close(); }
-  },{key,name,body});
+  },{key,name,body,missingMetadata});
 }
 
 export async function romLibraryChecks(browser, base, errors) {
@@ -65,7 +66,7 @@ export async function romLibraryChecks(browser, base, errors) {
     window.romReads = 0;
     window.abortOperation = null;
     window.holdWrite = false;
-    for (const method of ['get','getAll','getAllKeys','openCursor','openKeyCursor','put','delete']) {
+    for (const method of ['get','getAll','openCursor','put','delete']) {
       const original = IDBObjectStore.prototype[method];
       IDBObjectStore.prototype[method] = function (...args) {
         const request = original.apply(this,args);
@@ -127,7 +128,7 @@ export async function romLibraryChecks(browser, base, errors) {
     await importFile(page,first); await status(page,'Running');
     await title(page,first.name);
     await openCartridges(page); await countRows(page,2);
-    assert.equal(await page.evaluate(() => window.romReads),0,'picker enumerates metadata only');
+    assert.equal(await page.evaluate(() => window.romReads),0,'picker opens without reading ROM bodies');
     await page.keyboard.press('Escape');
     assert.deepEqual(requests,[],'local imports make no network requests');
 
@@ -241,6 +242,39 @@ export async function romLibraryChecks(browser, base, errors) {
     assert.equal(await picker.isVisible(),true,'held Enter does not activate the next focused control');
     await page.keyboard.press('Escape');
     await status(page,'Running');
+
+    // Discover a stored body with no metadata after reload, without reading it.
+    await importFile(page,first); await title(page,first.name);
+    await openCartridges(page);
+    const namedEntry = picker.getByRole('button',{
+      name:first.name,exact:true,description:firstKey.slice(-64,-52),
+    });
+    await namedEntry.waitFor();
+    await page.keyboard.press('Escape');
+    await editRecord(page,{key:firstKey,missingMetadata:true});
+    await page.reload(); await ready(page);
+    await openCartridges(page);
+    const unnamed = picker.getByRole('button',{name:'Unnamed cartridge',exact:true});
+    await unnamed.waitFor();
+    await countRows(page,3);
+    assert.equal(await page.evaluate(() => window.romReads),0,'discovering an orphan does not read its body');
+    await unnamed.click();
+    await textIncludes(page,'#cartridge-notice-message','Reopen the original file or remove the entry');
+    await title(page,'No ROM loaded'); await status(page,'No ROM loaded');
+    await importFile(page,first); await title(page,first.name);
+    await openCartridges(page); await namedEntry.waitFor();
+    await countRows(page,3);
+    assert.equal(await picker.locator('#library-operation').textContent(),'');
+    await page.keyboard.press('Escape');
+
+    await editRecord(page,{key:firstKey,missingMetadata:true});
+    await openCartridges(page);
+    await picker.getByRole('button',{name:'Remove Unnamed cartridge',exact:true}).click();
+    await countRows(page,2);
+    await title(page,first.name); await status(page,'Running');
+    await page.reload(); await ready(page);
+    await openCartridges(page); await countRows(page,2);
+    await page.keyboard.press('Escape');
 
     // A deletion blocked in another tab queues opens without notifying them.
     const otherTab = await context.newPage();

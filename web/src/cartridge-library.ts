@@ -3,6 +3,7 @@ const metadata = "cartridges";
 const roms = "roms";
 const stores = [metadata, roms];
 const openTimeoutMs = 2000;
+const unnamedCartridge = "Unnamed cartridge";
 export const maxRomBytes = 64 * 1024 * 1024;
 
 export interface CartridgeEntry {
@@ -81,14 +82,25 @@ async function transaction<T>(
 }
 
 export async function listCartridges(): Promise<CartridgeEntry[]> {
-  const [keys, records] = await transaction(metadata, "readonly", tx => {
+  const [metadataKeys, records, romKeys] = await transaction(stores, "readonly", tx => {
     const store = tx.objectStore(metadata);
-    return [store.getAllKeys(), store.getAll()] as const;
+    return [store.getAllKeys(), store.getAll(), tx.objectStore(roms).getAllKeys()] as const;
   });
   // Use the actual database key so even malformed records can be removed.
-  return keys.result.map((key, index) => ({
-    key, name: filename(records.result[index]) ?? "Unnamed cartridge",
+  const keys = metadataKeys.result;
+  const entries = keys.map((key, index) => ({
+    key, name: filename(records.result[index]) ?? unnamedCartridge,
   }));
+  // Both key lists are in IndexedDB key order. Include bodies missing metadata
+  // without reading their bytes, and compare compound keys by value.
+  let metadataIndex = 0;
+  for (const key of romKeys.result) {
+    while (metadataIndex < keys.length && indexedDB.cmp(keys[metadataIndex], key) < 0) metadataIndex++;
+    if (metadataIndex === keys.length || indexedDB.cmp(keys[metadataIndex], key) !== 0) {
+      entries.push({ key, name: unnamedCartridge });
+    }
+  }
+  return entries;
 }
 
 export async function readCartridge(key: IDBValidKey): Promise<Uint8Array> {
@@ -107,7 +119,7 @@ export async function readCartridge(key: IDBValidKey): Promise<Uint8Array> {
 export async function rememberCartridge(key: string, name: string, bytes: Uint8Array) {
   await transaction(stores, "readwrite", tx => {
     // The latest committed import supplies the name and repairs both records.
-    tx.objectStore(metadata).put({ name: filename({ name }) ?? "Unnamed cartridge" }, key);
+    tx.objectStore(metadata).put({ name: filename({ name }) ?? unnamedCartridge }, key);
     tx.objectStore(roms).put(bytes, key);
   });
 }
