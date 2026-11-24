@@ -63,10 +63,10 @@ async function initial() {
   await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
   await expectInput();
 }
-async function load(file=rom) {
+async function load(file=rom, activate='click') {
   const chooser = page.waitForEvent('filechooser');
-  await page.locator('#load-rom').click();
-  await page.locator('#open-local-rom').click();
+  await page.locator('#load-rom')[activate]();
+  await page.locator('#open-local-rom')[activate]();
   await (await chooser).setFiles(file);
   await initial();
 }
@@ -982,8 +982,9 @@ try {
   await cdp.send('Input.dispatchTouchEvent', { type:'touchCancel',touchPoints:[] });
   await expectInput();
   assert.equal(await page.locator('.is-pressed').count(),0);
-  await load();
-  await page.evaluate(() => window.scrollTo(0,0));
+  await load(rom, 'tap');
+  await checkInViewport('#controls');
+  await checkGameplayInViewport();
   await checkLayout({ kind:'landscape' });
   await screenshot('mobile-landscape', false);
   if (await page.evaluate(() => document.fullscreenEnabled)) {
@@ -998,10 +999,19 @@ try {
     await page.locator('#exit-fullscreen').tap();
     await waitForFullscreenExit();
   }
+  await page.setViewportSize({ width:540,height:320 });
+  for (const [orientation, file] of [['horizontal', rom], ['vertical', verticalRom]]) {
+    await load(file, 'tap');
+    await checkGameplayInViewport();
+    await screenshot(`mobile-540x320-${orientation}`, false);
+  }
+  console.log('540×320 windowed gameplay fits the picture and all eleven touch controls in both orientations after selection');
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     for (const [width, height, orientation, file] of [
       [540, 320, 'horizontal', rom],
       [667, 280, 'vertical', verticalRom],
+      [400, 300, 'horizontal', rom],
+      [400, 300, 'vertical', verticalRom],
     ]) {
       await page.setViewportSize({ width, height });
       await load(file);
@@ -1014,9 +1024,9 @@ try {
       await page.locator('#exit-fullscreen').tap();
       await waitForFullscreenExit();
     }
-    console.log('540×320 horizontal and 667×280 vertical touch fullscreen fit the picture, all eleven controls and Exit');
-    await load();
+    console.log('540×320 horizontal, 667×280 vertical and both 400×300 touch fullscreen layouts fit the picture, all eleven controls and Exit');
   }
+  await load();
   await page.setViewportSize({ width:844,height:520 });
   await page.evaluate(() => window.scrollTo(0,0));
   await page.locator('#screen').focus();
