@@ -44,36 +44,38 @@
           <p id="fullscreen-status" role="status"></p>
         </div>
         <div id="game" data-orientation="horizontal">
-          <div id="display" class="screen-frame">
-            <div id="screen-presentation">
-              <canvas id="screen" width="224" height="144" tabindex="0"
-                aria-label="Game screen. X1–X4: arrows or W D S A. Y1–Y4: I L K J. A/B: Z/X. Start: Enter. Buttons keep their hardware identities in either orientation.">
-                A browser with canvas support is required.
-              </canvas>
-              <canvas id="screen-effect" width="224" height="144" aria-hidden="true" hidden></canvas>
+          <div class="fullscreen-layout">
+            <div id="display" class="screen-frame">
+              <div id="screen-presentation">
+                <canvas id="screen" width="224" height="144" tabindex="0"
+                  aria-label="Game screen. X1–X4: arrows or W D S A. Y1–Y4: I L K J. A/B: Z/X. Start: Enter. Buttons keep their hardware identities in either orientation.">
+                  A browser with canvas support is required.
+                </canvas>
+                <canvas id="screen-effect" width="224" height="144" aria-hidden="true" hidden></canvas>
+              </div>
+              <p id="empty-state">Load a ROM to play</p>
             </div>
-            <p id="empty-state">Load a ROM to play</p>
+            <div id="touch-controls" role="group" aria-label="Touch controller">
+              <div class="dpad y-pad" role="group" aria-label="Y keypad">
+                <button type="button" data-button="256" aria-label="Y1 (I)" disabled>Y1</button>
+                <button type="button" data-button="512" aria-label="Y2 (L)" disabled>Y2</button>
+                <button type="button" data-button="1024" aria-label="Y3 (K)" disabled>Y3</button>
+                <button type="button" data-button="2048" aria-label="Y4 (J)" disabled>Y4</button>
+              </div>
+              <div class="dpad x-pad" role="group" aria-label="X keypad">
+                <button type="button" data-button="16" aria-label="X1 (Up arrow / W)" disabled>X1</button>
+                <button type="button" data-button="32" aria-label="X2 (Right arrow / D)" disabled>X2</button>
+                <button type="button" data-button="64" aria-label="X3 (Down arrow / S)" disabled>X3</button>
+                <button type="button" data-button="128" aria-label="X4 (Left arrow / A)" disabled>X4</button>
+              </div>
+              <div class="action-buttons" role="group" aria-label="A and B buttons">
+                <button type="button" data-button="4" aria-label="A (Z)" disabled>A</button>
+                <button type="button" data-button="8" aria-label="B (X)" disabled>B</button>
+              </div>
+              <button class="start" type="button" data-button="2" aria-label="Start (Enter)" disabled>Start</button>
+            </div>
+            <button id="exit-fullscreen" type="button">Exit fullscreen</button>
           </div>
-          <div id="touch-controls" role="group" aria-label="Touch controller">
-            <div class="dpad y-pad" role="group" aria-label="Y keypad">
-              <button type="button" data-button="256" aria-label="Y1 (I)" disabled>Y1</button>
-              <button type="button" data-button="512" aria-label="Y2 (L)" disabled>Y2</button>
-              <button type="button" data-button="1024" aria-label="Y3 (K)" disabled>Y3</button>
-              <button type="button" data-button="2048" aria-label="Y4 (J)" disabled>Y4</button>
-            </div>
-            <div class="dpad x-pad" role="group" aria-label="X keypad">
-              <button type="button" data-button="16" aria-label="X1 (Up arrow / W)" disabled>X1</button>
-              <button type="button" data-button="32" aria-label="X2 (Right arrow / D)" disabled>X2</button>
-              <button type="button" data-button="64" aria-label="X3 (Down arrow / S)" disabled>X3</button>
-              <button type="button" data-button="128" aria-label="X4 (Left arrow / A)" disabled>X4</button>
-            </div>
-            <div class="action-buttons" role="group" aria-label="A and B buttons">
-              <button type="button" data-button="4" aria-label="A (Z)" disabled>A</button>
-              <button type="button" data-button="8" aria-label="B (X)" disabled>B</button>
-            </div>
-            <button class="start" type="button" data-button="2" aria-label="Start (Enter)" disabled>Start</button>
-          </div>
-          <button id="exit-fullscreen" type="button">Exit fullscreen</button>
         </div>
         <div class="cartridge-area">
           <section class="cartridge" aria-labelledby="cartridge-label">
