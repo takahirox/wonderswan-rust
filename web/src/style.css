@@ -608,10 +608,13 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   /* The inner container and #game's content box share the safe dimensions.
      Query the inner container so cqw/cqh resolve against #game. Each grid
      switch first fits the controls, then compares the picture at native aspect. */
-  @container fullscreen-viewport (width >= 228px) and (height >= 208px)
+  @container fullscreen-viewport
+      (((width >= 272px) and (height >= 192px)) or ((width >= 228px) and (height >= 208px)))
       and (height <= calc(284px + (100cqw - 134px) * 9 / 14)) {
     /* Stacked rows and gaps take 284px of height. The compact grid leaves
-       more height for the picture, but takes 134px from its width. */
+       more height for the picture, but takes 134px from its width. At 192px,
+       each pad fits in 92px plus the shared 8px gap. The narrower grid with
+       Start in the A/B row needs 208px for its taller bottom row. */
     #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
       /* Fit both pads and the 8px gap by compressing their middle tracks.
          The up/down targets remain 44px tall. */
@@ -708,20 +711,26 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
     /* Moving Exit alongside the picture frees height at the cost of width.
        The stacked grid uses 168px (196px with tall pads) outside the screen. */
     #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
+      --actions-height: 60px;
       grid-template:
         "screen exit    exit" 44px
-        "screen actions start" minmax(60px, 1fr)
+        "screen actions start" minmax(var(--actions-height), 1fr)
         "pads   pads    pads" auto / minmax(0, 1fr) 92px 52px;
       column-gap: 4px;
     }
     #game:fullscreen[data-orientation="vertical"] .action-buttons {
-      grid-template-rows: 16px 44px;
+      grid-template-rows: calc(var(--actions-height) - 44px) 44px;
       row-gap: 0;
       align-items: start;
       align-self: center;
     }
     #game:fullscreen[data-orientation="vertical"] .start { align-self: center; }
     @container fullscreen-viewport (width >= 264px) {
+      #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
+        /* Leave 152px for Exit, both gaps, and the 92px minimum pad row.
+           A and B occupy separate columns, so their offset can shrink to 4px. */
+        --actions-height: clamp(48px, 100cqh - 152px, 60px);
+      }
       #game:fullscreen[data-orientation="vertical"] .dpad {
         /* Reserve 120px for Exit, A/B, and the gaps, plus two 44px pad
            rows. The center targets use separate columns and can overhang. */
