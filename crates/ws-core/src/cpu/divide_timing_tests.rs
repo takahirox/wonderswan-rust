@@ -2,7 +2,7 @@
 use super::*;
 
 fn setup(model: Model, mode: u8, code: &[u8]) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     if model != Model::Mono {
         b.output(0x60, mode).unwrap();
     }

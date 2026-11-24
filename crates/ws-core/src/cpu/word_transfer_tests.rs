@@ -12,7 +12,7 @@ fn modes() -> [(Model, bool); 5] {
 }
 
 fn setup(model: Model, color: bool, code: &[u8]) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     b.ports[0x60] = if color { 0x80 } else { 0 };
     b.ram[0x1000..0x1000 + code.len()].copy_from_slice(code);
     let mut c = Cpu {
@@ -493,7 +493,7 @@ fn literal_external_width_wait_and_boundary_vectors_stay_byte_wide_where_require
                 .unwrap();
         cart.bytes.fill(0x31);
         cart.save.fill(0x56);
-        b.insert_cartridge(cart);
+        b.insert_test_cartridge(cart);
         for (control, byte_cost, even_cost, odd_cost, mixed_cost) in [
             (0, 1, 2, 2, 2),
             (4, 1, 1, 2, 2),

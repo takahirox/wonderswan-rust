@@ -16,8 +16,9 @@ function markers(bytes, model, count) {
   assert.equal(word(2),0x2000,'CPU-captured incoming SP');
   assert.equal(word(4),model.ds,'CPU-captured incoming DS by physical console');
   assert.equal(word(6),0x600d,'CPU literal self-check passes');
-  assert.equal(word(8),model.a0,'header-seeded A0 remains intact');
+  assert.equal(word(8),model.a0,'header-configured A0 remains intact');
   assert.equal(word(10),0xf000,'normal footer jump reaches final mapped bank');
+  assert.equal(word(12),0xa0e6,'cartridge captured the IPL lockout instruction in RAM');
 }
 
 export async function startupChecks(browser, base, errors) {
@@ -93,7 +94,7 @@ export async function startupChecks(browser, base, errors) {
               let count = 0;
               function run(model) {
                 m.run_frame();
-                results.push({model,count:++count,saved:Array.from(m.save_data().slice(0,12))});
+                results.push({model,count:++count,saved:Array.from(m.save_data().slice(0,14))});
               }
               m.reset(model);m.load_rom(new Uint8Array(probe.bytes));run(model);
               m.restart();run(model);
@@ -115,6 +116,6 @@ export async function startupChecks(browser, base, errors) {
       } finally { URL.revokeObjectURL(url); }
     },{bindings,wasm:Array.from(wasm),probes:probes.map(p => ({colorOnly:p.colorOnly,bytes:Array.from(p.bytes)}))});
     for (const result of results) markers(result.saved,models.find(m => m.name === result.model),result.count);
-    console.log('Incoming SP/DS CPU probe: both headers/mappers, physical models, load, restart, replacement, same-model and all compatible directed Wasm transitions passed');
+    console.log('IPL lockout and incoming SP/DS CPU probe: both headers/mappers, physical models, load, restart, replacement, same-model and all compatible directed Wasm transitions passed');
   } finally { await context.close(); }
 }

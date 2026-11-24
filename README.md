@@ -29,8 +29,8 @@ tests; they are not published with the player. No broad commercial-ROM
 compatibility is claimed.
 
 ROM bus width and additional wait clocks are software-controlled through A0 on
-all three models. Header flags seed the synthetic firmware-free handoff on
-load/restart/model change; subsequent OUT writes change CPU/DMA behavior without
+all three models. The built-in IPL applies cartridge header flags on
+load, restart and compatible model changes. Subsequent OUT writes change CPU/DMA behavior without
 changing cartridge metadata. See [runtime ROM controls and limitations](docs/hardware-subset.md#runtime-rom-controls-a0)
 and the [original A0 CPU probe](fixtures/README.md#a0-runtime-control-probe-issue-23).
 
@@ -137,9 +137,10 @@ unless explicitly muted. Mute and volume are remembered locally, separately from
 ROM saves; clearing storage resets them. Pause/background/restart clears scheduled
 sound, and unavailable audio does not prevent gameplay.
 
-No game assets, playable ROMs or proprietary BIOS/firmware are bundled into the
-site. Independent original CC0 hardware probes remain under [fixtures](fixtures/README.md)
-for reproducible development tests only.
+Each console automatically boots a local cartridge through its built-in
+[original CC0 boot ROM](bios/README.md). Play requires only the cartridge file.
+The site bundles the player and its original firmware. The CC0 test cartridges
+remain under [fixtures](fixtures/README.md) for development.
 
 ## Build and run locally
 
@@ -149,9 +150,9 @@ Prerequisites:
 - `rustup target add wasm32-unknown-unknown`.
 - `cargo install wasm-pack --version 0.14.0 --locked`.
 - Node.js 22.12+ or 24+ and npm; a modern browser supporting Wasm and canvas.
-- To rebuild/verify development fixtures: Python 3 and [NASM](https://www.nasm.us/)
-  (validated with Python 3.13 and NASM 3.02). Generated fixtures are committed;
-  normal browser builds do not need an assembler.
+- To rebuild or verify the original IPL and development fixtures, install
+  Python 3 and [NASM](https://www.nasm.us/). The generated binaries are committed
+  so normal builds can use them directly.
 
 If Homebrew/system Rust takes precedence, select rustup before building Wasm:
 
@@ -162,6 +163,7 @@ export PATH="$(dirname "$(rustup which rustc)"):$PATH"
 From the repository root:
 
 ```sh
+python3 bios/build.py --check       # built-in CC0 boot ROMs
 python3 fixtures/build.py --check  # rebuildable original CC0 hardware probes
 cargo fmt --all -- --check
 cargo test --workspace --locked
@@ -271,11 +273,12 @@ three models, matching-width ROM data and Color/Crystal DMA paths after restart.
 The port-95 CPU probe checks clearing, fast frequency progression, restored
 ordinary sweep and control reset on every model, with CPU-written SRAM markers,
 measurable real Wasm PCM and empty-after-drain assertions.
-The incoming-register CPU probes check SP=2000 and physical-model DS=FF00/FE00
-through normal footer/banking paths, with both header types and mapper interfaces,
-load, restart, cartridge replacement and compatible model changes. CPU-written
-SRAM captures are checked through player persistence and the production Wasm
-adapter; see the [bounded startup policy](docs/hardware-subset.md#firmware-free-startup-and-reset).
+The startup CPU probes check the RAM-resident IPL lockout, SP=2000 and
+physical-model DS=FF00/FE00 through normal footer/banking paths. They cover both
+header types and mapper interfaces, load, restart, cartridge replacement and
+compatible model changes. The browser tests check CPU-written SRAM captures
+through player persistence and the production Wasm adapter. See the
+[startup policy](docs/hardware-subset.md#built-in-ipl-startup-and-reset).
 Internal EEPROM CPU probes additionally check settings,
 status, write locking/protection, three-model console isolation, cross-cartridge
 retention, lifecycle flushes, reload/reopen and corrupt/denied/full console storage

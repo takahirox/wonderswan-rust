@@ -67,7 +67,7 @@ fn literal_vectors(instruction: u8) {
             }
             for (profile, control) in [(incoming, 0), (0xf8c6, 0), (0xffc6, 0x700)] {
                 for location in 0..4 {
-                    let mut b = Bus::new(model);
+                    let mut b = Bus::for_test(model);
                     if model != Model::Mono {
                         b.output(0x60, mode).unwrap();
                     }
@@ -77,7 +77,7 @@ fn literal_vectors(instruction: u8) {
                     )
                     .unwrap();
                     cart.bytes[65536..65540].copy_from_slice(&code);
-                    b.insert_cartridge(cart);
+                    b.insert_test_cartridge(cart);
                     // Both RAM and ROM with wait control enabled/disabled.
                     b.output(0xa0, if location % 2 == 0 { 4 } else { 12 })
                         .unwrap();
@@ -148,7 +148,7 @@ fn decimal_adjust_all_al_af_cf_ah_and_opposing_flags_from_literal_tables() {
         .collect();
     assert_eq!(table.len(), 2 * 4 * 256);
     for (model, mode) in modes() {
-        let mut b = Bus::new(model);
+        let mut b = Bus::for_test(model);
         if model != Model::Mono {
             b.output(0x60, mode).unwrap();
         }
@@ -185,7 +185,8 @@ fn decimal_adjust_all_al_af_cf_ah_and_opposing_flags_from_literal_tables() {
 fn decimal_adjust_runtime_modes_scheduler_advances_timer_raster_and_pcm_once() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let mut m = crate::Machine::new(model);
-        m.bus.insert_cartridge(
+        m.bus = Bus::for_test(model);
+        m.bus.insert_test_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
         );
@@ -239,7 +240,7 @@ fn decimal_adjust_preserves_prefix_policy_and_interrupt_continuation() {
             (0x27, 0xab7a, 0xf602, 0xab80, 0xfe92u16, 0xfc92),
             (0x2f, 0xab00, 0xf612, 0xabfa, 0xf696u16, 0xf496),
         ] {
-            let mut b = Bus::new(model);
+            let mut b = Bus::for_test(model);
             if model != Model::Mono {
                 b.output(0x60, mode).unwrap();
             }
@@ -292,7 +293,8 @@ fn decimal_adjust_normal_scheduler_preserves_separate_gdma_accounting() {
         }
         for opcode in [0x27, 0x2f] {
             let mut m = crate::Machine::new(model);
-            m.bus.insert_cartridge(
+            m.bus = Bus::for_test(model);
+            m.bus.insert_test_cartridge(
                 crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                     .unwrap(),
             );

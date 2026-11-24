@@ -3,7 +3,7 @@
 This is a from-scratch Rust core with a thin Wasm adapter. No existing emulator
 has been ported/copied, and no proprietary firmware or commercial ROM is present.
 The [original CC0 probes](../fixtures/README.md) are development-only cartridge
-fixtures; the published player supplies no ROMs. No ROM identity, title, publisher
+fixtures; the published player supplies no game cartridges. No ROM identity, title, publisher
 or file hash changes emulated behavior. SHA-256 is used only by the browser save adapter.
 This milestone expands a hardware subset; it does not promise that arbitrary
 commercial software will run or that timing matches a physical console.
@@ -13,6 +13,7 @@ commercial software will run or that timing matches a physical console.
 | Component | Implemented | Limitations / explicit rejection |
 | --- | --- | --- |
 | Models | WonderSwan mono; WonderSwan Color; SwanCrystal (default) | Mono has 16 KiB internal RAM; color-enabled models have 64 KiB. WSC/Crystal share graphics architecture. A0 exposes live ROM controls and fixed model/status bits; 62 distinguishes WSC/Crystal. LCD panel characteristics are not simulated. |
+| Startup | Built-in original CC0 IPL for each physical model, CPU reset vector and read-only IPL overlay, RAM-resident lockout and cartridge entry | Preserves the established cartridge-entry vectors. Startup graphics, sound, settings menu, boot counters, cartridge authentication and pin straps are outside the implemented subset. |
 | Header | Named entry/maintenance/publisher/model/ID/version/protection/size/save/orientation/ROM width/wait/mapper/checksum fields | Independent errors include bad field/value, declared/file size or checksum. Reserved flags and unknown model/save/mapper codes fail. Firmware authentication is absent. |
 | ROM | Header-declared 128 KiB–16 MiB common interface, including raw 3/6 MiB; up to 64 MiB with mapper 01 | Exact raw file length and checksum required. 3/6 MiB top-align in rounded 4/8 MiB spaces; synthetic leading region reads FF by policy, not electrical certification. ROM is read-only. Header 00 identifies a common interface, not proof of a physical 2001 chip (KARNAK also uses 00). Pocket Challenge board features unsupported. |
 | Common banking | C0 linear 1 MiB bank, C1 save 64 KiB bank, C2/C3 64 KiB ROM banks | Address bus wraps at 20 bits. ROM addresses wrap within rounded power-of-two capacity; saves mirror their power-of-two size. Only upper 768 KiB of each linear bank is visible at 40000–FFFFF. |
@@ -25,7 +26,7 @@ commercial software will run or that timing matches a physical console.
 | CPU | Generic 8/16-bit register, ModR/M, segment, stack and string operations below; two-byte FPO1 NOP and nonblocking console POLL | Unsupported opcodes/group extensions/ports/prefix combinations stop execution visibly, with CS:IP for unknown opcodes. No silent NOP fallback. |
 | Interrupts | IF/TF, vector table and stack entry, INT/INT3/INTO/IRET, divide faults, BOUND fault; vector-1 single-step with POPF/IRET activation and saved-FLAGS continuation; hardware priority highest source first; B0 vector/request, B2 enable, B4 status, B6 acknowledgement | Enable gates request latching; changing enable does not clear latched status. Key edges, line match, VBlank and both timer sources generated. UART/cartridge IRQ sources and low-battery NMI are not generated. MOV/POP SS suppress their TF boundary and defer external INT through the next instruction. STI and IF-enabling POPF/IRET delays apply to external INT. Synchronous interrupts and eligible external INT outrank TF; one selected entry clears live IF/TF. Prefixes are indivisible; REP element/final/zero-count and HALT-completion trap behavior follow the [source reconciliation and explicit inference limits](single-step.md). HLT wakes for a latched IRQ even with IF=0, resuming without vectoring in that case. |
 | Timers | A2 control, A4–A7 reload, A8–AB counter; HBlank and VBlank count sources, one-shot/repeat, reload-on-write and disabled-count-at-one IRQ quirk | Test modes at A3 unsupported. Word writes to A2 with high byte zero allowed. Programmable final line at 16; independent STN synchronization at 17. See [LCD policies](lcd-timing.md). |
-| Timing | Shared 3.072 MHz clock, 256 clocks/line, programmable T+1 lines/frame (159 by default), 144 visible; actual raster-wrap frame progression | Per-instruction execution cost + fetch/data/I/O transfers, live A0 ROM waits, SRAM/cartridge-I/O waits, aligned internal RAM/documented I/O word pairs and 16-bit ROM reads, branch/shift/multiply/divide/interrupt costs. Ordinary IN/OUT uses six decoded clocks including its normal transfer, plus explicit fetch and additional transfer/wait charges; see [reconciliation and limits](ordinary-io-timing.md). Internal byte/even-word/odd-word costs are 1/1/2. Aligned 16-bit cartridge instruction fetches can supply two sequential bytes. Instructions and DMA words advance the scheduler at their boundaries. [Internal transfers](internal-word-timing.md) and [cartridge fetch timing](lcd-timing.md#sequential-rom-fetch-timing-issue-119). |
+| Timing | Shared 3.072 MHz clock, 256 clocks/line, programmable T+1 lines/frame (159 at cartridge entry), 144 visible; actual raster-wrap frame progression | Per-instruction execution cost + fetch/data/I/O transfers, live A0 ROM waits, SRAM/cartridge-I/O waits, aligned internal RAM/documented I/O word pairs and 16-bit ROM reads, branch/shift/multiply/divide/interrupt costs. Ordinary IN/OUT uses six decoded clocks including its normal transfer, plus explicit fetch and additional transfer/wait charges; see [reconciliation and limits](ordinary-io-timing.md). Internal byte/even-word/odd-word costs are 1/1/2. Aligned 16-bit cartridge instruction fetches can supply two sequential bytes. Instructions and DMA words advance the scheduler at their boundaries. [Internal transfers](internal-word-timing.md) and [cartridge fetch timing](lcd-timing.md#sequential-rom-fetch-timing-issue-119). |
 | General DMA | Color/Crystal registers 40–42 source, 44–45 destination, 46–47 byte length, 48 control; increment/decrement word copies from RAM or mapped fast 16-bit ROM to internal RAM | Engine requires 60.7 color enable; mono rejects all GDMA register I/O. CPU and IRQ delivery stall for 5 + 2 × copied words on the existing clock. SRAM, byte-wide ROM, wait-state ROM and unmapped ROM stop at the first invalid source word; zero/initially invalid requests cost no DMA clocks. SDMA shares the clock and takes priority over the next GDMA word; see semantics below. |
 | Sound DMA | Color/Crystal 4A–4C source, 4E–50 length, 52 control; byte transfers to Channel 2 or Hyper Voice, all four rates, hold/repeat/direction and bytewise repeat shadows | 20-bit counters and current RAM/ROM/SRAM mapper path, including slow/byte-wide sources. Phase 117 mod 128 reserves 6 + source access clocks every enabled tick; CPU/IRQ/GDMA resume at instruction/word boundaries. Reserved 4D/51 read zero, ignore writes. See timing and readback policies below. |
 | Hyper Voice | Color/Crystal signed 16-bit output latches 64–67; alternating CPU 8-bit input at 69; DMA stereo/mono routing; 6A conversion/shift/rate/enable and 6B layout/reset | All eight divisors, signed/unsigned/unsigned-negated/ignored extension. Headphone-only 16-bit wrapping addition. Direct CPU write to internal left latch 68 and unknown 6B low-nibble controls rejected. See semantics below. |
@@ -91,26 +92,25 @@ corroborate rounded/top-aligned placement; Beetle explicitly fills the gap with 
 These are placement evidence, not measurements of unpopulated physical cartridge
 addresses. FF is an explicit emulation policy; electrical open bus remains
 unverified. No emulator code was copied. See the [original raw-image probes](../fixtures/README.md#raw-36-mib-probes-issue-25)
-and [Issue #25 validation](issue-25-validation.md). Commercial playability remains
-untested; firmware-free startup and other hardware limitations are unchanged.
+and [Issue #25 validation](issue-25-validation.md). Commercial playability remains untested.
 
 ## Runtime ROM controls (A0)
 
 All three models accept byte IN/OUT at A0. Bits 2 (16-bit ROM transfers) and
-3 (one extra ROM wait clock) are writable. Bit 0 (IPL lock) is sticky: writing
-zero cannot clear it. Model identification at bit 1 and self-test status at bit
-7 ignore writes. Reserved bits 4–6 ignore writes and read zero. The synthetic
-handoff keeps lock/status set and reports bit 1 on Color/Crystal only.
+3 (one extra ROM wait clock) are writable. Bit 0 disables the IPL overlay and
+stays set until hardware reset. Model identification at bit 1 and bus-test
+status at bit 7 ignore writes. Reserved bits 4–6 read zero and ignore writes.
+Reset reads 04 on Mono and 06 on Color/Crystal. Attaching a validated cartridge
+sets bit 7 as a deterministic substitute for the cartridge bus test.
 
-Successful cartridge load, restart and compatible model change seed bits 2/3
-from the cartridge header's physical ROM width/wait flags. Software then controls
-the live register without changing header metadata or ROM bytes. Failed loads
-and incompatible model changes preserve live state. An unloaded new/reset bus
-retains the prior synthetic 85/87 policy; these are not authentic power-on values.
-No IPL mapping, firmware execution or authentication emulation is added.
+The IPL copies bits 2/3 from the cartridge footer when locking itself out.
+Cartridge software can then change the live controls without changing header
+metadata or ROM bytes. This write and mapper writes discard the pending fetch
+lane and prefetch credits. Failed loads and incompatible model changes preserve
+the active mapping and controls.
 
-ROM byte accounting is `1 + A0.3` clocks. An aligned word with adjacent physical
-ROM addresses costs the same when A0.2 is set; otherwise it costs two byte
+Cartridge ROM byte accounting is `1 + A0.3` clocks. An aligned word with adjacent physical
+cartridge ROM addresses costs the same when A0.2 is set; otherwise it costs two byte
 transfers. Instruction operand fetches and data reads share this rule. Odd,
 segment-wrapped, 20-bit-wrapped and bank-crossing pairs are not incorrectly
 coalesced. Sequential instruction fetches on a 16-bit ROM bus without wait
@@ -125,7 +125,13 @@ width data/electrical behavior is unresolved and is outside hardware-accuracy
 assertions. SRAM/self-flash windows remain byte-wide; internal RAM and documented
 I/O word pairs follow the [internal transfer table](internal-word-timing.md).
 SDMA accepts either ROM wait setting
-and samples the live source cost at each event; GDMA rejects slow/byte configuration.
+and samples the live source cost at each event. GDMA rejects slow/byte cartridge
+sources. The IPL overlay is modeled as internal, fast 16-bit ROM. CPU data and
+instruction fetches use its width and wait independently of the cartridge bus.
+[Published DMA rules](https://ws.nesdev.org/wiki/DMA) describe width and speed
+eligibility without establishing IPL visibility. The emulator uses a shared
+memory map for both DMAs and applies internal ROM timing while the overlay is
+visible.
 
 ## General DMA semantics
 
@@ -149,8 +155,8 @@ unsupported. Sound DMA ports are available only on Color/Crystal as described be
 Each word is read completely before being written, in the selected direction;
 overlaps therefore follow word transfer order. Both addresses advance by two,
 wrapping source at 20 bits and destination at 16 bits, while length decreases by
-two. ROM reads reuse the CPU's current common/extended bank mapping. Live A0.2/3
-govern source eligibility for every bounded word (16-bit, no extra wait).
+two. ROM reads share the current CPU mapping, including the IPL overlay. Live
+A0.2/3 govern cartridge source eligibility for every word (16-bit, no extra wait).
 The 10000–1FFFF window is always
 rejected, including the 2003 flash mapping. DMA never writes cartridge memory.
 Completion or rejection clears enable, retains direction, and exposes the next
@@ -420,51 +426,67 @@ reported console two-byte NOP rule and nonblocking POLL behavior; see the
 [correction record and remaining uncertainties](fpo1-poll.md). The earlier
 [BUSLOCK validation and review](issue-35-validation.md) remains historical evidence.
 
-## Firmware-free startup and reset
+<a id="firmware-free-startup-and-reset"></a>
 
-Entry is FFFF:0000, physical FFFF0; no boot ROM is loaded. FLAGS=F002
-(including MD=1; 8080 emulation is unavailable). PUSHF, interrupt entry and
-POPF/IRET keep bits 1 and 12–15 set and reserved bits 3 and 5 clear.
-Successful cartridge handoff supplies SP=2000 on all three physical models and
-DS=FF00 on WonderSwan or FE00 on WonderSwan Color/SwanCrystal, including when a
-color console runs a mono-compatible cartridge. These values apply before the
-first footer instruction on load, restart, same-model restart and compatible model
-changes. Unloaded `Cpu::default()`/`Machine::new`/`reset`, and restart/model changes
-without a cartridge, keep SP and DS zero.
+## Built-in IPL startup and reset
 
-The previous AI-authored assumption that zero SP/DS plus mandatory cartridge
-initialization sufficed was incorrect. The pinned
-[WSHWTest startup observations](https://github.com/FluBBaOfWard/WSHWTest/blob/34e33d5bfaaabb8b09fa5a557e409efe9fbfd979/README.md#start-registers)
-report these values for all boot ROMs/modes, mapping ASWAN to WonderSwan and
-SPHINX/SPHINX2 to Color/Crystal. Its
-[startup assembly](https://github.com/FluBBaOfWard/WSHWTest/blob/34e33d5bfaaabb8b09fa5a557e409efe9fbfd979/WSHWTest.asm#L49-L74)
-captures incoming SP at line 52 before replacing it. The later store at line 63
-is commented out, and line 619 reads the preserved capture. DS is captured before
-initialization. SS is overwritten first, so this evidence does not establish
-incoming SS. The author qualifies
-interpretations; these sources were inspected, not executed on physical hardware
-here. This bounded correction does not adopt the uncertain startup I/O tables.
+The console starts at FFFF:0000 (physical FFFF0), with FLAGS=F002 and DS, ES
+and SS zero, as documented by [WSdev](https://ws.nesdev.org/wiki/Boot_ROM).
+General registers and RAM start at deterministic zero. The read-only [original
+IPL](../bios/README.md) overlays FF000–FFFFF on WonderSwan or FE000–FFFFF on
+WonderSwan Color and SwanCrystal. Lower cartridge space, including ROM0 and
+ROM1, remains accessible. Unloaded machines stay idle.
 
-Other CPU registers/segments (including SS) and internal RAM are synthetic zeros,
-display/channels are disabled, and C0=0F and C2=C3=FF for the common interface.
-Bandai 2003 uses C0/CF=3F
-and ROM bank high bits=3 so even a 64 MiB ROM starts at its final bank;
-RAM bank high bits remain zero. Cartridge save bytes start FF
-unless restored by the adapter. ROM code must initialize its working stack, segments,
-palettes, sound, timers and interrupts. Cartridge EEPROM programming starts disabled.
+Reset uses the documented A0 width, Mono raster total and STN sync (16/17 =
+9C/92), and Color raster total and sync (9E/9B). Color and Crystal start
+with 60=0A, following the published SPHINX setting. The emulator uses a 9E
+raster total for Crystal and keeps its existing zero STN sync readback. Other
+device defaults remain deterministic where reset behavior is undetermined.
+The mapper reset policy selects high ROM0/ROM1 bank bits 3 for Bandai 2003 so
+the footer can be read through ROM0 even with a 64 MiB image. RAM bank bits
+start at zero.
 
-A0 width/wait is seeded from header flags under the runtime-control policy above.
-This is a reproducible firmware-free handoff with the bounded SP/DS observations
-above; all other deterministic defaults remain synthetic unless separately
-documented. DS points at the reported boot-ROM base, but no firmware bytes or
-services exist there. Full authentic post-BIOS state is not implemented.
-Internal EEPROM uses the minimal handoff described below. Authentication and
-broader boot-firmware services are unavailable. `restart`/`change_model`
-reset volatile hardware while preserving the cartridge and completed nonvolatile
-writes; a model incompatibility fails before replacing state. `reset` unloads the cartridge and clears volatile
-state but retains all three console EEPROM records; browser ordinary Restart/model
-controls use the preserving path. A failed ROM validation
-preserves the running machine. Execution errors latch until restart or valid load.
+The V30MZ runs the IPL through the normal shared device clock. The IPL sets the
+stack, establishes the existing 159-line raster, selects a linear bank of 0F
+(common) or 3F (2003) and sets ROM0/ROM1 low bits to FF. It restores the
+compatibility display and audio settings (display and channels off, 60=00 on
+Color/Crystal, 9E=03). The IPL issues internal EEPROM WEN, reads the footer's
+width, wait and protection settings through ROM0, then runs a stub in internal
+RAM. The stub writes A0 to disable its own ROM mapping and transfers control to
+FFFF:0000, which now exposes the cartridge footer.
+
+Before the first cartridge instruction, SP=2000, DS=FF00 on Mono or FE00 on
+Color/Crystal, and FLAGS=F002. The observed SP/DS values are supported by the
+[pinned WSHWTest startup observations](https://github.com/FluBBaOfWard/WSHWTest/blob/34e33d5bfaaabb8b09fa5a557e409efe9fbfd979/README.md#start-registers).
+Other incoming registers and segments are zero by compatibility policy. RAM
+retains its zero-filled policy, including the color palette, apart from 11
+bytes of stub at 1FF0 immediately below the incoming stack. All three images
+finish in scanline zero of frame zero. The first cartridge instruction is
+ready at these emulated clock counts from reset.
+
+| Physical model | Writable settings | Protected settings |
+| --- | ---: | ---: |
+| WonderSwan | 219 | 222 |
+| WonderSwan Color | 226 | 229 |
+| SwanCrystal | 218 | 221 |
+
+These counts are emulator observations asserted by native tests with both
+mapper and header variants. Isolated instruction and device timing tests
+install their own locked bus, CPU state and raster phase so they measure only
+the intended instruction and device clocks.
+
+Load, restart and compatible model changes all start at the reset vector.
+The browser restores completed save, console EEPROM and RTC data before running
+a frame. Restart and model changes retain the cartridge and completed writes.
+Reset unloads the cartridge and retains the three console EEPROM records.
+Failed validation and incompatible model changes preserve the active machine.
+Execution faults latch until restart or a valid load.
+
+This milestone covers cartridge entry. Startup graphics and sound, owner
+settings UI, boot counters, custom splash formats, cartridge self-test and
+authentication, and pin strapping are deferred. The original IPL's entry
+vectors and timing are a compatibility policy with limited physical-console
+evidence.
 
 ## Internal EEPROM transfers, retention and API
 
@@ -499,10 +521,11 @@ Protection also applies at completion, including if set while a write is pending
 BF, the reserved high byte of word IN/OUT BE, reads zero and ignores every write
 without changing controller state. Lower reserved BE bits are ignored.
 
-The shared emulated clock completes READ in 32 clocks and WRITE/ERASE/WEN/WDS in
-3072 clocks. These are **bounded approximations**, not measured internal EEPROM
-latencies (including short WEN/WDS commands). Polling consumes normal CPU/I/O
-clocks; scanlines, timers, audio and both DMAs keep advancing. ERASE reuses the
+The shared clock completes READ in 32 clocks, WRITE/ERASE in 3072 clocks,
+and WEN/WDS in 16 clocks. The [documented short operation](https://ws.nesdev.org/wiki/EEPROM)
+shifts out 16 bits without waiting for a programming cycle. These timings are
+emulator approximations. Polling consumes normal CPU/I/O clocks and scanlines,
+timers, audio and both DMAs keep advancing. ERASE reuses the
 programming approximation; the libws software delay/poll does not establish a
 measured erase latency. Nonzero direct ERASE, WRAL/ERAL, malformed command
 formats, mixed operation controls and new requests while busy produce explicit
@@ -518,13 +541,11 @@ remain unresolved hardware gaps, as does direct ERASE at nonzero words.
 Each `Machine` owns one record per physical model. Completed bytes survive
 restart, reset/unload, cartridge replacement and switching away/back. Pending
 operations are discarded by those lifecycle resets. Failed ROM validation,
-incompatible model changes and failed imports preserve existing state. At every
-cartridge load/restart/compatible model change, the firmware-free handoff enables
-ordinary internal writes and sets settings protection from header byte 9 bit 7:
-zero protects, one requests the writable-settings exception. Software may protect
-again; a subsequent handoff reapplies the new cartridge's flag. This explicit
-policy does not execute firmware, update cartridge/boot counters or synthesize
-other firmware services.
+incompatible model changes and failed imports preserve existing state. On each
+boot the IPL enables ordinary internal writes and sets settings protection
+when bit 7 of the footer's version byte is zero. A value of one leaves settings
+writable. Cartridge software can set protection again.
+The next reset clears both latches so the IPL can apply the new header flag.
 
 New records have FF in bytes 00–5F and zero in bytes 60 through the physical end:
 an empty owner name, unknown personal fields and zero counters/options. This is
@@ -535,7 +556,7 @@ Core `Machine::console_data() -> &[u8]` exports completed bytes for the active
 physical model; `load_console_data(&[u8]) -> Result<(), Error>` accepts exactly
 128 bytes for Mono or 2048 for either Color model. Successful administrative
 import replaces that model's bytes, cancels pending transfers, clears buffers and
-reapplies the current header handoff (or disabled/unprotected state if unloaded).
+preserves the live enable and protection latches.
 Failure changes nothing. The thin Wasm equivalents `console_data(): Uint8Array`
 and `load_console_data(data: Uint8Array)` copy across the boundary and throw on
 length mismatch. These APIs are separate from cartridge `save_data/load_save`;
@@ -608,7 +629,7 @@ and [SDMA experiments](https://github.com/asiekierka/ws-test-suite/blob/7dfa0e2e
 were inspected. The NEC manual's Table 2-1 and §§4.1–4.3 explain word bus cycles
 and added waits; console-specific controls come from the register definitions
 and experiments. These correct the old constant-A0/header-only runtime assumption;
-header flags seed the synthetic handoff, then software changes live controls.
+the IPL applies header flags at entry and cartridge software controls them thereafter.
 Experiments are source evidence, not physical-console pass logs. No third-party
 code was copied; no corroborating emulator implementation establishes silicon
 requirements. See [Issue #23 validation and source review](issue-23-validation.md).

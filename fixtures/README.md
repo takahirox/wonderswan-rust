@@ -50,22 +50,26 @@ check exact IP, registers, flags, RAM, ports, bus accounting, diagnostic propaga
 and IRQ/REP boundaries. These are emulator regressions, not physical bus timing
 or commercial-title results. See [BUSLOCK reconciliation](../docs/hardware-subset.md#buslock-source-reconciliation-issue-35).
 
-The four `startup-{mono,color}-{common,2003}.ws` cartridges are original Issue #33
-CC0 probes from `startup.asm`: mono-compatible and Color-only headers, each with
-common and Bandai 2003 mapping. They establish ES=0 explicitly and capture incoming
+The four `startup-{mono,color}-{common,2003}.ws` cartridges are original CC0
+probes from `startup.asm` (Issues #33 and #140). They cover mono-compatible and
+Color-only headers, each with common and Bandai 2003 mapping. They establish ES=0
+explicitly and capture incoming
 SP at RAM 0400 and DS at 0402 before replacing either; they never assume incoming
 DS, ES or SS for destination addressing. The normal FFFF:0000 footer jump reaches
 F000:0000 in the final bank. Literal CPU checks require SP=2000, DS=FF00 on Mono
 or FE00 on Color/Crystal. RAM 0404 records incoming A0 (8D/8F), 0406 records CS
-(F000), and 0408 is 600D on success or 0BAD on failure. Headers request both ROM
-width/wait flags and protected internal EEPROM; the probe never changes console
-records. SRAM words at 0000/0002/0004/0006/0008/000A contain the retained boot
-count, captured SP, captured DS, result, A0 and CS. The program deliberately ends
-with SP=3456 and DS=1234, then HLT, so later lifecycle checks detect stale state.
+(F000), and 0408 is 600D on success or 0BAD on failure. The probe records the IPL
+stub's first instruction at 040A and checks that A0 stays locked when the CPU
+tries to reopen it. Headers request both ROM width/wait flags and protected
+internal EEPROM. The probe preserves console
+records. SRAM words at 0000 through 000C contain the retained boot
+count, captured SP, captured DS, result, A0, CS and the stub instruction. The
+program ends with SP=3456 and DS=1234, then HLT, so later lifecycle checks detect
+stale state.
 Native tests and the production browser compatibility suite check the raw markers
 against independent literals for load, restart, replacement and compatible model
 changes. The browser uses real player save flushes and the compiled Wasm adapter.
-The [startup policy and source limits](../docs/hardware-subset.md#firmware-free-startup-and-reset)
+The [startup policy and source limits](../docs/hardware-subset.md#built-in-ipl-startup-and-reset)
 explain the inspected WSHWTest observations that motivate these original probes;
 no third-party assembly or firmware bytes were copied.
 
@@ -644,7 +648,7 @@ See [source reconciliation and limits](../docs/rtc-transport.md) and
 ## Conversion probe (Issues #55, #57 and #59)
 
 `conversion.asm` builds the original source-included CC0-1.0
-`generated/conversion.ws`, a 128 KiB firmware-free cartridge with 32 KiB SRAM.
+`generated/conversion.ws`, a 128 KiB original cartridge with 32 KiB SRAM.
 No proprietary ROM, firmware, external implementation code or assets are included.
 Build/reproduce with NASM through `python3 fixtures/build.py` / `--check`.
 SHA-256: `4fd104a7698ce2d9fcfa697610aecea4c2c3476dfffc91bfa46a2b9dcdc8b1ad`.
@@ -824,7 +828,7 @@ assets, proprietary ROM or firmware are included.
 ## Absolute direct JMP probe (Issue #73)
 
 `jmp-timing.asm` builds the original CC0-1.0 `generated/jmp-timing.ws`, a
-128 KiB cartridge with 32 KiB SRAM and ordinary firmware-free reset/footer/checksum.
+128 KiB cartridge with 32 KiB SRAM and the normal reset footer and checksum.
 SHA-256: `a609ec18fda97aa419338cf98905eaf8d2ab04097d305b38d6cec7172d192123`.
 No third-party implementation, ROM, firmware, code or assets are incorporated.
 The NEC manual informs timing semantics only; the source and cartridge are original.
@@ -926,7 +930,7 @@ Physical-console and commercial-title compatibility are unestablished.
 `shift-timing.asm` and `generated/shift-timing.ws` are original source-included
 CC0-1.0 work for this repository under [LICENSE](LICENSE). No external ROM,
 firmware, assets or implementation code is included. Existing images remain
-unchanged. The 128 KiB cartridge declares 32 KiB SRAM and runs firmware-free on
+unchanged. The 128 KiB cartridge declares 32 KiB SRAM and runs through the built-in IPL on
 all three emulated models, using all supported color modes and live returns to 00.
 
 Seventy samples cover all seven documented operations, both widths, implicit-one,
@@ -945,7 +949,7 @@ Physical-console measurements and commercial-catalog compatibility are unestabli
 `multiply-timing.asm` and `generated/multiply-timing.ws` are original
 source-included CC0-1.0 work under [LICENSE](LICENSE). No external implementation,
 ROM, firmware, assets or device identity is included. The 128 KiB/32 KiB SRAM
-cartridge boots firmware-free on all three emulated models; Color/Crystal exercise
+cartridge boots through the built-in IPL on all three emulated models; Color/Crystal exercise
 00/80/00/C0/00/E0/00. Existing fixture bytes remain unchanged.
 
 Eighteen samples cover every explicit byte/word unsigned/signed and both immediate
@@ -966,7 +970,7 @@ commercial-title compatibility remain unestablished.
 `divide-timing.asm` and reproducible `generated/divide-timing.ws` are original
 source-included CC0-1.0 work under [LICENSE](LICENSE), with no third-party
 implementation, ROM, firmware, assets or device identity. The 128 KiB cartridge
-uses 32 KiB SRAM and boots firmware-free on all three emulated models.
+uses 32 KiB SRAM and boots through the built-in IPL on all three emulated models.
 
 Twelve samples cover byte/word DIV/IDIV with register and even/odd RAM sources.
 Each repetition reloads valid operands and FLAGS. CPU-written quotient/remainder,

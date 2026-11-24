@@ -2,7 +2,7 @@
 use super::*;
 
 fn setup(model: Model) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     b.ram.fill(0xa5);
     let c = Cpu {
         registers: [0x1234, 0, 0x5678, 0x789a, 0x2800, 0x9abc, 0xbcde, 0xdef0],
@@ -117,7 +117,7 @@ fn mapped_code(b: &mut Bus, addresses: &[u32], code: &[u8]) {
     if b.cartridge.is_none() {
         let cart = crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(262144, 2, 0))
             .unwrap();
-        b.insert_cartridge(cart);
+        b.insert_test_cartridge(cart);
     }
     let cart = b.cartridge.as_mut().unwrap();
     cart.bytes.fill(0x0f); // poison destinations: reading one adds a fetch
@@ -346,7 +346,7 @@ fn literal_internal_and_rom_prefix_fetches_and_rep_rejection() {
 fn normal_run_frame_charges_branch_once_for_raster_timer_and_audio() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let (c, mut b) = setup(model);
-        b.insert_cartridge(
+        b.insert_test_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
         );

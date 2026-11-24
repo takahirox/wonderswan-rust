@@ -6,14 +6,14 @@ use bus::Bus;
 const REGISTERS: [u16; 8] = [0x40, 0x41, 0x42, 0x44, 0x45, 0x46, 0x47, 0x48];
 
 fn bus() -> Bus {
-    let mut b = Bus::new(Model::Crystal);
+    let mut b = Bus::for_test(Model::Crystal);
     b.output(0x60, 0x80).unwrap();
     let mut c = cartridge::Cartridge::parse(&cartridge::tests::rom(262144, 3, 0)).unwrap();
     c.header.rom_word_bus = true;
     for bank in 0..4 {
         c.bytes[bank * 65536..(bank + 1) * 65536].fill(0x30 + bank as u8);
     }
-    b.insert_cartridge(c);
+    b.insert_test_cartridge(c);
     b
 }
 
@@ -56,7 +56,7 @@ fn finish(b: &mut Bus) -> u32 {
 #[test]
 fn byte_register_masks_readback_model_and_mode_gates() {
     for model in [Model::Color, Model::Crystal] {
-        let mut b = Bus::new(model);
+        let mut b = Bus::for_test(model);
         program(&mut b, 0xffffff, 0xffff, 0xffff, 0x7f);
         assert_eq!(state(&mut b), (0xffffe, 0xfffe, 0xfffe, 0x40));
         for value in [0x01, 0x80, 0xff] {
@@ -79,7 +79,7 @@ fn byte_register_masks_readback_model_and_mode_gates() {
         assert_eq!(&b.ram[0x200..0x202], &[1, 2]);
         assert_eq!(state(&mut b), (0x102, 0x202, 0, 0));
     }
-    let mut mono = Bus::new(Model::Mono);
+    let mut mono = Bus::for_test(Model::Mono);
     for port in REGISTERS.into_iter().chain([0x43]).chain(0x49..=0x52) {
         assert!(mono.output(port, 255).is_err());
         assert!(mono.input(port).is_err());
@@ -90,7 +90,7 @@ fn byte_register_masks_readback_model_and_mode_gates() {
 #[test]
 fn reserved_byte_preserves_pending_and_active_dma_state_and_io_cost() {
     for model in [Model::Color, Model::Crystal] {
-        let mut b = Bus::new(model);
+        let mut b = Bus::for_test(model);
         b.output(0x60, 0x80).unwrap();
         b.ram[0x100..0x106].copy_from_slice(&[1, 2, 3, 4, 5, 6]);
         program(&mut b, 0x100, 0x200, 6, 0x80);
@@ -124,7 +124,7 @@ fn reserved_byte_preserves_pending_and_active_dma_state_and_io_cost() {
 fn cpu_byte_io_to_reserved_port_preserves_ax_high_byte_and_gdma_registers() {
     for model in [Model::Color, Model::Crystal] {
         for value in [0x01, 0x5a, 0x80, 0xff] {
-            let mut b = Bus::new(model);
+            let mut b = Bus::for_test(model);
             program(&mut b, 0xabcde, 0x1234, 0x5678, 0x40);
             let ports = b.ports;
             let mut cpu = Cpu::default();
@@ -202,7 +202,7 @@ fn cpu_word_io_masks_source_segment_and_continues_through_real_transfer() {
 fn cpu_word_out_to_gdma_control_ignores_unused_high_lane() {
     for model in [Model::Color, Model::Crystal] {
         for control in [0x0080, 0xa580] {
-            let mut b = Bus::new(model);
+            let mut b = Bus::for_test(model);
             b.output(0x60, 0x80).unwrap();
             b.ram[0x100..0x104].copy_from_slice(&[0x12, 0x34, 0x56, 0x78]);
             program(&mut b, 0x100, 0x200, 4, 0);

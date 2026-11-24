@@ -15,8 +15,8 @@ const MODES: [(Model, u8); 9] = [
 const OPCODES: [u8; 8] = [0xe4, 0xe5, 0xe6, 0xe7, 0xec, 0xed, 0xee, 0xef];
 
 fn bus(model: Model, mode: u8) -> Bus {
-    let mut b = Bus::new(model);
-    b.insert_cartridge(
+    let mut b = Bus::for_test(model);
+    b.insert_test_cartridge(
         crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0)).unwrap(),
     );
     if model != Model::Mono {

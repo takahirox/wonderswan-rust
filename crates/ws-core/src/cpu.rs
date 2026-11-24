@@ -134,7 +134,7 @@ enum Operand {
 }
 
 impl Default for Cpu {
-    /// Deterministic unloaded state; cartridge entry is a separate handoff.
+    /// Power-on vector and FLAGS, with deterministic zeroes for general registers.
     fn default() -> Self {
         Self {
             registers: [0; 8],
@@ -150,18 +150,6 @@ impl Default for Cpu {
 }
 
 impl Cpu {
-    /// Bounded firmware-free cartridge entry, selected by physical console.
-    /// Other defaults remain synthetic; no boot firmware is executed.
-    pub(crate) fn cartridge_handoff(model: Model) -> Self {
-        let mut cpu = Self::default();
-        cpu.registers[4] = 0x2000;
-        cpu.segments[3] = match model {
-            Model::Mono => 0xff00,
-            Model::Color | Model::Crystal => 0xfe00,
-        };
-        cpu
-    }
-
     pub fn physical(segment: u16, offset: u16) -> u32 {
         ((segment as u32 * 16) + offset as u32) & 0xfffff
     }
@@ -1355,7 +1343,7 @@ mod tests {
             ip: 0x1000,
             ..Cpu::default()
         };
-        let mut bus = Bus::new(Model::Crystal);
+        let mut bus = Bus::for_test(Model::Crystal);
         bus.ram[0x1000..0x1000 + code.len()].copy_from_slice(code);
         for _ in 0..200 {
             cpu.step(&mut bus).unwrap();
@@ -1517,7 +1505,7 @@ mod tests {
                 segments: [0; 4],
                 ..Cpu::default()
             };
-            let mut bus = Bus::new(Model::Crystal);
+            let mut bus = Bus::for_test(Model::Crystal);
             bus.ram[..code.len()].copy_from_slice(code);
             assert!(cpu.step(&mut bus).is_err(), "code {code:x?}");
         }
@@ -1529,7 +1517,7 @@ mod compatibility_tests {
     use super::*;
     use crate::Model;
     fn setup(code: &[u8]) -> (Cpu, Bus) {
-        let mut b = Bus::new(Model::Crystal);
+        let mut b = Bus::for_test(Model::Crystal);
         b.ram[0x1000..0x1000 + code.len()].copy_from_slice(code);
         let mut c = Cpu {
             segments: [0; 4],
@@ -1977,7 +1965,7 @@ mod compatibility_tests {
             let [lo, hi] = pointer.to_le_bytes();
             rom[0x1000f..0x10013].copy_from_slice(&[0xff, 0x1e, lo, hi]); // CALL FAR [pointer]
             crate::cartridge::tests::checksum(&mut rom);
-            let mut b = Bus::new(Model::Crystal);
+            let mut b = Bus::for_test(Model::Crystal);
             b.cartridge = Some(crate::cartridge::Cartridge::parse(&rom).unwrap());
             b.ram[pointer as usize..pointer as usize + 4].copy_from_slice(&[0x40, 0, 0, 0xf0]);
             let mut c = Cpu {
@@ -2152,14 +2140,14 @@ mod compatibility_tests {
     }
     #[test]
     fn live_a0_costs_cover_fetch_and_data_word_alignment_mapping_and_wrap() {
-        let mut b = Bus::new(Model::Crystal);
+        let mut b = Bus::for_test(Model::Crystal);
         let mut cart =
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(262144, 0, 0))
                 .unwrap();
         for bank in 0..4 {
             cart.bytes[bank * 65536..(bank + 1) * 65536].fill(0x30 + bank as u8);
         }
-        b.insert_cartridge(cart);
+        b.insert_test_cartridge(cart);
         b.output(0xc2, 1).unwrap();
         b.output(0xc3, 2).unwrap();
         b.output(0xc0, 0).unwrap();
@@ -2229,14 +2217,14 @@ mod compatibility_tests {
     }
     #[test]
     fn wide_rom_fetch_survives_fallthrough_and_is_discarded_on_transfer() {
-        let mut b = Bus::new(Model::Color);
+        let mut b = Bus::for_test(Model::Color);
         let mut cart =
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 0, 0))
                 .unwrap();
         // NOP; INC BX; JMP NEAR +0; INC CX. Both odd targets are adjacent.
         cart.bytes[..6].copy_from_slice(&[0x90, 0x43, 0xe9, 0, 0, 0x41]);
         cart.bytes[65537] = 0x42; // The next bank supplies INC DX instead.
-        b.insert_cartridge(cart);
+        b.insert_test_cartridge(cart);
         b.output(0xa0, 12).unwrap();
         b.output(0xc2, 0).unwrap();
         let mut c = Cpu {
@@ -2261,7 +2249,7 @@ mod compatibility_tests {
 
     #[test]
     fn fast_rom_prefetch_overlaps_execution_and_restarts_at_a_branch_target() {
-        let mut bus = Bus::new(Model::Color);
+        let mut bus = Bus::for_test(Model::Color);
         let mut cart =
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 0, 0))
                 .unwrap();
@@ -2270,7 +2258,7 @@ mod compatibility_tests {
             0xb8, 0x34, 0x12, 0x90, 0xe9, 1, 0, 0xf4, 0xb8, 0x78, 0x56, 0xf4, 0x90,
         ]);
         cart.bytes[65536 + 13] = 0x42; // The new bank supplies INC DX.
-        bus.insert_cartridge(cart);
+        bus.insert_test_cartridge(cart);
         bus.output(0xa0, 4).unwrap();
         bus.output(0xc2, 0).unwrap();
         let mut cpu = Cpu {
@@ -2311,7 +2299,7 @@ mod compatibility_tests {
         rom[65536] = 0x90;
         crate::cartridge::tests::checksum(&mut rom);
         let cart = crate::cartridge::Cartridge::parse(&rom).unwrap();
-        let mut b = Bus::new(Model::Crystal);
+        let mut b = Bus::for_test(Model::Crystal);
         b.cartridge = Some(cart);
         let mut c = Cpu::default();
         c.segments[1] = 0xf000;
@@ -2329,7 +2317,7 @@ mod additional_tests {
     use crate::Model;
     #[test]
     fn push_all_enter_leave_restore_registers() {
-        let mut b = Bus::new(Model::Mono);
+        let mut b = Bus::for_test(Model::Mono);
         let code = [
             0xf0, 0x83, 0x06, 0, 8, 1, 0x60, 0x31, 0xc0, 0x61, 0xc8, 4, 0, 0, 0xc9, 0xf4,
         ];
@@ -2355,7 +2343,7 @@ mod additional_tests {
         let code = [
             0xc4, 0x1e, 0, 8, 0xc5, 0x16, 4, 8, 0x8d, 0x4a, 5, 0x93, 0xf4,
         ];
-        let mut b = Bus::new(Model::Crystal);
+        let mut b = Bus::for_test(Model::Crystal);
         b.ram[0x1000..0x1000 + code.len()].copy_from_slice(&code);
         b.ram[0x800..0x808].copy_from_slice(&[0x34, 0x12, 0, 1, 0x78, 0x56, 0, 2]);
         let mut c = Cpu {

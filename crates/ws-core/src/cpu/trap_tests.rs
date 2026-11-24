@@ -2,7 +2,7 @@
 use super::*;
 
 fn setup(model: Model, code: &[u8]) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     b.ram[0x1000..0x1000 + code.len()].copy_from_slice(code);
     b.ram[4..8].copy_from_slice(&[0, 3, 0, 0]);
     b.ram[0x300] = 0xcf;
@@ -381,7 +381,7 @@ fn trap_entry_internal_odd_and_waiting_stack_costs() {
             if model != Model::Mono {
                 b.output(0x60, mode).unwrap();
             }
-            b.insert_cartridge(
+            b.insert_test_cartridge(
                 crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                     .unwrap(),
             );
@@ -543,7 +543,7 @@ fn cloned_ss_suppression_and_lifecycle_operations_isolate_trap_state() {
 fn normal_machine_schedules_instruction_trap_dma_and_idle_costs_once() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let (c, mut b) = setup(model, &[0x90, 0xbb, 0x34, 0x12]);
-        b.insert_cartridge(
+        b.insert_test_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
         );

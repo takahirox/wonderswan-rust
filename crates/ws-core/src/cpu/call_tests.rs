@@ -2,7 +2,7 @@
 use super::*;
 
 pub(super) fn setup(model: Model) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     b.ram.fill(0xa5);
     (
         Cpu {
@@ -121,7 +121,7 @@ fn literal_call_vectors_full_state_parities_and_live_modes() {
 
 pub(super) fn mapped_code(b: &mut Bus, addresses: &[u32], code: &[u8]) {
     if b.cartridge.is_none() {
-        b.insert_cartridge(
+        b.insert_test_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(262144, 2, 0))
                 .unwrap(),
         );

@@ -18,6 +18,7 @@ pub(crate) struct Bus {
     pub raster_line: u8,
     pub completed_frames: u64,
     pub model: Model,
+    boot_rom: &'static [u8],
     pub audio: Audio,
     pub sprites: [u8; 512],
     pub sprite_first: u8,
@@ -58,12 +59,22 @@ impl Bus {
         ports[0xcf] = 15;
         ports[0xd2] = 255;
         ports[0xd4] = 255;
-        ports[0x16] = 158;
-        ports[0x17] = if model == Model::Crystal { 0 } else { 155 };
-        ports[0x91] = 0x80;
-        ports[0x9e] = 3;
-        // Synthetic locked handoff with self-test status; not power-on values.
-        ports[0xa0] = if model == Model::Mono { 0x85 } else { 0x87 };
+        let boot_rom: &[u8] = match model {
+            Model::Mono => include_bytes!("../../../bios/generated/mono.bin"),
+            Model::Color => include_bytes!("../../../bios/generated/color.bin"),
+            Model::Crystal => include_bytes!("../../../bios/generated/crystal.bin"),
+        };
+        ports[0x16] = if model == Model::Mono { 156 } else { 158 };
+        ports[0x17] = match model {
+            Model::Mono => 146,
+            Model::Color => 155,
+            Model::Crystal => 0,
+        };
+        if model != Model::Mono {
+            ports[0x60] = 0x0a;
+        }
+        // Unlocked, with fast 16-bit cartridge transfers at reset.
+        ports[0xa0] = if model == Model::Mono { 0x04 } else { 0x06 };
         Self {
             ram: vec![0; 65536],
             ports,
@@ -73,6 +84,7 @@ impl Bus {
             raster_line: 0,
             completed_frames: 0,
             model,
+            boot_rom,
             audio: Audio::default(),
             sprites: [0; 512],
             sprite_first: 0,
@@ -105,27 +117,46 @@ impl Bus {
             fault: None,
         }
     }
-    /// Firmware-free handoff maps the end of the complete ROM address space.
+    /// Attach a validated cartridge at reset, before the CPU starts the IPL.
     pub fn insert_cartridge(&mut self, cartridge: Cartridge) {
         if cartridge.header.mapper == Mapper::Bandai2003 {
-            self.ports[0xc0] = 63;
-            self.ports[0xcf] = 63;
+            // Deterministic reset policy for the upper ROM0/ROM1 bits. Both
+            // windows can reach the footer even before the IPL knows the mapper.
             self.ports[0xd3] = 3;
             self.ports[0xd5] = 3;
         }
-        self.ports[0xa0] = (self.ports[0xa0] & 0x83)
-            | (u8::from(cartridge.header.rom_word_bus) << 2)
-            | (u8::from(cartridge.header.rom_wait) << 3);
+        // The loader's accepted image supplies the legacy bus-OK status.
+        self.ports[0xa0] |= 0x80;
         self.discard_rom_fetch();
         self.cartridge = Some(cartridge);
-        self.reset_internal_eeprom();
     }
-    pub fn reset_internal_eeprom(&mut self) {
-        self.internal_eeprom = InternalEeprom::default();
-        if let Some(c) = &self.cartridge {
-            self.internal_eeprom
-                .handoff(c.header.internal_eeprom_write_protected);
+
+    /// Isolate instruction and device tests that arrange their own CPU and
+    /// raster phase from the power-on and IPL effects covered by startup tests.
+    #[cfg(test)]
+    pub fn for_test(model: Model) -> Self {
+        let mut bus = Self::new(model);
+        bus.ports[0x16] = 158;
+        bus.ports[0x17] = if model == Model::Crystal { 0 } else { 155 };
+        bus.ports[0x60] = 0;
+        bus.ports[0x9e] = 3;
+        bus.ports[0xa0] |= 1;
+        bus
+    }
+    #[cfg(test)]
+    pub fn insert_test_cartridge(&mut self, cartridge: Cartridge) {
+        let width_wait = (u8::from(cartridge.header.rom_word_bus) << 2)
+            | (u8::from(cartridge.header.rom_wait) << 3);
+        self.insert_cartridge(cartridge);
+        if self.extended() {
+            self.ports[0xc0] = 63;
+            self.ports[0xcf] = 63;
         }
+        self.ports[0xa0] = (self.ports[0xa0] & 0x82) | width_wait | 1;
+    }
+
+    pub fn cancel_internal_eeprom_transfer(&mut self) {
+        self.internal_eeprom.clear_transfer();
     }
     pub fn cancel_rtc(&mut self) {
         self.rtc_remaining = 0;
@@ -151,10 +182,23 @@ impl Bus {
                 0
             }
     }
+    #[inline]
+    fn boot_rom_visible(&self, address: usize) -> bool {
+        self.ports[0xa0] & 1 == 0 && address >= 0x100000 - self.boot_rom.len()
+    }
+    #[inline]
+    fn rom_control(&self, address: usize) -> u8 {
+        if self.boot_rom_visible(address) {
+            // Model internal IPL reads as fast 16-bit transfers, independent of A0.
+            4
+        } else {
+            self.ports[0xa0]
+        }
+    }
     fn access_time(&self, address: usize) -> u32 {
         // Byte bus accesses, including fetches. Live ROM and SRAM waits add clocks.
         let wait = if address >= 0x20000 {
-            u32::from(self.ports[0xa0] & 8 != 0)
+            u32::from(self.rom_control(address) & 8 != 0)
         } else if address >= 0x10000 {
             (self.ports[0x60] >> 1 & 1) as u32
         } else {
@@ -170,7 +214,7 @@ impl Bus {
         // Only an explicitly requested word may consolidate two byte charges.
         // Both lanes must belong to the same accessible, word-wide region.
         let ram = second < if self.color_mode() { 0x10000 } else { 0x4000 };
-        let rom = (0x20000..0xfffff).contains(&first) && self.ports[0xa0] & 4 != 0;
+        let rom = (0x20000..0xfffff).contains(&first) && self.rom_control(first as usize) & 4 != 0;
         if first & 1 == 0 && second == first + 1 && (ram || rom) {
             self.accesses.set(
                 self.accesses
@@ -247,8 +291,8 @@ impl Bus {
             self.rom_prefetch.set(0);
             return self.read(address);
         }
-        let control = self.ports[0xa0];
-        // An aligned 16-bit cartridge fetch supplies both sequential bytes.
+        let control = self.rom_control(address as usize);
+        // An aligned 16-bit ROM fetch supplies both sequential bytes.
         // Keep the timing of the second lane across instruction boundaries.
         if control & 4 != 0 {
             if address & 1 == 0 {
@@ -273,7 +317,7 @@ impl Bus {
         self.prefetch_limit.set(ROM_PREFETCH_WORDS);
     }
     pub fn finish_instruction(&self, next: u32, execution: u32) {
-        if self.ports[0xa0] & 0x0c == 4 && next >= 0x20000 {
+        if next >= 0x20000 && self.rom_control(next as usize) & 0x0c == 4 {
             self.prefetch_next.set(next);
             // Use internal execution clocks for fast ROM transfers. Keep the
             // pending high byte within the same 16-byte capacity.
@@ -305,10 +349,10 @@ impl Bus {
                 255
             };
         }
-        let Some(cart) = &self.cartridge else {
-            return 255;
-        };
         if a < 0x20000 {
+            let Some(cart) = &self.cartridge else {
+                return 255;
+            };
             let bank = self.bank(0xc1, 0xd1);
             if self.extended() && self.ports[0xce] & 1 != 0 {
                 return cart.rom(bank, a & 65535);
@@ -319,11 +363,14 @@ impl Bus {
                 255
             };
         }
-        self.read_rom_bank(cart, a)
+        self.read_rom_mapped(a)
     }
 
     #[inline(always)]
     fn read_rom_mapped(&self, address: usize) -> u8 {
+        if self.boot_rom_visible(address) {
+            return self.boot_rom[address - (0x100000 - self.boot_rom.len())];
+        }
         let Some(cart) = &self.cartridge else {
             return 0xff;
         };
@@ -353,6 +400,7 @@ impl Bus {
         let mut length = u16::from_le_bytes([self.ports[0x46], self.ports[0x47]]);
         // SRAM is always an 8-bit region, including the 2003 self-flash window.
         let valid_source = source < 0x10000
+            || self.boot_rom_visible(source as usize)
             || (source >= 0x20000 && self.cartridge.is_some() && self.ports[0xa0] & 0x0c == 4);
         if !self.color_mode() || length == 0 || !valid_source {
             self.ports[0x48] &= 0x40;
@@ -972,7 +1020,7 @@ mod tests {
     use super::*;
     use crate::cartridge::tests::rom;
     fn bus(save: u8, mapper: u8) -> Bus {
-        let mut b = Bus::new(Model::Crystal);
+        let mut b = Bus::for_test(Model::Crystal);
         let mut cartridge = Cartridge::parse(&rom(131072, save, mapper)).unwrap();
         cartridge.rtc = None; // Issue #53 transport vectors explicitly use an absent chip.
         b.cartridge = Some(cartridge);

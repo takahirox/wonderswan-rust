@@ -131,7 +131,7 @@ impl Machine {
         self.bus.console_data = console_data;
     }
     /// Validate before replacing the running machine. Failed loads preserve it.
-    /// Successful cartridge entry uses FFFF:0000, SP=2000 and physical-model DS.
+    /// Leave the CPU at power-on until emulation advances, so callers can restore saves.
     pub fn load_rom(&mut self, bytes: &[u8]) -> Result<usize, Error> {
         let cartridge = cartridge::Cartridge::parse(bytes)?;
         if cartridge.header.model == HardwareModel::Color && self.model() == Model::Mono {
@@ -139,21 +139,20 @@ impl Machine {
         }
         let len = cartridge.bytes.len();
         self.reset(self.model());
-        self.cartridge_handoff(cartridge);
+        self.bus.insert_cartridge(cartridge);
         Ok(len)
     }
-    /// Restart a loaded cartridge at FFFF:0000 with SP=2000 and DS=FF00 (Mono)
-    /// or FE00 (Color/Crystal). Without a cartridge, retain unloaded defaults.
+    /// Reset a loaded cartridge to start again through the built-in boot ROM.
     pub fn restart(&mut self) {
         let cartridge = self.bus.cartridge.take();
         self.reset(self.model());
         if let Some(c) = cartridge {
-            self.cartridge_handoff(c);
+            self.bus.insert_cartridge(c);
         }
     }
     /// Switch the console and restart its volatile state, preserving the cartridge
     /// save and the independent console EEPROM record for every model.
-    /// Loaded cartridges receive fresh physical-model SP/DS handoff values.
+    /// Loaded cartridges boot through the new physical model's built-in ROM.
     /// Reject incompatible models before replacing any state.
     pub fn change_model(&mut self, model: Model) -> Result<(), Error> {
         if model == Model::Mono
@@ -168,13 +167,9 @@ impl Machine {
         let cartridge = self.bus.cartridge.take();
         self.reset(model);
         if let Some(c) = cartridge {
-            self.cartridge_handoff(c);
+            self.bus.insert_cartridge(c);
         }
         Ok(())
-    }
-    fn cartridge_handoff(&mut self, cartridge: cartridge::Cartridge) {
-        self.bus.insert_cartridge(cartridge);
-        self.cpu = Cpu::cartridge_handoff(self.model());
     }
     pub fn cartridge_header(&self) -> Option<&Header> {
         self.bus.cartridge.as_ref().map(|c| &c.header)
@@ -195,7 +190,7 @@ impl Machine {
             )));
         }
         self.bus.console_data[self.model().index()].copy_from_slice(data);
-        self.bus.reset_internal_eeprom();
+        self.bus.cancel_internal_eeprom_transfer();
         Ok(())
     }
     /// Override attachment without changing ROM identity or mapper capability.
@@ -366,11 +361,14 @@ mod scheduling_tests {
             rom[flags_offset] = rom_flags;
             cartridge::tests::checksum(&mut rom);
             let mut m = Machine::new(Model::Color);
-            m.load_rom(&rom).unwrap();
+            m.bus = bus::Bus::for_test(Model::Color);
+            m.bus
+                .insert_test_cartridge(cartridge::Cartridge::parse(&rom).unwrap());
             m.bus.ram[0x1c..0x20].copy_from_slice(&[0, 0, 0, 0xf0]);
             m.bus.ram[0x1000..0x1003].copy_from_slice(&[0xf4, 0xeb, 0xfd]); // HLT; JMP HLT.
             m.cpu.segments[1] = 0;
             m.cpu.segments[3] = 0;
+            m.cpu.registers[4] = 0x2000;
             m.cpu.ip = 0x1000;
             m.cpu.flags |= 0x200;
             m.bus.output(0xb2, 0x80).unwrap();

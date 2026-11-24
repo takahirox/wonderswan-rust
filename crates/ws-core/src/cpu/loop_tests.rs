@@ -2,7 +2,7 @@
 use super::*;
 
 fn setup(model: Model) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     b.ram.fill(0xa5);
     let c = Cpu {
         registers: [0x1234, 0, 0x5678, 0x789a, 0x2800, 0x9abc, 0xbcde, 0xdef0],
@@ -130,7 +130,7 @@ fn literal_loop_mapped_fetch_waits_bank_and_ip_wraps() {
                                         cart.bytes[index] = value;
                                     }
                                 }
-                                b.insert_cartridge(cart);
+                                b.insert_test_cartridge(cart);
                                 b.output(0xa0, control).unwrap();
                                 c.segments[1] = cs;
                                 c.ip = ip;
@@ -215,7 +215,7 @@ fn loop_prefixes_and_corrected_jcxz_target_parity() {
 fn normal_run_frame_charges_loop_once_for_raster_timer_and_audio() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let (c, mut b) = setup(model);
-        b.insert_cartridge(
+        b.insert_test_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
         );

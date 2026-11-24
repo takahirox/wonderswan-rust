@@ -44,7 +44,8 @@ fn original_lcd_cartridge_checks_word_byte_io_raster_irqs_runtime_and_restart() 
             assert_eq!(&m.save_data()[..8], &[0x0d, 0x60, 157, 0, 181, 0, 180, 0]);
             m.restart();
             assert_eq!(m.frame_number(), 0);
-            assert_eq!(m.frame_rate(), ws_core::FRAME_RATE);
+            let reset_lines = if model == Model::Mono { 157.0 } else { 159.0 };
+            assert_eq!(m.frame_rate(), 3_072_000.0 / (256.0 * reset_lines));
         }
     }
 }

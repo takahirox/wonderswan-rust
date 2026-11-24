@@ -39,6 +39,7 @@ fn run(m: &mut Machine, ds: u16, a0: u16, count: u16) {
         (6, 0x408, 0x600d),
         (8, 0x404, a0),
         (10, 0x406, 0xf000),
+        (12, 0x40a, 0xa0e6),
     ] {
         assert_eq!(word(m.save_data(), save), expected);
         assert_eq!(

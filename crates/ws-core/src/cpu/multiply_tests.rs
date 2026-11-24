@@ -19,7 +19,7 @@ fn modes() -> [(Model, u8); 9] {
 }
 
 fn setup(model: Model, color: u8, code: &[u8]) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     if model != Model::Mono {
         b.output(0x60, color).unwrap();
     }
@@ -112,7 +112,7 @@ fn group(signed: bool) {
                         }
                         _ => {}
                     }
-                    b.insert_cartridge(cart);
+                    b.insert_test_cartridge(cart);
                     b.output(0xa0, 4).unwrap(); // no ROM wait, word bus
                     let mut expected = c.registers;
                     expected[0] = product;

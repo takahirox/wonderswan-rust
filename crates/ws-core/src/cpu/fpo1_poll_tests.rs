@@ -15,7 +15,7 @@ fn modes() -> [(Model, bool); 5] {
 }
 
 fn setup(model: Model, color: bool, code: &[u8]) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     b.ports[0x60] = if color { 0x80 } else { 0 };
     b.ram.fill(0xa5); // includes apparent data operands and stack sentinels
     b.ram[0x1000..0x1000 + code.len()].copy_from_slice(code);
@@ -147,7 +147,7 @@ fn fpo1_poll_mapped_fetches_live_a0_and_ip_physical_wraps() {
                             cart.bytes[index] = value;
                         }
                     }
-                    b.insert_cartridge(cart);
+                    b.insert_test_cartridge(cart);
                     b.output(0xa0, control).unwrap(); // live control, independent of header
                     c.segments[1] = cs;
                     c.ip = ip;
@@ -249,7 +249,7 @@ fn fpo1_poll_return_costs_advance_shared_clock_once_after_separate_dma() {
         let (c, mut b) = setup(model, color, &[0x9b, 0xdf, 0x86, 0xf4]);
         let cart = crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
             .unwrap();
-        b.insert_cartridge(cart);
+        b.insert_test_cartridge(cart);
         let mut m = crate::Machine::new(model);
         m.cpu = c;
         m.bus = b;
