@@ -656,10 +656,32 @@ try {
     await load(verticalRom);
   }
   await page.setViewportSize({ width:680,height:340 });
-  async function checkCompactLandscapeToolbar(mode) {
-    const screen = await page.locator('#display').boundingBox();
+  async function checkCompactGameplayInViewport() {
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'screen');
+    await checkInViewport('#screen');
+    for (const button of await page.locator('#touch-controls button').all()) {
+      await checkInViewport(`[data-button="${await button.getAttribute('data-button')}"]`);
+    }
+  }
+  async function checkCompactLandscape(mode) {
+    const screen = page.locator('#display');
+    const chooser = page.waitForEvent('filechooser');
+    await page.locator('#load-rom').tap();
+    assert.ok((await screen.boundingBox()).y < 0, `680×340 ${mode} picker opens from a clipped screen`);
+    await (await chooser).setFiles(verticalRom);
+    await initial();
+    await checkCompactGameplayInViewport();
+
+    const model = page.locator('#model');
+    await model.scrollIntoViewIfNeeded();
+    assert.ok((await screen.boundingBox()).y < 0, `680×340 ${mode} Console is reached from a clipped screen`);
+    await model.selectOption(mode === 'windowed' ? 'color' : 'crystal');
+    await initial();
+    await checkCompactGameplayInViewport();
+
+    const screenBox = await screen.boundingBox();
     const toolbar = await page.locator('#controls').boundingBox();
-    assert.ok(screen && toolbar && screen.y + screen.height <= toolbar.y,
+    assert.ok(screenBox && toolbar && screenBox.y + screenBox.height <= toolbar.y,
       `680×340 ${mode} portrait cartridge leaves the toolbar clear`);
     const mute = page.locator('#sound');
     const wasMuted = await mute.getAttribute('aria-pressed');
@@ -667,11 +689,11 @@ try {
     await mute.tap({ position:{x:10,y:3}, timeout:3000 });
     assert.equal(await mute.getAttribute('aria-pressed'), wasMuted === 'true' ? 'false' : 'true');
   }
-  await checkCompactLandscapeToolbar('windowed');
+  await checkCompactLandscape('windowed');
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     await page.locator('#fullscreen').tap();
     await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
-    await checkCompactLandscapeToolbar('fullscreen');
+    await checkCompactLandscape('fullscreen');
     await page.evaluate(() => document.exitFullscreen());
     await page.waitForFunction(() => !document.fullscreenElement);
   }

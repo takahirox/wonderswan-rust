@@ -228,6 +228,11 @@ async function main() {
         1000 / machine.frame_rate() - elapsed - (performance.now() - time))));
     } catch (error) { failed(error); }
   }
+  function focusGame() {
+    canvas.focus({ preventScroll: true });
+    // Reveal the whole screen row, including the adjacent keypads in landscape.
+    element("display").scrollIntoView({ block: "center", inline: "nearest" });
+  }
   function load(name: string, bytes: Uint8Array, key: string, autoplay = true) {
     persist();
     machine.load_rom(bytes); // Validation errors preserve the previous machine.
@@ -246,7 +251,7 @@ async function main() {
     // An asynchronous load must not run behind an open modal or steal its focus.
     resumeAfterDialog = autoplay && help.open && !document.hidden;
     setRunning(autoplay);
-    if (!help.open) canvas.focus({ preventScroll: true });
+    if (!help.open) focusGame();
   }
   function restart(model: string) {
     readRevision++; // Invalidate any in-flight file read.
@@ -260,7 +265,7 @@ async function main() {
       restoreConsole();
       faulted = false;
       setRunning(loaded !== null);
-      if (running && !help.open) canvas.focus({ preventScroll: true });
+      if (running && !help.open) focusGame();
     } catch (error) {
       errorStatus.textContent = `Could not restart: ${message(error)} Choose a compatible model or load another ROM.`;
     }
