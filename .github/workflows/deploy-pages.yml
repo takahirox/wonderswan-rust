@@ -67,6 +67,7 @@ jobs:
     steps:
       # A deploy-only rerun uses the outputs of the successful build job.
       - name: Wait for the uploaded Pages artifact
+        id: artifact
         timeout-minutes: 2
         env:
           GH_TOKEN: ${{ github.token }}
@@ -87,6 +88,7 @@ jobs:
               '.artifacts[0] | (.id | tostring) == $id and .expired == false' \
               <<< "$artifacts" > /dev/null; then
               echo "Pages artifact $ARTIFACT_NAME (ID $ARTIFACT_ID) is visible."
+              echo "id=$ARTIFACT_ID" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             if [[ "$count" != 0 ]]; then
@@ -103,6 +105,78 @@ jobs:
           exit 1
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        timeout-minutes: 11
+        uses: actions/github-script@v9
+        env:
+          ARTIFACT_ID: ${{ steps.artifact.outputs.id }}
         with:
-          artifact_name: ${{ needs.build.outputs.artifact_name }}
+          script: |
+            const { owner, repo } = context.repo;
+            const artifactId = Number(process.env.ARTIFACT_ID);
+            if (!Number.isSafeInteger(artifactId) || artifactId <= 0) {
+              throw new Error('The artifact wait step did not report a valid ID.');
+            }
+
+            // deploy-pages@v5 lists artifacts by name through the Results API,
+            // which can still be empty after the Actions REST API sees the upload.
+            const oidcToken = await core.getIDToken();
+            const { data: deployment } = await github.request(
+              'POST /repos/{owner}/{repo}/pages/deployments',
+              {
+                owner, repo,
+                artifact_id: artifactId,
+                pages_build_version: context.sha,
+                oidc_token: oidcToken,
+              },
+            );
+            core.setOutput('id', deployment.id);
+            core.setOutput('pending', 'true');
+            core.setOutput('page_url', deployment.page_url);
+            core.info(`Created Pages deployment ${deployment.id} for artifact ${artifactId}.`);
+
+            const deadline = Date.now() + 10 * 60_000;
+            const terminalFailures = new Set([
+              'deployment_failed', 'deployment_content_failed', 'deployment_cancelled', 'deployment_lost',
+            ]);
+            let interval = 5_000;
+            while (Date.now() < deadline) {
+              const delay = Math.min(interval, deadline - Date.now());
+              await new Promise(resolve => setTimeout(resolve, delay));
+              interval = Math.min(Math.round(interval * 1.5), 30_000);
+
+              let status;
+              try {
+                const { data } = await github.request(
+                  'GET /repos/{owner}/{repo}/pages/deployments/{pages_deployment_id}',
+                  {
+                    owner, repo,
+                    pages_deployment_id: deployment.id,
+                    request: { signal: AbortSignal.timeout(15_000) },
+                  },
+                );
+                status = data.status;
+              } catch (error) {
+                if (error.status && error.status < 500 && ![404, 429].includes(error.status)) {
+                  throw error;
+                }
+                core.warning(`Could not read Pages deployment status: ${error.message}`);
+                continue;
+              }
+              core.info(`Pages deployment status: ${status}`);
+              if (status === 'succeed') {
+                core.setOutput('pending', 'false');
+                return;
+              }
+              if (terminalFailures.has(status)) {
+                core.setOutput('pending', 'false');
+                throw new Error(`Pages deployment ended with status ${status}.`);
+              }
+            }
+            throw new Error('Timed out waiting for Pages deployment.');
+      - name: Cancel pending Pages deployment
+        if: ${{ (failure() || cancelled()) && steps.deployment.outputs.pending == 'true' }}
+        timeout-minutes: 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/pages/deployments/$DEPLOYMENT_ID/cancel"
