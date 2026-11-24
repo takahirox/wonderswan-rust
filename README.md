@@ -36,7 +36,7 @@ and the [original A0 CPU probe](fixtures/README.md#a0-runtime-control-probe-issu
 
 ## UI/UX
 
-These principles apply to the browser player's controls, Settings / Help and
+These principles apply to the browser player's controls, Help and
 diagnostics, as well as documented commands, messages and examples.
 
 1. **Keep it simple.** Show only necessary information and actions; avoid
@@ -56,24 +56,19 @@ Public URL: **https://takahirox.github.io/wonderswan-rust/**. The new version be
 public after the existing `main` deployment workflow succeeds; local pre-merge
 validation does not establish that deployment has happened.
 
-1. Click **Load ROM** and select a local `.ws` or `.wsc` file. No cartridge is
-   preloaded or remembered across page loads. Cancelling keeps the current state;
+1. In **Cartridge**, click **Load ROM** and select a local `.ws` or `.wsc` file.
+   No cartridge is preloaded or remembered across page loads. Cancelling keeps the current state;
    invalid files or failed reads report a recoverable error and preserve the current
    cartridge. There is no backend or ROM catalog.
 2. **Arrow keys or W A S D** select the X keypad; **Enter** is Start, and **Z/X**
    map to A/B. **I / L / K / J** select Y1 / Y2 / Y3 / Y4 independently.
    Click the screen to focus gameplay controls if needed.
-3. Use **Pause/Resume**, **Restart**, or **Fullscreen** below the display. Changing
-   the visible console selector restarts the loaded cartridge and clears keys.
-   Hiding the tab pauses; click Resume when returning. There is no emulation loop
-   while idle or paused. Small/touch screens show both X and Y groups, A, B, and Start
-   buttons; hold directions to repeat and release to stop.
-4. **Settings / Help** contains controls, display options, sound and storage
-   guidance. Opening it pauses gameplay and clears held inputs. Close or press
-   Escape to return; a previously running game resumes unless the tab was hidden.
-   A manually paused game stays paused.
-   Keyboard gameplay is active only while the canvas has focus.
-   **Display effect** switches live, including while paused: **Clean** keeps exact
+3. The toolbar below the screen groups **Pause/Resume**, **Restart**, **Mute**,
+   **Volume**, **Display**, and **Fullscreen**. Use **Enable audio** when the browser
+   asks for another gesture. Changing **Console** in the cartridge slot restarts
+   the loaded cartridge and clears keys. Hiding the tab pauses gameplay. Choose
+   **Resume** when you return.
+4. **Display** switches live, including while paused. **Clean** keeps exact
    nearest-neighbor pixels; **LCD Light** adds
    subtle native pixel cells, softness and weak persistence; **LCD Authentic**
    strengthens the matrix and response with modest reflective mono, softer Color,
@@ -87,13 +82,21 @@ validation does not establish that deployment has happened.
    choice is retained and restored when the context recovers. History updates
    only on emulated frames and is seeded across cartridge/restart/model/mode and
    resume transitions. No additional animation loop runs while idle or paused.
-5. **Debug Mode** in Settings is off on every page load. Enable it to show the
+5. **Help** in the header contains the keyboard reference, cartridge clock
+   setting, and compatibility, sound, and storage guidance. Opening Help pauses
+   gameplay and clears held inputs. Close it or press Escape to return.
+   A previously running game resumes unless the tab was hidden.
+6. **Debug Mode** in Help is off on every page load. Enable it to show the
    actual model, ROM name/byte count, execution state, core frame count, and last
    error. Runtime details collapse; Close or unchecking Debug Mode hides the
    panel. Diagnostics refresh at most twice per second and provide no CPU
    registers or accuracy claims.
 
-Vertical cartridges use their header orientation: the player rotates the native
+On narrow screens, the toolbar and cartridge slot follow the game screen.
+Small and touch screens show both X and Y keypads plus A, B, and Start. On short
+landscape touch screens, the keypads flank the screen when there is room.
+
+Vertical cartridges use their header orientation. The player rotates the native
 image counterclockwise into a 144:224 portrait footprint. The core framebuffer
 and Clean canvas backing stay 224×144; shader history also stays native-sized,
 with output capped at 4× resolution. Pixelated scaling keeps square pixels; controls
@@ -102,6 +105,8 @@ Up/Right/Down/Left (or W/D/S/A); Y1/Y2/Y3/Y4 remain I/L/K/J. Keyboard and multip
 touch presses combine, including two sources holding the same button. Releasing
 one source retains the others. Focus changes, blur and player lifecycle changes
 clear held inputs. Orientation is header metadata, without runtime rotation signaling.
+
+See the [player layout screenshots and production-preview results](docs/issue-136-validation.md).
 
 Cartridge saves are automatic and **browser-local**, keyed by SHA-256 of the
 ROM contents (renaming a file keeps its save; different contents get separate
@@ -233,13 +238,14 @@ CC0 keypad fixture, then verifies CPU input on all three models, pause/restart a
 input clearing. It checks no ROM network requests or uploads, invalid-file and
 failed-read preservation, same-file reload, asynchronous read/replacement/model/
 restart/modal/visibility races, and execution errors. Dialog focus/Escape,
-conditional resume, Debug Mode, fullscreen and API failures, initialization retry,
-and a 375×812 touch layout remain covered. Touch directions/A/B/Start are observed
-through CPU-produced bit tiles; no game or game-specific test variant is needed.
+conditional resume, Debug Mode, fullscreen and API failures, and initialization
+retry remain covered. Layout checks cover desktop, 375×812 portrait and 812×375
+landscape touch viewports with both cartridge orientations. Both keypads and
+A/B/Start are observed through CPU-produced bit tiles, including combined presses.
 Visibility, read failures and API failures are synthetic, not physical-device tests.
 Set `WS_SMOKE_SCREENSHOT=/tmp/wonderswan-playing.png` for a running-player screenshot.
 Set `WS_SMOKE_ARTIFACTS=/tmp/wonderswan-player` for desktop/mobile screenshots
-including empty, playing, settings, debug, and fullscreen states.
+including empty, playing, Help, debug, and fullscreen states.
 Exact-pixel gameplay and panel-output checks explicitly choose Clean. The LCD
 output checks also exercise the production WebGL2 shaders with synthetic flat,
 edge and alternating RGBA uploads: native-cell detail, preset/model differences,
@@ -284,7 +290,7 @@ See [hardware milestone results](docs/issue-11-validation.md),
 [original cartridge results](docs/issue-7-validation.md).
 
 Equipped raw-01 cartridges also expose a retained S-3511A calendar/status through
-CA/CB. Settings provides an absent-clock override independent of mapper banking.
+CA/CB. Help provides an absent-clock override independent of mapper banking.
 The clock progresses while paused/offline and has its own versioned local record
 keyed by raw ROM SHA-256. See [RTC policy](docs/rtc-calendar.md) and
 [Issue #63 validation](docs/issue-63-validation.md). Retail-board detection and
@@ -319,7 +325,7 @@ Required **post-merge checks remain pending**:
    a normal user gesture. Verify default-on audio, mute and live volume changes;
    reload to check remembered preferences and record actual autoplay restrictions
    (Issue #17).
-5. Confirm the public model selector, Settings/Help, Debug Mode, compatibility
+5. Confirm the public console selector, Help, Debug Mode, compatibility
    notice, and the absence of bundled ROMs in the deployed files. Report
    deployment-only problems as follow-up work.
 

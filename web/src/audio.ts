@@ -40,6 +40,7 @@ export class Sound {
   get needsUnlock() {
     return !this.muted && (this.failure !== "" || (this.playing && this.context?.state !== "running"));
   }
+  get hasWarning() { return this.failure !== "" || this.needsUnlock; }
   get status() {
     const preference = this.muted ? "Muted" : this.volume === 0 ? "Volume 0%" : "Sound on";
     let output = "Audio paused.";

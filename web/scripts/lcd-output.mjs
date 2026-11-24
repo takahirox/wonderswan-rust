@@ -199,6 +199,10 @@ async function displayEffectsChecks(browser, base, errors) {
     await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
     await page.locator('#settings').click();
     await page.locator('#debug-toggle').check();
+    await page.locator('#help-close').click();
+    await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
+    assert.equal(await page.evaluate(() => document.activeElement.id),'screen','dialog restores gameplay focus');
+    await page.locator('#pause').click();
     const counter = await page.locator('#debug-frames').textContent();
     const sound = await page.locator('#sound-status').textContent();
     const defaultCrt = await snapshot();
@@ -231,17 +235,16 @@ async function displayEffectsChecks(browser, base, errors) {
     assert.equal(await page.locator('#debug-frames').textContent(),counter,'paused switches do not run cycles');
     assert.equal(await page.locator('#sound-status').textContent(),sound,'paused switches preserve audio');
     assert.equal(await page.evaluate(() => document.activeElement.id),'display-effect');
-    await page.locator('#help-close').click();
-    await page.waitForFunction(() => !document.querySelector('#help').open && document.querySelector('#rom-status').textContent === 'Running');
-    assert.equal(await page.evaluate(() => document.activeElement.id),'screen','dialog restores gameplay focus');
+    assert.equal(await page.locator('#rom-status').textContent(),'Paused');
+    await page.locator('#pause').click();
 
     // Every actual shader history update must follow a source upload. Repeated
     // paused resizing/presentation must leave that recurrence and texture count alone.
     for (const [mode,weight] of [['lcd-light',0.04],['lcd-authentic',0.13]]) {
-      await page.locator('#settings').click();
+      await page.locator('#pause').click();
       await page.evaluate(() => { window.displayProbe.pattern='alternating'; window.displayProbe.histories=[]; });
       await select(mode);
-      await page.locator('#help-close').click();
+      await page.locator('#pause').click();
       await page.waitForFunction(() => window.displayProbe.histories.length>=7);
       await page.locator('#pause').click();
       const samples = await page.evaluate(() => window.displayProbe.histories);
@@ -257,9 +260,7 @@ async function displayEffectsChecks(browser, base, errors) {
       const first = await snapshot();
       assert.deepEqual(await snapshot(),first,'repeated paused redraw is identical');
       assert.deepEqual(await page.evaluate(() => ({uploads:window.displayProbe.uploads,histories:window.displayProbe.histories,allocations:window.displayProbe.allocations})),before,'no paused history decay or texture allocations');
-      await page.locator('#settings').click();
       await select('clean');
-      await page.locator('#help-close').click();
       await page.locator('#pause').click();
     }
     // Same synthetic content, actual physical console models, different panels.
@@ -268,12 +269,10 @@ async function displayEffectsChecks(browser, base, errors) {
     for (const model of ['mono','color','crystal']) {
       await page.locator('#model').selectOption(model);
       await page.locator('#pause').click();
-      await page.locator('#settings').click();
       await select('lcd-authentic');
       panels.push(await snapshot());
       await page.evaluate(() => { window.displayProbe.pattern='alternating'; window.displayProbe.histories=[]; });
       await select('lcd-authentic');
-      await page.locator('#help-close').click();
       await page.locator('#pause').click();
       await page.waitForFunction(() => window.displayProbe.histories.length>=5);
       await page.locator('#pause').click();
@@ -333,9 +332,7 @@ async function displayEffectsChecks(browser, base, errors) {
     assert.equal(await page.evaluate(() => window.displayProbe.uploads),uploads,'rejected model does not change history');
     assert.deepEqual(await snapshot(),retained,'rejected model preserves panel pixels');
     for (const mode of ['clean','lcd-light','retro-crt','lcd-authentic']) {
-      await page.locator('#settings').click();
       await select(mode);
-      await page.locator('#help-close').click();
       await page.reload();
       await ready();
       assert.equal(await page.locator('#display-effect').inputValue(),mode,`${mode} selection persists`);
@@ -390,13 +387,15 @@ async function displayEffectsChecks(browser, base, errors) {
       if (fault !== 'denied-storage') {
         assert.equal(await page.evaluate(() => localStorage.getItem('wonderswan:display:v1')),fault === 'invalid-storage' ? 'invalid' : null);
       }
-      if (fallback) assert.match(await page.locator('#display-notice').textContent(),/Clean fallback/);
+      if (fallback) {
+        assert.match(await page.locator('#display-notice').textContent(),/Clean fallback/);
+        assert.equal(await page.getByRole('status').filter({hasText:'Clean fallback'}).isVisible(),true);
+      }
       await page.locator('#rom').setInputFiles(fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws',import.meta.url)));
       await page.waitForFunction(() => {
         const ctx=document.querySelector('#screen').getContext('2d');
         return ctx.getImageData(3,3,1,1).data[0]===0 && document.querySelector('#rom-status').textContent === 'Running';
       });
-      await page.locator('#settings').click();
       if (!fallback) {
         await page.locator('#display-effect').selectOption('lcd-light');
         assert.equal(await page.locator('#screen').getAttribute('data-effect'),'lcd-light',`${fault}: live switching still works`);

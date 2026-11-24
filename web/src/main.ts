@@ -36,9 +36,14 @@ async function main() {
   const display = new Display(canvas, element<HTMLCanvasElement>("screen-effect"),
     message => { element("display-notice").textContent = message; });
   const effectSelect = element<HTMLSelectElement>("display-effect");
+  let loaded: { name: string; key: string } | null = null;
   effectSelect.value = display.effect;
   effectSelect.addEventListener("change", () => display.select(effectSelect.value as DisplayEffect));
-  let loaded: { name: string; key: string } | null = null;
+  effectSelect.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && loaded) {
+      canvas.focus();
+    }
+  });
   const report = (message: string) => { element("notice").textContent = message; };
   const saves = new Saves(report);
   const rtcMode = element<HTMLSelectElement>("rtc-mode");
@@ -64,10 +69,12 @@ async function main() {
   const enableAudio = element<HTMLButtonElement>("enable-audio");
   const sound = new Sound(refreshSound);
   function refreshSound() {
-    soundButton.textContent = sound.muted ? "Unmute" : "Mute";
+    soundButton.setAttribute("aria-pressed", String(sound.muted));
     volume.value = String(sound.volume);
     element("volume-value").textContent = `${sound.volume}%`;
-    element("sound-status").textContent = sound.status;
+    const status = element("sound-status");
+    status.textContent = sound.status;
+    status.classList.toggle("visually-hidden", !sound.hasWarning);
     enableAudio.hidden = !sound.needsUnlock;
   }
   function persist() {
@@ -84,7 +91,6 @@ async function main() {
   let faulted = false;
   let resumeAfterDialog = false;
   let visibilityRevision = 0;
-  let returnFocus: HTMLElement | null = null;
   let animation: number | null = null;
   let production: number | null = null;
   let lastTime = 0;
@@ -141,13 +147,16 @@ async function main() {
   function refresh() {
     element("display").dataset.orientation = machine.orientation();
     modelSelect.value = machine.model();
-    element("rom-title").textContent = loaded?.name ?? "Your next game";
+    const title = element("rom-title");
+    title.textContent = loaded?.name ?? "No ROM loaded";
+    title.title = loaded?.name ?? "";
     romStatus.textContent = state();
+    romStatus.classList.toggle("visually-hidden", !loading);
     element("empty-state").hidden = loaded !== null;
     element("controls").setAttribute("aria-busy", String(loading));
     pauseButton.disabled = loaded === null || faulted || loading;
     resetButton.disabled = loaded === null;
-    pauseButton.textContent = running ? "Pause" : "Resume";
+    pauseButton.textContent = running ? "Pause" : loaded ? "Resume" : "Play";
     for (const button of touchButtons) button.disabled = !running;
     updateDiagnostics();
     sizeScreen();
@@ -219,6 +228,11 @@ async function main() {
         1000 / machine.frame_rate() - elapsed - (performance.now() - time))));
     } catch (error) { failed(error); }
   }
+  function focusGame() {
+    canvas.focus({ preventScroll: true });
+    // Reveal the whole screen row, including the adjacent keypads in landscape.
+    element("display").scrollIntoView({ block: "center", inline: "nearest" });
+  }
   function load(name: string, bytes: Uint8Array, key: string, autoplay = true) {
     persist();
     machine.load_rom(bytes); // Validation errors preserve the previous machine.
@@ -237,7 +251,7 @@ async function main() {
     // An asynchronous load must not run behind an open modal or steal its focus.
     resumeAfterDialog = autoplay && help.open && !document.hidden;
     setRunning(autoplay);
-    if (!help.open) canvas.focus({ preventScroll: true });
+    if (!help.open) focusGame();
   }
   function restart(model: string) {
     readRevision++; // Invalidate any in-flight file read.
@@ -251,7 +265,7 @@ async function main() {
       restoreConsole();
       faulted = false;
       setRunning(loaded !== null);
-      if (running && !help.open) canvas.focus({ preventScroll: true });
+      if (running && !help.open) focusGame();
     } catch (error) {
       errorStatus.textContent = `Could not restart: ${message(error)} Choose a compatible model or load another ROM.`;
     }
@@ -274,6 +288,9 @@ async function main() {
         loading = false;
         errorStatus.textContent = `Could not load “${name}”: ${message(error)} Choose another local ROM.`;
         setRunning(wasRunning && visibleRevision === visibilityRevision);
+        if (document.activeElement === loadButton) {
+          loadButton.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
       }
     } finally {
       if (revision === readRevision) {
@@ -308,7 +325,12 @@ async function main() {
     setRunning(!running);
     if (running) canvas.focus({ preventScroll: true });
   });
-  loadButton.addEventListener("click", () => { sound.unlock(); clearKeys(); romInput.click(); });
+  loadButton.addEventListener("click", () => {
+    sound.unlock();
+    clearKeys();
+    loadButton.focus({ preventScroll: true });
+    romInput.click();
+  });
   romInput.addEventListener("change", () => {
     const file = romInput.files?.[0];
     if (!file) return;
@@ -319,7 +341,6 @@ async function main() {
   });
 
   settingsButton.addEventListener("click", () => {
-    returnFocus = document.activeElement as HTMLElement;
     resumeAfterDialog = running;
     setRunning(false);
     help.showModal();
@@ -329,7 +350,7 @@ async function main() {
     const resume = resumeAfterDialog;
     resumeAfterDialog = false;
     setRunning(resume);
-    (running ? canvas : returnFocus ?? settingsButton).focus({ preventScroll: true });
+    (running ? canvas : settingsButton).focus({ preventScroll: true });
   });
   function toggleDebug(enabled: boolean) {
     debugToggle.checked = enabled;
@@ -357,13 +378,14 @@ async function main() {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
       else await player.requestFullscreen();
-      canvas.focus({ preventScroll: true });
     } catch {
       notice.textContent = "Fullscreen could not open. Try again, or keep playing here.";
     }
   });
   document.addEventListener("fullscreenchange", () => {
-    fullscreenButton.textContent = document.fullscreenElement ? "Exit fullscreen" : "Fullscreen";
+    fullscreenButton.textContent = document.fullscreenElement === player ? "Exit fullscreen" : "Fullscreen";
+    clearKeys();
+    if (!help.open) canvas.focus({ preventScroll: true });
   });
   // Integer scaling where space allows; fractional nearest-neighbor scaling on narrow screens.
   function sizeScreen() {
@@ -452,6 +474,7 @@ async function main() {
 function initialize() {
   void main().catch((error: unknown) => {
     romStatus.textContent = "Emulator unavailable";
+    romStatus.classList.remove("visually-hidden");
     errorStatus.textContent = `Could not initialize the player: ${message(error)} Retry initialization or reload the page.`;
     retryButton.hidden = false;
   });
