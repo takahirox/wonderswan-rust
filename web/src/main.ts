@@ -251,9 +251,11 @@ async function main() {
     canvas.focus({ preventScroll: true });
     const bounds = game.getBoundingClientRect();
     const toolbarTop = toolbar.getBoundingClientRect().top;
-    const height = window.innerHeight;
-    // Reveal the toolbar with gameplay when both fit in the viewport.
-    const revealToolbar = toolbarTop < 0 && bounds.bottom - toolbarTop <= height;
+    const scrollMargins = getComputedStyle(game);
+    const safeTop = parseFloat(scrollMargins.scrollMarginTop);
+    const height = window.innerHeight - safeTop - parseFloat(scrollMargins.scrollMarginBottom);
+    // Match scrollIntoView's safe-area margins when deciding what fits together.
+    const revealToolbar = toolbarTop < safeTop && bounds.bottom - toolbarTop <= height;
     const target = bounds.height <= height ? game : screenFrame;
     target.scrollIntoView({ block: revealToolbar ? "end" : "nearest", inline: "nearest" });
   }

@@ -84,12 +84,12 @@ async function rejectEmptyRom() {
   await (await chooser).setFiles(emptyRom);
   await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Expected a 128 KiB'));
 }
-async function checkInViewport(selector) {
+async function checkInViewport(selector, {top = 0, right = 0, bottom = 0, left = 0} = {}) {
   const box = await page.locator(selector).boundingBox();
   const {width, height} = await page.evaluate(() => ({width:innerWidth,height:innerHeight}));
-  assert.ok(box && box.width > 0 && box.height > 0 && box.x >= 0 && box.y >= 0
-    && box.x + box.width <= width && box.y + box.height <= height,
-  `${selector} (${JSON.stringify(box)}) is fully visible in the ${width}×${height} viewport`);
+  assert.ok(box && box.width > 0 && box.height > 0 && box.x >= left && box.y >= top
+    && box.x + box.width <= width - right && box.y + box.height <= height - bottom,
+  `${selector} (${JSON.stringify(box)}) fits viewport bounds (${left}, ${top})–(${width - right}, ${height - bottom})`);
   return box;
 }
 function luminance(color) {
@@ -889,18 +889,18 @@ try {
     await page.locator('#notice').evaluate(notice => { notice.textContent = ''; });
   }
   await page.setViewportSize({ width:680,height:340 });
-  async function checkGameplayInViewport() {
+  async function checkGameplayInViewport(insets) {
     assert.equal(await page.evaluate(() => document.activeElement.id), 'screen');
     assert.equal(await page.evaluate(() => {
       const container = document.fullscreenElement ?? document.documentElement;
       return container.scrollWidth > container.clientWidth;
     }), false, 'no horizontal overflow during landscape play');
-    await checkInViewport('#screen');
+    await checkInViewport('#screen', insets);
     const buttons = await page.locator('#touch-controls button').all();
     assert.equal(buttons.length, 11);
     for (const button of buttons) {
       const selector = `[data-button="${await button.getAttribute('data-button')}"]`;
-      const box = await checkInViewport(selector);
+      const box = await checkInViewport(selector, insets);
       assert.ok(box.width >= 44 && box.height >= 44, `${selector} has a practical touch target`);
     }
   }
@@ -954,6 +954,14 @@ try {
   }
   console.log('640×360 portrait cartridge and all 11 touch buttons fit together during landscape play');
   await page.setViewportSize({ width:812,height:375 });
+  await load(rom, 'tap');
+  const landscapeInsets = {top:0,right:24,bottom:21,left:24};
+  await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets:landscapeInsets });
+  await load(verticalRom, 'tap');
+  await checkGameplayInViewport(landscapeInsets);
+  await screenshot('mobile-landscape-vertical-safe-area', false);
+  await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets:{top:0,right:0,bottom:0,left:0} });
+  console.log('812×375 vertical gameplay clears simulated landscape safe-area insets after selection');
   await page.evaluate(() => window.scrollTo(0,0));
   await checkLayout({ orientation:'vertical', kind:'landscape' });
   await screenshot('mobile-landscape-vertical', false);
@@ -999,19 +1007,23 @@ try {
     await page.locator('#exit-fullscreen').tap();
     await waitForFullscreenExit();
   }
-  await page.setViewportSize({ width:540,height:320 });
-  for (const [orientation, file] of [['horizontal', rom], ['vertical', verticalRom]]) {
-    await load(file, 'tap');
-    await checkGameplayInViewport();
-    await screenshot(`mobile-540x320-${orientation}`, false);
+  for (const width of [480, 540]) {
+    await page.setViewportSize({ width,height:320 });
+    for (const [orientation, file] of [['horizontal', rom], ['vertical', verticalRom]]) {
+      await load(file, 'tap');
+      await checkGameplayInViewport();
+      await screenshot(`mobile-${width}x320-${orientation}`, false);
+    }
   }
-  console.log('540×320 windowed gameplay fits the picture and all eleven touch controls in both orientations after selection');
+  console.log('480×320 and 540×320 windowed gameplay fit the picture and all eleven touch controls in both orientations after selection');
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     for (const [width, height, orientation, file] of [
       [540, 320, 'horizontal', rom],
       [667, 280, 'vertical', verticalRom],
       [400, 300, 'horizontal', rom],
       [400, 300, 'vertical', verticalRom],
+      [390, 300, 'horizontal', rom],
+      [390, 300, 'vertical', verticalRom],
     ]) {
       await page.setViewportSize({ width, height });
       await load(file);
@@ -1024,7 +1036,7 @@ try {
       await page.locator('#exit-fullscreen').tap();
       await waitForFullscreenExit();
     }
-    console.log('540×320 horizontal, 667×280 vertical and both 400×300 touch fullscreen layouts fit the picture, all eleven controls and Exit');
+    console.log('540×320 horizontal, 667×280 vertical, and both 400×300 and 390×300 touch fullscreen layouts fit the picture, all eleven controls and Exit');
   }
   await load();
   await page.setViewportSize({ width:844,height:520 });
