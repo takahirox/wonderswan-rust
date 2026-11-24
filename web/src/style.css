@@ -242,6 +242,69 @@ dialog h2 { font-size: 20px; }
 dialog h3 { font-size: 15px; margin: 16px 0 4px; }
 dialog p, dialog label { font-size: 14px; }
 dialog p { margin-top: 6px; color: var(--muted); }
+#cartridge-picker {
+  width: min(388px, calc(100% - 2 * max(16px, env(safe-area-inset-left), env(safe-area-inset-right))));
+  padding: 0;
+}
+#cartridge-picker::backdrop { background: #101a1759; }
+.cartridge-picker-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: inherit;
+  overflow: auto;
+  padding: 12px;
+}
+#cartridge-picker .dialog-heading { padding: 0; }
+#cartridge-picker [role="status"]:empty { display: none; }
+#cartridge-picker p { margin: 0; overflow-wrap: anywhere; }
+#my-cartridges {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+#my-cartridges-title { margin: 0; }
+#cartridge-list {
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+#cartridge-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+#cartridge-list button[aria-disabled="true"] { opacity: .55; cursor: default; }
+.cartridge-choice { min-width: 0; text-align: left; }
+.cartridge-choice span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cartridge-choice small { display: block; color: var(--muted); }
+#cartridge-notice {
+  position: fixed;
+  z-index: 2;
+  inset: auto max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) auto;
+  width: min(360px, calc(100% - 2 * max(12px, env(safe-area-inset-left), env(safe-area-inset-right))));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: #693417;
+  background: #fff7e8;
+  border: 1px solid #c5a585;
+  border-radius: 9px;
+  font-size: 14px;
+}
+#cartridge-notice p { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#cartridge-notice-dismiss { flex: none; width: 44px; font-size: 20px; }
+#player:has(#cartridge-picker[open]) #cartridge-notice { visibility: hidden; }
 #rtc-mode { display: block; margin-top: 4px; }
 dialog label[for="rtc-mode"] { display: block; margin-top: 8px; }
 .debug-setting { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 8px; }

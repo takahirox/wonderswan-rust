@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { romLibraryChecks } from './rom-library.mjs';
 
 const base = process.env.WS_PREVIEW_URL ?? 'http://127.0.0.1:4173/wonderswan-rust/';
 const rom = fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws', import.meta.url));
@@ -60,18 +61,21 @@ async function initial() {
 async function load(file=rom) {
   const chooser = page.waitForEvent('filechooser');
   await page.locator('#load-rom').click();
+  await page.locator('#open-local-rom').click();
   await (await chooser).setFiles(file);
   await initial();
 }
 async function cancelPicker() {
   const chooser = page.waitForEvent('filechooser');
   await page.locator('#load-rom').click();
+  await page.locator('#open-local-rom').click();
   await (await chooser).setFiles([]);
   assert.equal(await page.evaluate(() => document.activeElement.id), 'load-rom');
 }
 async function rejectEmptyRom() {
   const chooser = page.waitForEvent('filechooser');
   await page.locator('#load-rom').click();
+  await page.locator('#open-local-rom').click();
   await (await chooser).setFiles(emptyRom);
   await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Expected a 128 KiB'));
 }
@@ -227,7 +231,7 @@ try {
   assert.equal(await page.locator('#rom-status').textContent(), 'No ROM loaded');
   assert.equal(await page.locator('#rom-title').textContent(), 'No ROM loaded');
   assert.equal(await page.locator('#empty-state').isVisible(), true);
-  assert.equal(await page.getByRole('button', {name:'Load ROM',exact:true}).count(), 1);
+  assert.equal(await page.getByRole('button', {name:'Insert cartridge',exact:true}).count(), 1);
   assert.equal(await page.locator('#rom').getAttribute('accept'), '.ws,.wsc');
   assert.equal(await page.locator('#pause').isDisabled(), true);
   assert.equal(await page.locator('#reset').isDisabled(), true);
@@ -306,10 +310,10 @@ try {
   assert.equal(await page.locator('#rom-status').textContent(), 'Running');
   await load();
   assert.equal(requests.length, countBeforeFile, 'local ROM selection must not send requests');
-  assert.equal(await page.locator('#rom-title').textContent(), 'keypad-horizontal.ws');
+  assert.equal(await page.locator('#rom-title').textContent(), longName, 'reimport leaves the inserted name intact');
   await rejectEmptyRom();
   assert.equal(await page.getByRole('alert').filter({ hasText:'Could not load' }).isVisible(), true);
-  assert.equal(await page.locator('#rom-title').textContent(), 'keypad-horizontal.ws', 'invalid file preserves cartridge');
+  assert.equal(await page.locator('#rom-title').textContent(), longName, 'invalid file preserves cartridge');
   assert.equal(await page.locator('#rom-status').textContent(), 'Running');
   await load();
   assert.equal(await page.locator('#error').textContent(), '');
@@ -373,7 +377,7 @@ try {
   await closeHelp();
   assert.equal(await page.locator('#debug-panel').isVisible(), true);
   assert.equal(await page.locator('#debug-bytes').textContent(), '131072');
-  assert.match(await page.locator('#debug-rom').textContent(), /keypad-horizontal.ws/);
+  assert.equal(await page.locator('#debug-rom').textContent(), longName);
   await page.waitForTimeout(550);
   assert.ok(Number(await page.locator('#debug-frames').textContent()) > 0);
   await page.locator('#debug-panel summary').click();
@@ -676,6 +680,7 @@ try {
     const screen = page.locator('#display');
     const chooser = page.waitForEvent('filechooser');
     await page.locator('#load-rom').tap();
+    await page.locator('#open-local-rom').tap();
     assert.ok((await screen.boundingBox()).y < 0, `680×340 ${mode} picker opens from a clipped screen`);
     await (await chooser).setFiles(verticalRom);
     await initial();
@@ -756,6 +761,8 @@ try {
   assert.deepEqual(errors, []);
   console.log('375×812 portrait and 812×375 landscape layout, both cartridge orientations, fullscreen, all touch inputs and combined presses, and mobile Help/Debug passed');
   await mobile.close();
+  await romLibraryChecks(browser,base,errors);
+  assert.deepEqual(errors, []);
 
 } finally {
   await browser.close();

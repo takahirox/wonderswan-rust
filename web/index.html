@@ -58,7 +58,7 @@
               <h2 id="cartridge-label">Cartridge</h2>
               <p id="rom-title">No ROM loaded</p>
             </div>
-            <button id="load-rom" class="primary" type="button" aria-describedby="rom-guide" disabled>Load ROM</button>
+            <button id="load-rom" class="primary" type="button" aria-haspopup="dialog" aria-controls="cartridge-picker" disabled>Insert cartridge</button>
             <input id="rom" type="file" accept=".ws,.wsc" aria-label="Local ROM file" hidden />
             <div class="model-control">
               <label for="model">Console</label>
@@ -86,6 +86,26 @@
             <p id="notice" role="status"></p>
           </div>
         </div>
+        <dialog id="cartridge-picker" aria-labelledby="cartridge-picker-title">
+          <div class="cartridge-picker-content">
+            <div class="dialog-heading">
+              <h2 id="cartridge-picker-title">Insert cartridge</h2>
+              <button id="cartridge-close" type="button" autofocus>Close</button>
+            </div>
+            <p id="library-list-status" role="status"></p>
+            <p id="library-operation" role="status"></p>
+            <p id="library-retention" role="status"></p>
+            <section id="my-cartridges" aria-labelledby="my-cartridges-title" hidden>
+              <h3 id="my-cartridges-title">My cartridges</h3>
+              <ul id="cartridge-list" role="list"></ul>
+            </section>
+            <button id="open-local-rom" class="primary" type="button">Open local ROM…</button>
+          </div>
+        </dialog>
+        <div id="cartridge-notice" hidden>
+          <p id="cartridge-notice-message" role="alert"></p>
+          <button id="cartridge-notice-dismiss" type="button" aria-label="Dismiss ROM storage warning">×</button>
+        </div>
         <div id="touch-controls" role="group" aria-label="Touch controller">
           <div class="dpad" role="group" aria-label="X keypad (arrows or W D S A)">
             <button type="button" data-button="16" aria-label="X1 (Up / W)" disabled>X1 ↑</button>
@@ -109,7 +129,10 @@
         </div>
         <dialog id="help" aria-labelledby="help-title">
           <div class="dialog-heading"><h2 id="help-title">Help</h2><button id="help-close" type="button" autofocus>Close</button></div>
-          <p id="rom-guide">Load ROM opens a local .ws or .wsc file. The player keeps it in your browser.</p>
+          <p>Choose Insert cartridge → Open local ROM… to open a .ws or .wsc file.
+            The player remembers a copy in this browser when storage is available.
+            Pick it again under My cartridges, or choose Remove to delete the copy and keep your progress.
+            Keep your original files. Clearing site data can erase ROM copies and progress.</p>
           <h3>Keyboard</h3>
           <dl class="key-guide">
             <dt>X1 / X2 / X3 / X4</dt><dd>↑ / → / ↓ / ← or W / D / S / A</dd>

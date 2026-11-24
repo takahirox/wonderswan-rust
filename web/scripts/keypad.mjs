@@ -15,6 +15,10 @@ const rows = (y=0,x=0,a=0) => [0,0x10|y,0x20|x,0x30|y|x,0x40|a,0x50|y|a,0x60|x|a
 export async function keypadChecks(browser, base, errors) {
   const horizontal = await readFile(new URL('../../fixtures/generated/keypad-horizontal.ws', import.meta.url));
   const vertical = await readFile(new URL('../../fixtures/generated/keypad-vertical.ws', import.meta.url));
+  const replacement = Buffer.from(vertical);
+  replacement[100] ^= 1; // Unused padding gives the replacement a distinct identity.
+  const sum = replacement.subarray(0,-2).reduce((sum,byte) => sum+byte,0);
+  replacement.writeUInt16LE(sum & 65535,replacement.length-2);
   const context = await browser.newContext({viewport:{width:1440,height:1000},hasTouch:true});
   await context.addInitScript(() => localStorage.setItem('wonderswan:display:v1','clean'));
   const page = await context.newPage();
@@ -267,7 +271,7 @@ export async function keypadChecks(browser, base, errors) {
       if (action==='pagehide') {await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));await click('#pause');}
       if (action==='restart') await click('#reset');
       if (action==='model') await page.locator('#model').selectOption('color');
-      if (action==='load') await load(vertical,'replacement.ws');
+      if (action==='load') await load(replacement,'replacement.ws');
       if (action==='invalid') {
         await page.locator('#rom').setInputFiles({name:'bad.ws',mimeType:'application/octet-stream',buffer:Buffer.from([0])});
         await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Could not load'));

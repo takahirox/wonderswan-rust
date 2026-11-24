@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { installPlayerClock, stepPlayerClock } from './player-clock.mjs';
+import { chooseRemembered, openCartridges } from './rom-library.mjs';
 
 export async function rtcCalendarChecks(browser, base, errors) {
   const bytes = await readFile(new URL('../../fixtures/generated/rtc-calendar.ws', import.meta.url));
@@ -81,16 +82,30 @@ export async function rtcCalendarChecks(browser, base, errors) {
       await page.close();
       page = await open(context,184000);
       await page.locator('#model').selectOption(model);
-      await load(page);
+      if (model === 'crystal') {
+        await chooseRemembered(page,'rtc-calendar.ws');
+        await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running',null,{polling:25});
+      } else await load(page);
       check(await execute(page),model,retained,4);
-      const stored = await page.evaluate(key=>localStorage.getItem(key),clockKey);
+      let stored = await page.evaluate(key=>localStorage.getItem(key),clockKey);
       assert.ok(stored);
+      if (model === 'crystal') {
+        const picker = await openCartridges(page);
+        const remove = picker.getByRole('button',{name:'Remove rtc-calendar.ws'});
+        await remove.click();await remove.waitFor({state:'detached'});await page.keyboard.press('Escape');
+        assert.equal(await page.evaluate(key=>localStorage.getItem(key),clockKey),stored);
+        await page.close();page = await open(context,245000);
+        await load(page);
+        check(await execute(page),model,retained,5);
+        stored = await page.evaluate(key=>localStorage.getItem(key),clockKey);
+        assert.ok(stored);
+      }
       validClockRecord = stored;
-      // Explicit absent load never replaces the equipped clock record.
+      // Restart with the explicit absent setting and retain the equipped clock record.
       await click(page,'#settings');
       await page.locator('#rtc-mode').selectOption('absent');
       await closeSettings(page);
-      await load(page); await execute(page);
+      await click(page,'#reset'); await execute(page);
       assert.equal(await page.evaluate(key=>localStorage.getItem(key),clockKey),stored);
       // Cartridge identity is raw SHA-256, never a filename or console model.
       const other = Buffer.from(bytes); other[123] ^= 1;

@@ -40,6 +40,7 @@ export async function sweepChecks(browser, base, errors, observeAudio) {
       await page.locator('#model').selectOption(model);
       const chooser = page.waitForEvent('filechooser');
       await page.locator('#load-rom').click();
+      await page.locator('#open-local-rom').click();
       await (await chooser).setFiles({name:'sweep.ws',mimeType:'application/octet-stream',buffer:bytes});
       for (let iteration=0;iteration<2;iteration++) {
         const before = await page.evaluate(() => window.audioProbe.buffers);

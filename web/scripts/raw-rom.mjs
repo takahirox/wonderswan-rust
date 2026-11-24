@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { chooseRemembered } from './rom-library.mjs';
 
 export async function rawRomChecks(browser, base, errors) {
   const probes = await Promise.all(['raw3-common','raw3-2003','raw6-common','raw6-2003'].map(async name => {
@@ -44,6 +45,7 @@ export async function rawRomChecks(browser, base, errors) {
   async function load(probe, model, filename='same-name.ws') {
     const chooser = page.waitForEvent('filechooser');
     await page.locator('#load-rom').click();
+    await page.locator('#open-local-rom').click();
     await (await chooser).setFiles({name:filename,mimeType:'application/octet-stream',buffer:probe.bytes});
     await success(model);
   }
@@ -79,11 +81,11 @@ export async function rawRomChecks(browser, base, errors) {
     assert.deepEqual(await page.evaluate(() => ['mono','color','crystal'].map(model => localStorage.getItem(`wonderswan:console:v1:${model}`))),originalConsole);
     await page.reload();await ready();await page.locator('#model').selectOption('crystal');
     await load(probes[0],'crystal','renamed.ws');await pause();await saved(probes[0],7);
-    await load(probes[2],'crystal');await pause();await saved(probes[2],7);
+    await chooseRemembered(page,'same-name.ws',probes[2].key);await success('crystal');await pause();await saved(probes[2],7);
     await load(probes[1],'crystal');await pause();await saved(probes[1],7);
     await saved(probes[3],6);
     await page.close();await open();
-    await load(probes[3],'crystal','reopened.ws');await pause();await saved(probes[3],7);
+    await chooseRemembered(page,'same-name.ws',probes[3].key);await success('crystal');await pause();await saved(probes[3],7);
     assert.deepEqual(await page.evaluate(() => ['mono','color','crystal'].map(model => localStorage.getItem(`wonderswan:console:v1:${model}`))),originalConsole);
     console.log('Raw 3/6 MiB common/2003 CPU probes: local file load, all models, DMA/bank assertions, restart, exact raw SHA-256 keys, reload/reopen/save isolation and separate console records passed');
   } finally { await context.close(); }
