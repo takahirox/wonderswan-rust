@@ -1,4 +1,4 @@
-import { Saves, romIdentity, consoleKey, RtcRecords, rtcKey } from "./saves";
+import { Saves, romIdentity, consoleKey, RtcRecords, rtcKey, orientationKey } from "./saves";
 import { Sound } from "./audio";
 import { Display, type DisplayEffect } from "./display";
 import init, { WebMachine } from "../pkg/ws_web.js";
@@ -13,6 +13,8 @@ const romStatus = element<HTMLParagraphElement>("rom-status");
 const errorStatus = element<HTMLParagraphElement>("error");
 const canvas = element<HTMLCanvasElement>("screen");
 const player = element<HTMLElement>("player");
+const screenFrame = element("display");
+const orientationSelect = element<HTMLSelectElement>("orientation");
 const help = element<HTMLDialogElement>("help");
 const settingsButton = element<HTMLButtonElement>("settings");
 const debugToggle = element<HTMLInputElement>("debug-toggle");
@@ -28,6 +30,7 @@ function message(error: unknown): string {
 async function main() {
   retryButton.hidden = true;
   romStatus.textContent = "Loading WebAssembly…";
+  romStatus.classList.remove("visually-hidden");
   errorStatus.textContent = "";
   await init();
   const machine = new WebMachine();
@@ -37,6 +40,7 @@ async function main() {
     message => { element("display-notice").textContent = message; });
   const effectSelect = element<HTMLSelectElement>("display-effect");
   let loaded: { name: string; key: string } | null = null;
+  let orientation: "horizontal" | "vertical" = "horizontal";
   effectSelect.value = display.effect;
   effectSelect.addEventListener("change", () => display.select(effectSelect.value as DisplayEffect));
   effectSelect.addEventListener("keydown", (event) => {
@@ -116,6 +120,9 @@ async function main() {
   }
   function clearKeys() {
     pressed.clear();
+    for (const [id, button] of pointers) {
+      if (button.hasPointerCapture(id)) button.releasePointerCapture(id);
+    }
     pointers.clear();
     activated.clear();
     updateButtons();
@@ -145,7 +152,7 @@ async function main() {
     element("debug-error").textContent = errorStatus.textContent || element("notice").textContent || "None";
   }
   function refresh() {
-    element("display").dataset.orientation = machine.orientation();
+    orientationSelect.disabled = !loaded || loading;
     modelSelect.value = machine.model();
     const title = element("rom-title");
     title.textContent = loaded?.name ?? "No ROM loaded";
@@ -231,7 +238,16 @@ async function main() {
   function focusGame() {
     canvas.focus({ preventScroll: true });
     // Reveal the whole screen row, including the adjacent keypads in landscape.
-    element("display").scrollIntoView({ block: "center", inline: "nearest" });
+    screenFrame.scrollIntoView({ block: "center", inline: "nearest" });
+  }
+  function applyOrientation() {
+    const preference = orientationSelect.value;
+    const next = preference === "horizontal" || preference === "vertical"
+      ? preference : machine.orientation() === "vertical" ? "vertical" : "horizontal";
+    if (orientation === next) return;
+    clearKeys();
+    orientation = next;
+    player.dataset.orientation = orientation;
   }
   function load(name: string, bytes: Uint8Array, key: string, autoplay = true) {
     persist();
@@ -239,6 +255,11 @@ async function main() {
     display.resetHistory();
     machine.configure_rtc(rtcMode.value);
     loaded = { name, key };
+    let savedOrientation: string | null = null;
+    try { savedOrientation = localStorage.getItem(orientationKey(key)); } catch { /* Use Auto. */ }
+    orientationSelect.value = savedOrientation === "horizontal" || savedOrientation === "vertical"
+      ? savedOrientation : "auto";
+    applyOrientation();
     element("rtc-notice").textContent = "";
     restoreClock();
     element("notice").textContent = "";
@@ -260,6 +281,7 @@ async function main() {
     errorStatus.textContent = "";
     try {
       machine.change_model(model);
+      applyOrientation();
       display.resetHistory();
       draw();
       restoreConsole();
@@ -315,6 +337,17 @@ async function main() {
     persist();
     machine.configure_rtc(rtcMode.value);
     restoreClock();
+  });
+  orientationSelect.addEventListener("change", () => {
+    if (!loaded || loading) return;
+    const key = orientationKey(loaded.key);
+    try {
+      if (orientationSelect.value === "auto") localStorage.removeItem(key);
+      else localStorage.setItem(key, orientationSelect.value);
+    } catch { /* Keep the live choice. */ }
+    applyOrientation();
+    if (framePending) captureFrame();
+    sizeScreen();
   });
   window.setInterval(persist, 1000);
   window.addEventListener("pagehide", () => { resumeAfterDialog = false; visibilityRevision++; setRunning(false); });
@@ -389,11 +422,10 @@ async function main() {
   });
   // Integer scaling where space allows; fractional nearest-neighbor scaling on narrow screens.
   function sizeScreen() {
-    const frame = element("display");
-    const vertical = machine.orientation() === "vertical";
+    const vertical = orientation === "vertical";
     const width = vertical ? 144 : 224;
     const height = vertical ? 224 : 144;
-    const bounds = frame.getBoundingClientRect();
+    const bounds = screenFrame.getBoundingClientRect();
     const left = Math.ceil(bounds.left);
     const top = Math.ceil(bounds.top);
     const spaceWidth = Math.max(0, Math.floor(bounds.right) - left);
@@ -409,7 +441,8 @@ async function main() {
     presentation.style.top = `${top - bounds.top + Math.floor((spaceHeight - height * scale) / 2)}px`;
     display.resize(scale);
   }
-  new ResizeObserver(sizeScreen).observe(element("display"));
+  new ResizeObserver(sizeScreen).observe(screenFrame);
+  window.addEventListener("resize", clearKeys);
 
   window.addEventListener("keydown", (event) => {
     if (!running || help.open || document.activeElement !== canvas || !(event.code in bindings)
@@ -434,7 +467,10 @@ async function main() {
       updateButtons();
     });
     const release = (event: PointerEvent) => {
-      if (pointers.delete(event.pointerId)) updateButtons();
+      if (pointers.get(event.pointerId) === button) {
+        pointers.delete(event.pointerId);
+        updateButtons();
+      }
     };
     button.addEventListener("pointerup", release);
     button.addEventListener("pointercancel", release);
@@ -474,7 +510,7 @@ async function main() {
 function initialize() {
   void main().catch((error: unknown) => {
     romStatus.textContent = "Emulator unavailable";
-    romStatus.classList.remove("visually-hidden");
+    romStatus.classList.add("visually-hidden");
     errorStatus.textContent = `Could not initialize the player: ${message(error)} Retry initialization or reload the page.`;
     retryButton.hidden = false;
   });

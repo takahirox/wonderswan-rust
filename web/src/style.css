@@ -61,10 +61,9 @@ a { color: var(--accent); text-underline-offset: 3px; }
   display: grid;
   grid-template:
     "brand    brand" auto
-    "screen   cartridge" auto
+    "game     cartridge" auto
     "toolbar  toolbar" auto
     "feedback feedback" auto
-    "touch    touch" auto
     / minmax(0, 1fr) minmax(220px, 236px);
   column-gap: 20px;
   align-items: start;
@@ -90,6 +89,7 @@ a { color: var(--accent); text-underline-offset: 3px; }
 #settings { background: transparent; border-color: transparent; }
 #settings:hover:enabled { background: var(--accent-tint); }
 
+#game { grid-area: game; min-width: 0; }
 .screen-frame {
   grid-area: screen;
   position: relative;
@@ -116,7 +116,11 @@ canvas {
   outline-offset: 2px;
   box-shadow: 0 0 0 2px var(--surface);
 }
-[data-orientation="vertical"] canvas { transform: translate(-50%, -50%) rotate(-90deg); }
+#player[data-orientation="vertical"] .screen-frame {
+  height: clamp(224px, 56svh, 600px);
+  aspect-ratio: auto;
+}
+#player[data-orientation="vertical"] canvas { transform: translate(-50%, -50%) rotate(-90deg); }
 #empty-state {
   position: absolute;
   inset: 0;
@@ -181,15 +185,7 @@ canvas {
 #error { color: #9d2d29; }
 #sound-status, #display-notice, #console-notice, #rtc-notice, #notice { color: #454f49; }
 
-#touch-controls {
-  grid-area: touch;
-  display: none;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 12px;
-}
+#touch-controls { display: none; }
 #touch-controls button {
   touch-action: none;
   user-select: none;
@@ -197,20 +193,50 @@ canvas {
   min-width: 44px;
   min-height: 44px;
   padding: 4px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .dpad {
   display: grid;
   grid-template-areas: ". up ." "left . right" ". down .";
   grid-template-columns: repeat(3, 44px);
-  gap: 4px;
+  /* The middle targets sit in separate columns, leaving their full hit areas
+     clear while bringing the four directions closer to the thumb. */
+  grid-template-rows: 44px 20px 44px;
+  column-gap: 2px;
+  align-items: center;
+}
+.y-pad { grid-area: y; }
+.x-pad { grid-area: x; }
+#player[data-orientation="vertical"] .dpad {
+  grid-template-areas: ". right ." "up . down" ". left .";
 }
 .dpad button:nth-child(1) { grid-area: up; }
 .dpad button:nth-child(2) { grid-area: right; }
 .dpad button:nth-child(3) { grid-area: down; }
 .dpad button:nth-child(4) { grid-area: left; }
-.action-row, .action-buttons { display: flex; gap: 6px; align-items: center; }
+.dpad button {
+  border-radius: var(--top-left, 8px) var(--top-right, 8px)
+    var(--bottom-right, 8px) var(--bottom-left, 8px);
+}
+#player[data-orientation="horizontal"] .dpad button:nth-child(1),
+#player[data-orientation="vertical"] .dpad button:nth-child(2) { --top-left: 18px; --top-right: 18px; }
+#player[data-orientation="horizontal"] .dpad button:nth-child(2),
+#player[data-orientation="vertical"] .dpad button:nth-child(3) { --top-right: 18px; --bottom-right: 18px; }
+#player[data-orientation="horizontal"] .dpad button:nth-child(3),
+#player[data-orientation="vertical"] .dpad button:nth-child(4) { --bottom-left: 18px; --bottom-right: 18px; }
+#player[data-orientation="horizontal"] .dpad button:nth-child(4),
+#player[data-orientation="vertical"] .dpad button:nth-child(1) { --top-left: 18px; --bottom-left: 18px; }
+.action-buttons {
+  grid-area: actions;
+  display: grid;
+  grid-template: ". a" "b ." / 44px 44px;
+  gap: 4px;
+}
 .action-buttons button { border-radius: 50%; }
+.action-buttons [data-button="4"] { grid-area: a; }
+.action-buttons [data-button="8"] { grid-area: b; }
+#player[data-orientation="vertical"] .action-buttons { grid-template-areas: "a ." ". b"; }
+.start { grid-area: start; border-radius: 22px; width: 52px; }
 
 #debug-panel {
   margin-top: 16px;
@@ -242,6 +268,14 @@ dialog h2 { font-size: 20px; }
 dialog h3 { font-size: 15px; margin: 16px 0 4px; }
 dialog p, dialog label { font-size: 14px; }
 dialog p { margin-top: 6px; color: var(--muted); }
+.orientation-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 16px;
+}
+.orientation-control label { font-weight: 650; }
 #rtc-mode { display: block; margin-top: 4px; }
 dialog label[for="rtc-mode"] { display: block; margin-top: 8px; }
 .debug-setting { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 8px; }
@@ -256,17 +290,16 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   background: var(--page);
   overflow: auto;
 }
-#player:fullscreen .screen-frame { align-self: stretch; aspect-ratio: auto; }
+#player:fullscreen #game { align-self: stretch; }
 #player:fullscreen .brand { margin-bottom: 6px; }
 
 @media (width > 700px) {
   #player:fullscreen {
     grid-template-areas:
       "brand   brand"
-      "screen  sidebar"
-      "toolbar toolbar"
-      "touch   touch";
-    grid-template-rows: auto minmax(196px, 1fr) auto auto;
+      "game    sidebar"
+      "toolbar toolbar";
+    grid-template-rows: auto minmax(196px, 1fr) auto;
   }
   #player:fullscreen .cartridge-area {
     /* Feedback scrolls with the cartridge panel without resizing the picture. */
@@ -277,19 +310,18 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   }
 }
 
+@media (width > 700px) and (not (any-pointer: coarse)) {
+  #player:fullscreen .screen-frame { height: 100%; aspect-ratio: auto; }
+}
+
 @media (max-width: 700px) {
   :root { --page-gutter: 12px; }
   main { padding-top: max(8px, env(safe-area-inset-top)); }
   #player {
-    grid-template: "brand" "screen" "toolbar" "cartridge" "feedback" "touch" / minmax(0, 1fr);
+    grid-template: "brand" "game" "toolbar" "feedback" "cartridge" / minmax(0, 1fr);
   }
   #player:fullscreen { align-content: start; }
-  #player:fullscreen .screen-frame { aspect-ratio: 224 / 144; }
   .brand { margin-bottom: 8px; }
-  #player .screen-frame[data-orientation="vertical"] {
-    height: clamp(224px, 43svh, 448px);
-    aspect-ratio: auto;
-  }
   .cartridge {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -301,61 +333,74 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   .model-control label { align-self: end; }
   .model-control select { grid-area: 1 / 2 / 3; align-self: center; }
   .model-control .hint { grid-column: 1; align-self: start; }
-  #touch-controls { display: flex; }
-  .action-row { width: 100%; justify-content: space-between; }
 }
 
-@media (min-width: 370px) and (max-width: 700px) and (orientation: portrait) {
-  #player .screen-frame[data-orientation="vertical"] {
-    /* Leave room for the toolbar, cartridge, and three controller rows. */
-    height: clamp(224px, min(43svh, calc(100svh - 466px - env(safe-area-inset-top) - env(safe-area-inset-bottom))), 448px);
+@media (max-width: 700px), (any-pointer: coarse) {
+  #game {
+    display: grid;
+    grid-template:
+      "screen screen screen"
+      "y      .      actions"
+      "x      start  actions" / minmax(136px, 1fr) minmax(44px, 52px) 92px;
+    gap: 8px 4px;
+    align-items: center;
   }
-  .action-row, .action-buttons { flex-direction: column; gap: 4px; }
-  .action-row { width: auto; }
+  #touch-controls { display: contents; }
+  .dpad { justify-self: start; }
+  .action-buttons { align-self: end; margin-bottom: 12px; }
+  .start { justify-self: center; align-self: end; }
+
+  #player[data-orientation="vertical"] #game {
+    grid-template:
+      "screen actions" 1fr
+      "screen start" auto
+      "pads   pads" auto / minmax(0, 1fr) 92px;
+    align-items: start;
+  }
+  #player[data-orientation="vertical"] .screen-frame { height: clamp(224px, 43svh, 448px); }
+  #player[data-orientation="vertical"] .action-buttons { align-self: center; margin-bottom: 0; }
+  #player[data-orientation="vertical"] .start { align-self: start; margin-bottom: 16px; }
+  #player[data-orientation="vertical"] .dpad { grid-area: pads; }
+  #player[data-orientation="vertical"] .x-pad { justify-self: end; }
 }
 
-@media (any-pointer: coarse) {
-  #touch-controls { display: flex; }
-}
-
-/* Allow room for two 144px controller columns, a 224px picture, gaps, and gutters. */
 @media (any-pointer: coarse) and (orientation: landscape) and (min-width: 560px) and (max-height: 500px) {
   :root { --page-gutter: 12px; }
   main { padding-top: max(6px, env(safe-area-inset-top)); }
   #player, #player:fullscreen {
-    --screen-height: clamp(196px, calc(100dvh - 174px), 300px);
-    grid-template:
-      "brand     brand     brand" auto
-      ".         screen    ." var(--screen-height)
-      "feedback  feedback  feedback" auto
-      "toolbar   toolbar   toolbar" auto
-      "cartridge cartridge cartridge" auto
-      / 144px minmax(0, 1fr) 144px;
-    column-gap: 8px;
+    grid-template: "brand" "game" "feedback" "toolbar" "cartridge" / minmax(0, 1fr);
+    align-content: start;
   }
   .brand { margin-bottom: 6px; }
-  /* Use the fixed landscape row height for both cartridge orientations. */
-  #player > #display {
-    grid-area: 2 / 2;
-    align-self: stretch;
-    height: auto;
-    aspect-ratio: auto;
+  #game {
+    min-height: clamp(var(--game-min-height, 224px), calc(100dvh - 150px), 320px);
+    grid-template:
+      "y screen actions" 1fr
+      "x screen start" 1fr / 136px minmax(0, 1fr) 92px;
+    gap: 8px 12px;
+    align-items: center;
   }
-  #touch-controls {
-    /* The middle track stays clear for the canvas and its focus ring. */
-    grid-area: 2 / 1 / 3 / -1;
-    align-self: center;
-    display: grid;
-    grid-template: "x . y" "x . actions" / 144px minmax(0, 1fr) 144px;
-    row-gap: 6px;
-    justify-items: center;
-    margin-top: 0;
-    pointer-events: none;
+  #player[data-orientation="vertical"] #game {
+    /* 68px for A/B, 44px for Start, 108px for X and two 8px gaps. */
+    --game-min-height: 236px;
+    grid-template:
+      ". screen actions"
+      "y screen start"
+      "y screen x" / minmax(136px, 1fr) minmax(0, 300px) minmax(136px, 1fr);
+    align-items: end;
   }
-  #touch-controls button { pointer-events: auto; }
-  #touch-controls .dpad:first-child { grid-area: x; }
-  #touch-controls .dpad:nth-child(2) { grid-area: y; }
-  .action-row { grid-area: actions; width: auto; }
+  #player #game .screen-frame { align-self: stretch; height: auto; aspect-ratio: auto; }
+  #player[data-orientation="vertical"] .y-pad { grid-area: y; justify-self: center; }
+  #player[data-orientation="vertical"] .x-pad { grid-area: x; justify-self: center; }
+  #player[data-orientation="vertical"] .action-buttons {
+    grid-template-rows: 24px 44px;
+    row-gap: 0;
+    align-items: start;
+    justify-self: center;
+  }
+  #player[data-orientation="vertical"] .start { margin-bottom: 0; }
+  .action-buttons { align-self: end; margin-bottom: 0; }
+  .start { align-self: start; }
   .feedback-row { display: flex; align-items: start; gap: 12px; }
   .feedback-row p { flex: 1; min-width: 0; }
   .feedback-row button { flex: none; }
