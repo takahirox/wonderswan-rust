@@ -574,6 +574,10 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
       "y      actions" auto
       "x      start" auto / minmax(136px, 1fr) 92px;
   }
+  @container fullscreen-game (width < 240px) {
+    /* The 136px pad and 92px action column leave 4px at a 232px safe width. */
+    #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout { column-gap: 4px; }
+  }
   #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
     grid-template:
       "exit   exit" 44px
@@ -594,7 +598,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 
 @media (any-pointer: coarse) and (orientation: landscape) {
   /* The fullscreen container queries measure the content box inside the safe areas. */
-  @container fullscreen-game (width >= 280px) {
+  @container fullscreen-game (width >= 272px) {
     #game:fullscreen .action-buttons {
       /* Stagger A and B in separate columns to save height with 44px targets. */
       grid-template-rows: 24px 44px;
@@ -603,25 +607,42 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
     }
   }
 
-  @container fullscreen-game (width >= 280px) and ((width < 440px) or (height < 234px)) {
+  @container fullscreen-game (width >= 272px) and ((width < 440px) or (height < 234px)) {
+    #game:fullscreen[data-orientation] .fullscreen-layout {
+      --compact-pad-width: 136px;
+      column-gap: 4px;
+    }
     #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
       grid-template:
         "y exit   exit" 44px
         "y screen screen" minmax(56px, 1fr)
         "x screen screen" minmax(32px, 1fr)
-        "x start  actions" 68px / 136px minmax(44px, 1fr) 92px;
-      gap: 8px 4px;
+        "x start  actions" 68px / var(--compact-pad-width) minmax(44px, 1fr) 92px;
     }
     #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
       grid-template:
         "screen exit    exit" 44px
         "screen actions start" minmax(60px, 1fr)
         "pads   pads    pads" 108px / minmax(0, 1fr) 92px 52px;
-      gap: 8px 4px;
     }
     #game:fullscreen[data-orientation="vertical"] .action-buttons { grid-template-rows: 16px 44px; }
     #game:fullscreen .start { align-self: center; width: min(52px, 100%); }
     #game:fullscreen[data-orientation="vertical"] .x-pad { justify-self: end; }
+
+    @container (width < 280px) {
+      /* At 272px, the pads, Start and A/B fit with 2px between columns.
+         Three full-width pad columns also let both rotated pads fit in a 108px row. */
+      #game:fullscreen[data-orientation] .fullscreen-layout {
+        --compact-pad-width: 132px;
+        column-gap: 2px;
+      }
+      #game:fullscreen[data-orientation] .dpad {
+        width: auto;
+        grid-template-columns: repeat(3, 44px);
+        grid-template-rows: 44px 20px 44px;
+        column-gap: 0;
+      }
+    }
   }
 
   /* The side-by-side grids need at least 234px for their rows and gaps. */
