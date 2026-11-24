@@ -5,22 +5,22 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: read
+    env:
+      PAGES_ARTIFACT_NAME: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+    outputs:
+      artifact_name: ${{ env.PAGES_ARTIFACT_NAME }}
+      artifact_id: ${{ steps.upload.outputs.artifact_id }}
     defaults:
       run:
         working-directory: web
@@ -48,9 +48,61 @@ jobs:
       - name: Build frontend
         run: npm run build
       - name: Upload static site
+        id: upload
         uses: actions/upload-pages-artifact@v5
         with:
+          name: ${{ env.PAGES_ARTIFACT_NAME }}
           path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # A deploy-only rerun uses the outputs of the successful build job.
+      - name: Wait for the uploaded Pages artifact
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
+          ARTIFACT_ID: ${{ needs.build.outputs.artifact_id }}
+        run: |
+          if [[ -z "$ARTIFACT_NAME" || ! "$ARTIFACT_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::The Pages build did not report an artifact name and ID."
+            exit 1
+          fi
+
+          for attempt in {1..12}; do
+            artifacts=$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+              -f name="$ARTIFACT_NAME")
+            count=$(jq -e '.total_count' <<< "$artifacts")
+            if [[ "$count" == 1 ]] && jq -e --arg id "$ARTIFACT_ID" \
+              '.artifacts[0] | (.id | tostring) == $id and .expired == false' \
+              <<< "$artifacts" > /dev/null; then
+              echo "Pages artifact $ARTIFACT_NAME (ID $ARTIFACT_ID) is visible."
+              exit 0
+            fi
+            if [[ "$count" != 0 ]]; then
+              echo "::error::Expected one active Pages artifact named $ARTIFACT_NAME with ID $ARTIFACT_ID."
+              exit 1
+            fi
+            echo "Waiting for Pages artifact $ARTIFACT_NAME (check $attempt of 12)."
+            if (( attempt < 12 )); then
+              sleep 5
+            fi
+          done
+
+          echo "::error::Pages artifact $ARTIFACT_NAME (ID $ARTIFACT_ID) did not become visible."
+          exit 1
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          artifact_name: ${{ needs.build.outputs.artifact_name }}
