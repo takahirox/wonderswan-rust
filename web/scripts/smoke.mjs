@@ -81,6 +81,7 @@ async function checkInViewport(selector) {
   assert.ok(box && box.width > 0 && box.height > 0 && box.x >= 0 && box.y >= 0
     && box.x + box.width <= width && box.y + box.height <= height,
   `${selector} (${JSON.stringify(box)}) is fully visible in the ${width}×${height} viewport`);
+  return box;
 }
 function luminance(color) {
   const [red, green, blue] = color.match(/\d+/g).map(value => {
@@ -658,9 +659,17 @@ try {
   await page.setViewportSize({ width:680,height:340 });
   async function checkCompactGameplayInViewport() {
     assert.equal(await page.evaluate(() => document.activeElement.id), 'screen');
+    assert.equal(await page.evaluate(() => {
+      const container = document.fullscreenElement ?? document.documentElement;
+      return container.scrollWidth > container.clientWidth;
+    }), false, 'no horizontal overflow during compact landscape play');
     await checkInViewport('#screen');
-    for (const button of await page.locator('#touch-controls button').all()) {
-      await checkInViewport(`[data-button="${await button.getAttribute('data-button')}"]`);
+    const buttons = await page.locator('#touch-controls button').all();
+    assert.equal(buttons.length, 11);
+    for (const button of buttons) {
+      const selector = `[data-button="${await button.getAttribute('data-button')}"]`;
+      const box = await checkInViewport(selector);
+      assert.ok(box.width >= 44 && box.height >= 44, `${selector} has a practical touch target`);
     }
   }
   async function checkCompactLandscape(mode) {
@@ -697,6 +706,17 @@ try {
     await page.evaluate(() => document.exitFullscreen());
     await page.waitForFunction(() => !document.fullscreenElement);
   }
+  await page.setViewportSize({ width:640,height:360 });
+  await load(verticalRom);
+  await checkCompactGameplayInViewport();
+  if (await page.evaluate(() => document.fullscreenEnabled)) {
+    await page.locator('#fullscreen').tap();
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+    await checkCompactGameplayInViewport();
+    await page.evaluate(() => document.exitFullscreen());
+    await page.waitForFunction(() => !document.fullscreenElement);
+  }
+  console.log('640×360 portrait cartridge and all 11 touch buttons fit together during landscape play');
   await page.setViewportSize({ width:812,height:375 });
   await page.evaluate(() => window.scrollTo(0,0));
   await checkLayout({ orientation:'vertical', kind:'landscape' });
