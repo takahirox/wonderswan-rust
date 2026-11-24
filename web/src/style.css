@@ -608,19 +608,23 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   /* The inner container and #game's content box share the safe dimensions.
      Query the inner container so cqw/cqh resolve against #game. Each grid
      switch first fits the controls, then compares the picture at native aspect. */
-  @container fullscreen-viewport (width >= 228px) and (height >= 224px)
+  @container fullscreen-viewport (width >= 228px) and (height >= 208px)
       and (height <= calc(284px + (100cqw - 134px) * 9 / 14)) {
     /* Stacked rows and gaps take 284px of height. The compact grid leaves
        more height for the picture, but takes 134px from its width. */
     #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
+      /* Fit both pads and the 8px gap by compressing their middle tracks.
+         The up/down targets remain 44px tall. */
+      --keypad-height: min(108px, (100cqh - 8px) / 2);
       grid-template:
         "y exit   exit" 44px
-        "y screen screen" minmax(56px, 1fr)
-        "x screen screen" minmax(32px, 1fr)
+        "y screen screen" minmax(calc(var(--keypad-height) - 52px), 1fr)
+        "x screen screen" minmax(calc(var(--keypad-height) - 76px), 1fr)
         "x start  actions" 68px / 132px minmax(44px, 1fr) 92px;
       column-gap: 2px;
     }
     #game:fullscreen[data-orientation="horizontal"] .dpad {
+      grid-template-rows: 44px calc(var(--keypad-height) - 88px) 44px;
       column-gap: 0;
     }
     #game:fullscreen[data-orientation="horizontal"] .action-buttons {
@@ -633,13 +637,13 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
       width: min(52px, 100%);
     }
     @container fullscreen-viewport (width < 272px) {
-      /* Start shares the top row of A/B. The X pad needs only 8px above
-         that 92px action row plus the gap to reach its full 108px height. */
+      /* Start shares the top row of A/B. The 92px action row plus the gap
+         already supply 100px of the X pad's height. */
       #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
         grid-template:
           "y exit"    44px
-          "y screen"  minmax(56px, 1fr)
-          "x screen"  minmax(8px, 1fr)
+          "y screen"  minmax(calc(var(--keypad-height) - 52px), 1fr)
+          "x screen"  minmax(calc(var(--keypad-height) - 100px), 1fr)
           "x actions" 92px / 132px minmax(92px, 1fr);
       }
       #game:fullscreen[data-orientation="horizontal"] .action-buttons {
