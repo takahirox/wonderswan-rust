@@ -199,8 +199,10 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
       assert.ok(target.left >= 0 && target.right <= page.viewportSize().width, `button ${target.mask} fits horizontally`);
       if (target.hit !== null) assert.ok(target.hit, `button ${target.mask} receives hits at its center`);
       if (fullscreen) {
-        assert.ok(target.top >= 0 && target.bottom <= page.viewportSize().height);
-        assert.ok(exit.bottom <= target.top && !overlaps(target,exit), 'exit clears gameplay targets');
+        assert.ok(target.top >= 0 && target.bottom <= page.viewportSize().height,
+          `button ${target.mask} fits vertically`);
+        assert.ok(exit.bottom + 8 <= target.top || exit.right + 8 <= target.left
+          || target.right + 8 <= exit.left, `exit is separated from button ${target.mask}`);
       } else {
         assert.ok(target.top >= Math.max(pause.bottom,reset.bottom) + 24,
           `button ${target.mask} is separated from Pause and Reset`);
@@ -735,6 +737,38 @@ try {
     await screenshot('mobile-portrait-horizontal-fullscreen', false);
     await page.locator('#exit-fullscreen').tap();
     await waitForFullscreenExit();
+
+    for (const [trigger, dialog, close] of [
+      ['settings', 'help', 'help-close'],
+      ['load-rom', 'cartridge-picker', 'cartridge-close'],
+    ]) {
+      await page.locator('#game').evaluate((game, trigger) => {
+        const request = game.requestFullscreen;
+        game.requestFullscreen = function () {
+          game.requestFullscreen = request;
+          // Open the modal after native entry, before the queued fullscreenchange handler.
+          return request.call(this).then(() => document.getElementById(trigger).click());
+        };
+        window.fullscreenEntry = null;
+        document.addEventListener('fullscreenchange', () => {
+          window.fullscreenEntry = {
+            fullscreen: document.fullscreenElement?.id,
+            dialog: document.querySelector('dialog[open]')?.id,
+            focus: document.activeElement.id,
+          };
+        }, { capture: true, once: true });
+      }, trigger);
+      await page.locator('#fullscreen').tap();
+      const entry = await page.waitForFunction(() => window.fullscreenEntry);
+      assert.deepEqual(await entry.jsonValue(), { fullscreen:'game', dialog, focus:close });
+      assert.equal(await page.locator(`#${dialog}`).evaluate(dialog => dialog.inert), false);
+      await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector('#controls').inert);
+      assert.equal(await page.evaluate(() => document.activeElement.id), close);
+      await page.locator(`#${close}`).tap();
+      assert.equal(await page.locator(`#${dialog}`).evaluate(dialog => dialog.open), false);
+      await initial();
+    }
+    console.log('Help and cartridge picker keep focus and remain dismissible when they open during native fullscreen entry');
   }
   const mobileEffect = page.locator('#display-effect');
   for (const effect of ['clean','retro-crt']) {
@@ -963,6 +997,25 @@ try {
     await expectInput();
     await page.locator('#exit-fullscreen').tap();
     await waitForFullscreenExit();
+  }
+  if (await page.evaluate(() => document.fullscreenEnabled)) {
+    for (const [width, height, orientation, file] of [
+      [540, 320, 'horizontal', rom],
+      [667, 280, 'vertical', verticalRom],
+    ]) {
+      await page.setViewportSize({ width, height });
+      await load(file);
+      await page.locator('#fullscreen').tap();
+      await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
+      await checkLayout({ orientation, kind:'landscape', fullscreen:true });
+      assert.ok(await page.locator('#game').evaluate(game => game.scrollHeight === game.clientHeight
+        && game.scrollWidth === game.clientWidth), 'short fullscreen keeps the entire game visible without scrolling');
+      await screenshot(`mobile-${width}x${height}-${orientation}-fullscreen`, false);
+      await page.locator('#exit-fullscreen').tap();
+      await waitForFullscreenExit();
+    }
+    console.log('540×320 horizontal and 667×280 vertical touch fullscreen fit the picture, all eleven controls and Exit');
+    await load();
   }
   await page.setViewportSize({ width:844,height:520 });
   await page.evaluate(() => window.scrollTo(0,0));

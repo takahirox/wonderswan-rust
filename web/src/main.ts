@@ -485,7 +485,10 @@ async function main() {
     const active = document.fullscreenElement === game;
     if (active === gameplayFullscreen) return;
     gameplayFullscreen = active;
-    for (const item of playerChrome) item.inert = active;
+    const modalOpen = help.open || picker.open;
+    // A dialog opened during the request takes precedence and must remain usable.
+    if (active && modalOpen) exitFullscreen();
+    for (const item of playerChrome) item.inert = active && !modalOpen;
     clearKeys();
     if (framePending) captureFrame();
     sizeScreen();
