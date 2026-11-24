@@ -84,6 +84,10 @@
             <p id="console-notice" role="status"></p>
             <p id="rtc-notice" role="status"></p>
             <p id="notice" role="status"></p>
+            <div id="cartridge-notice" hidden>
+              <p id="cartridge-notice-message" role="alert"></p>
+              <button id="cartridge-notice-dismiss" type="button" aria-label="Dismiss ROM storage warning">×</button>
+            </div>
           </div>
         </div>
         <dialog id="cartridge-picker" aria-labelledby="cartridge-picker-title">
@@ -92,9 +96,11 @@
               <h2 id="cartridge-picker-title">Insert cartridge</h2>
               <button id="cartridge-close" type="button" autofocus>Close</button>
             </div>
-            <p id="library-list-status" role="status"></p>
-            <p id="library-operation" role="status"></p>
-            <p id="library-retention" role="status"></p>
+            <div class="cartridge-picker-warnings" tabindex="0" role="group" aria-label="ROM storage warnings">
+              <p id="library-list-status" role="status"></p>
+              <p id="library-operation" role="status"></p>
+              <p id="library-retention" role="status"></p>
+            </div>
             <section id="my-cartridges" aria-labelledby="my-cartridges-title" hidden>
               <h3 id="my-cartridges-title">My cartridges</h3>
               <ul id="cartridge-list" role="list"></ul>
@@ -102,10 +108,6 @@
             <button id="open-local-rom" class="primary" type="button">Open local ROM…</button>
           </div>
         </dialog>
-        <div id="cartridge-notice" hidden>
-          <p id="cartridge-notice-message" role="alert"></p>
-          <button id="cartridge-notice-dismiss" type="button" aria-label="Dismiss ROM storage warning">×</button>
-        </div>
         <div id="touch-controls" role="group" aria-label="Touch controller">
           <div class="dpad" role="group" aria-label="X keypad (arrows or W D S A)">
             <button type="button" data-button="16" aria-label="X1 (Up / W)" disabled>X1 ↑</button>
