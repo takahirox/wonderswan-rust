@@ -304,13 +304,15 @@ async function displayEffectsChecks(browser, base, errors) {
       } else if (action === 'model') await page.locator('#model').selectOption('color');
       else if (action === 'restart') await page.locator('#reset').click();
       else {
+        await page.locator('#pause').click();
+        await page.waitForFunction(() => window.displayProbe.histories.length>=3);
         await page.evaluate(() => {
           Object.defineProperty(document,'hidden',{configurable:true,value:true});
           document.dispatchEvent(new Event('visibilitychange'));
+          window.displayProbe.histories=[];
           delete document.hidden;
           document.dispatchEvent(new Event('visibilitychange'));
         });
-        await page.locator('#pause').click();
       }
       await page.waitForFunction(() => window.displayProbe.histories.length>=3);
       assert.equal(await page.evaluate(() => window.displayProbe.histories[0].actual === window.displayProbe.histories[0].source),true,`${action} seeds history`);
@@ -329,7 +331,7 @@ async function displayEffectsChecks(browser, base, errors) {
     const retained = await snapshot();
     const uploads = await page.evaluate(() => window.displayProbe.uploads);
     await page.locator('#model').selectOption('mono');
-    assert.match(await page.locator('#error').textContent(),/Could not restart/);
+    assert.match(await page.locator('#error').textContent(),/Could not reset/);
     assert.equal(await page.evaluate(() => window.displayProbe.uploads),uploads,'rejected model does not change history');
     assert.deepEqual(await snapshot(),retained,'rejected model preserves panel pixels');
     for (const mode of ['clean','lcd-light','retro-crt','lcd-authentic']) {

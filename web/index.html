@@ -11,7 +11,7 @@
   </head>
   <body>
     <main>
-      <section id="player" data-orientation="horizontal" aria-label="Game player">
+      <section id="player" aria-label="Game player">
         <header class="brand">
           <h1>wonderswan-rust</h1>
           <nav aria-label="Player information">
@@ -19,7 +19,31 @@
             <a href="https://github.com/takahirox/wonderswan-rust">GitHub</a>
           </nav>
         </header>
-        <div id="game">
+        <div id="controls" class="toolbar" role="group" aria-label="Player controls" aria-busy="true">
+          <div class="playback">
+            <button id="pause" type="button" disabled>Play</button>
+            <button id="reset" type="button" disabled>Reset</button>
+          </div>
+          <div class="sound-controls" role="group" aria-label="Sound controls">
+            <button id="sound" type="button" aria-pressed="false" disabled>Mute</button>
+            <label for="volume" class="visually-hidden">Volume</label>
+            <input id="volume" type="range" min="0" max="100" step="1" value="70" disabled />
+            <output id="volume-value" for="volume" aria-live="off">70%</output>
+          </div>
+          <div class="display-control">
+            <label for="display-effect">Display</label>
+            <select id="display-effect" aria-describedby="display-help" disabled>
+              <option value="clean">Clean</option>
+              <option value="lcd-light">LCD Light</option>
+              <option value="lcd-authentic">LCD Authentic</option>
+              <option value="retro-crt" selected>Retro CRT</option>
+            </select>
+            <span id="display-help" hidden>Changes the picture without restarting the game. After choosing an effect, press Escape to focus the loaded game.</span>
+          </div>
+          <button id="fullscreen" type="button" disabled>Fullscreen</button>
+          <p id="fullscreen-status" role="status"></p>
+        </div>
+        <div id="game" data-orientation="horizontal">
           <div id="display" class="screen-frame">
             <div id="screen-presentation">
               <canvas id="screen" width="224" height="144" tabindex="0"
@@ -49,29 +73,7 @@
             </div>
             <button class="start" type="button" data-button="2" aria-label="Start (Enter)" disabled>Start</button>
           </div>
-        </div>
-        <div id="controls" class="toolbar" role="group" aria-label="Player controls" aria-busy="true">
-          <div class="playback">
-            <button id="pause" type="button" disabled>Play</button>
-            <button id="reset" type="button" disabled>Restart</button>
-          </div>
-          <div class="sound-controls" role="group" aria-label="Sound controls">
-            <button id="sound" type="button" aria-pressed="false" disabled>Mute</button>
-            <label for="volume" class="visually-hidden">Volume</label>
-            <input id="volume" type="range" min="0" max="100" step="1" value="70" disabled />
-            <output id="volume-value" for="volume" aria-live="off">70%</output>
-          </div>
-          <div class="display-control">
-            <label for="display-effect">Display</label>
-            <select id="display-effect" aria-describedby="display-help" disabled>
-              <option value="clean">Clean</option>
-              <option value="lcd-light">LCD Light</option>
-              <option value="lcd-authentic">LCD Authentic</option>
-              <option value="retro-crt" selected>Retro CRT</option>
-            </select>
-            <span id="display-help" hidden>Changes the picture without restarting the game. After choosing an effect, press Escape to focus the loaded game.</span>
-          </div>
-          <button id="fullscreen" type="button" disabled>Fullscreen</button>
+          <button id="exit-fullscreen" type="button">Exit fullscreen</button>
         </div>
         <div class="cartridge-area">
           <section class="cartridge" aria-labelledby="cartridge-label">
@@ -91,7 +93,7 @@
                 <option value="color">WonderSwan Color</option>
                 <option value="crystal" selected>SwanCrystal</option>
               </select>
-              <p id="model-help" class="hint">Restarts the game</p>
+              <p id="model-help" class="hint">Resets the game</p>
             </div>
           </section>
           <div class="feedback">
@@ -146,7 +148,9 @@
             <dt>Start</dt><dd>Enter</dd>
           </dl>
           <p>Click the screen to use the keyboard. Hold X and Y directions together with A, B, or Start.</p>
-          <p>Touch controls appear on small or touch screens. Hiding the tab pauses gameplay. Choose Resume when you return.</p>
+          <p>Touch controls appear on small or touch screens. When you leave the tab, gameplay pauses.
+            A game that was playing resumes automatically when you return, once Help is closed.
+            If you chose Pause, use Resume to play again. Reset reboots the loaded cartridge and keeps saved progress.</p>
           <div class="orientation-control">
             <label for="orientation">Orientation</label>
             <select id="orientation" aria-describedby="orientation-help" disabled>
@@ -158,10 +162,11 @@
           <p id="orientation-help">Auto uses the cartridge header. Choose Horizontal or Vertical to rotate the picture and touch controls together without restarting. Your choice is saved in this browser for this cartridge’s ROM contents. Turning your phone only changes how the player fits on screen.</p>
           <p>Each keypad keeps its physical X or Y labels and keyboard bindings. Clockwise from the top, the buttons are 1, 2, 3, 4 in Horizontal and 2, 3, 4, 1 in Vertical.</p>
           <h3>Display</h3>
+          <p>Fullscreen shows the picture and, on touch screens, the controller. Use Exit fullscreen or Escape to return to the player.</p>
           <p>Retro CRT adds a mask and scanlines. Clean shows sharp pixels. LCD Light adds subtle cells and persistence. LCD Authentic uses a stronger effect tailored to each console. Your choice stays in this browser. If graphics effects fail, the player uses Clean.</p>
           <p>After choosing a display effect, press Escape or click the game screen to return to gameplay input.</p>
           <h3>Cartridge settings</h3>
-          <p>Changing Console restarts the loaded cartridge.</p>
+          <p>Changing Console resets the loaded cartridge.</p>
           <label for="rtc-mode">Cartridge clock</label>
           <select id="rtc-mode">
             <option value="auto">Use cartridge clock indication</option>

@@ -68,11 +68,15 @@ validation does not establish that deployment has happened.
 2. **Arrow keys or W A S D** select the X keypad; **Enter** is Start, and **Z/X**
    map to A/B. **I / L / K / J** select Y1 / Y2 / Y3 / Y4 independently.
    Click the screen to focus gameplay controls if needed.
-3. The toolbar below the screen groups **Pause/Resume**, **Restart**, **Mute**,
-   **Volume**, **Display**, and **Fullscreen**. Use **Enable audio** when the browser
-   asks for another gesture. Changing **Console** in the cartridge slot restarts
-   the loaded cartridge and clears keys. Hiding the tab pauses gameplay. Choose
-   **Resume** when you return.
+3. The toolbar above gameplay groups **Pause/Resume**, **Reset**, **Mute**,
+   **Volume**, **Display**, and **Fullscreen**. **Reset** reboots the loaded
+   cartridge and keeps saved progress. Changing **Console** also reboots the
+   cartridge and clears held input. Use **Enable audio** when the browser asks
+   for another gesture. Leaving the tab suspends gameplay and sound. A game
+   that was playing resumes automatically when you return. If you chose
+   **Pause**, use **Resume** to play again.
+   **Fullscreen** shows the game picture and, on touch screens, the controller.
+   Use **Exit fullscreen** on touch screens or Escape on a keyboard to return.
 4. **Display** switches live, including while paused. **Clean** keeps exact
    nearest-neighbor pixels; **LCD Light** adds
    subtle native pixel cells, softness and weak persistence; **LCD Authentic**
@@ -90,16 +94,17 @@ validation does not establish that deployment has happened.
 5. **Help** in the header contains the keyboard reference, cartridge clock
    setting, and compatibility, sound, and storage guidance. Opening Help pauses
    gameplay and clears held inputs. Close it or press Escape to return.
-   A previously running game resumes unless the tab was hidden.
+   A previously running game resumes once Help is closed and the tab is visible.
 6. **Debug Mode** in Help is off on every page load. Enable it to show the
    actual model, ROM name/byte count, execution state, core frame count, and last
    error. Runtime details collapse; Close or unchecking Debug Mode hides the
    panel. Diagnostics refresh at most twice per second and provide no CPU
    registers or accuracy claims.
 
-Small and touch screens show both X and Y keypads plus A, B, and Start. On
-upright phones, the screen and controller come before the toolbar and cartridge
-slot. Horizontal games put Y above X on the left, beside the screen when space
+Small and touch screens show both X and Y keypads plus A, B, and Start.
+The toolbar sits above the game and the cartridge slot follows the gameplay
+area. On short screens, scroll to reach the toolbar or cartridge slot.
+Horizontal games put Y above X on the left, beside the screen when space
 allows. Vertical games put Y at the lower left and X at the lower right.
 
 In Help, **Orientation** defaults to **Auto (ROM header)**. Choose
@@ -121,7 +126,7 @@ See the [controller screenshots and production-preview results](docs/issue-142-v
 
 Cartridge saves are automatic and **browser-local**, keyed by SHA-256 of the
 ROM contents (renaming a file keeps its save; different contents get separate
-slots). Restart, pause and compatible model changes preserve saves. Reload or
+slots). Reset, pause and compatible model changes preserve saves. Reload or
 reopen the page and select the same ROM again to restore them. Storage errors
 show a notice; unreadable saved data is preserved rather than overwritten. No
 ROM or save is uploaded. Browser storage clearing/private-session expiry removes
@@ -145,8 +150,8 @@ actual browser audio state; an audio-ready cartridge can still be silent.
 level, and the labeled **Volume** slider adjusts output immediately from 0–100%
 (100% is unity gain). At 0% output is silent; raising the slider restores its level
 unless explicitly muted. Mute and volume are remembered locally, separately from
-ROM saves; clearing storage resets them. Pause/background/restart clears scheduled
-sound, and unavailable audio does not prevent gameplay.
+ROM saves. Clearing storage resets them. Pause, leaving the tab, and Reset clear
+scheduled sound. Gameplay can continue while audio is unavailable.
 
 Each console automatically boots a local cartridge through its built-in
 [original CC0 boot ROM](bios/README.md). Play requires only the cartridge file.
@@ -247,16 +252,17 @@ npm run test:compat
 Use `WS_PREVIEW_URL=http://127.0.0.1:4287/wonderswan-rust/ npm run test:browser`
 if preview is on port 4287. The smoke script opens a fresh Chromium context,
 checks empty startup, cancellation and local file-picker loading of an independent
-CC0 keypad fixture, then verifies CPU input on all three models, pause/restart and
+CC0 keypad fixture, then verifies CPU input on all three models, Pause/Reset and
 input clearing. It checks no ROM network requests or uploads, invalid-file and
 failed-read preservation, same-file reload, asynchronous read/replacement/model/
-restart/modal/visibility races, and execution errors. Dialog focus/Escape,
+reset/modal/visibility races, and execution errors. Dialog focus/Escape,
 conditional resume, Debug Mode, fullscreen and API failures, and initialization
 retry remain covered. Layout checks cover desktop, 375×812 portrait, 320×568
 with simulated safe areas, and 812×375 landscape with both game orientations.
 Both keypads and A/B/Start are observed through CPU-produced bit tiles, including
 combined presses.
-Visibility, read failures and API failures are synthetic, not physical-device tests.
+The suite simulates visibility and page lifecycle events, read failures, and API
+failures. It exercises actual fullscreen entry and exit in Chromium.
 Set `WS_SMOKE_SCREENSHOT=/tmp/wonderswan-playing.png` for a running-player screenshot.
 Set `WS_SMOKE_ARTIFACTS=/tmp/wonderswan-player` for desktop/mobile screenshots
 including empty, playing, Help, debug, and fullscreen states.

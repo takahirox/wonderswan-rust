@@ -17,10 +17,15 @@ console.log(`Chromium ${browser.version()} (${process.platform} ${process.arch})
 // Observe genuine emulation progress: presentation no longer drives the CPU.
 function observeFrameProgress() {
   window.executedFrames=0;
+  window.reboots=0;
   const wrap=result=>{
     const exports={...result.instance.exports},run=exports.webmachine_run_frame;
     exports.webmachine_run_frame=(...args)=>{
       const ret=run(...args);window.executedFrames++;return ret;
+    };
+    const reboot=exports.webmachine_change_model;
+    exports.webmachine_change_model=(...args)=>{
+      const ret=reboot(...args);window.reboots++;return ret;
     };
     return {...result,instance:{exports}};
   };
@@ -81,7 +86,7 @@ async function rejectEmptyRom() {
 }
 async function checkInViewport(selector) {
   const box = await page.locator(selector).boundingBox();
-  const {width, height} = page.viewportSize();
+  const {width, height} = await page.evaluate(() => ({width:innerWidth,height:innerHeight}));
   assert.ok(box && box.width > 0 && box.height > 0 && box.x >= 0 && box.y >= 0
     && box.x + box.width <= width && box.y + box.height <= height,
   `${selector} (${JSON.stringify(box)}) is fully visible in the ${width}×${height} viewport`);
@@ -122,24 +127,36 @@ async function frame() {
 async function screenshot(name, fullPage = true) {
   if (artifacts) await page.screenshot({ path:join(artifacts, `${name}.png`), fullPage });
 }
-async function checkLayout({ orientation = 'horizontal', kind = 'desktop' } = {}) {
+function waitForFullscreenExit() {
+  return page.waitForFunction(() => !document.fullscreenElement
+    && !document.querySelector('#controls').inert && document.activeElement.id === 'fullscreen');
+}
+async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fullscreen = false } = {}) {
   // Let ResizeObserver snap the canvas edges after the grid reflows.
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const layout = await page.locator('#screen').evaluate(canvas => {
     const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
     return {
       image:rect('#screen'), frame:rect('#display'), effect:rect('#screen-effect'),
-      toolbar:rect('#controls'), cartridge:rect('.cartridge'),
+      game:rect('#game'), toolbar:rect('#controls'), cartridge:rect('.cartridge'),
+      pause:rect('#pause'), reset:rect('#reset'), exit:rect('#exit-fullscreen'),
+      fullscreen:document.fullscreenElement?.id,
       xPad:rect('.x-pad'), yPad:rect('.y-pad'),
-      touch:[...document.querySelectorAll('#touch-controls button')].map(button => ({
-        mask:Number(button.dataset.button), ...button.getBoundingClientRect().toJSON(),
-      })),
+      touch:[...document.querySelectorAll('#touch-controls button')].map(button => {
+        const box = button.getBoundingClientRect();
+        const center = box.top + box.height/2;
+        return {mask:Number(button.dataset.button), ...box.toJSON(),
+          hit: center >= 0 && center < innerHeight
+            ? document.elementFromPoint(box.left + box.width/2, center) === button : null};
+      }),
       overflow:document.documentElement.scrollWidth > innerWidth,
       backing:[canvas.width,canvas.height], pixels:getComputedStyle(canvas).imageRendering,
     };
   });
-  const { image, frame, effect, toolbar, cartridge, touch, xPad, yPad } = layout;
+  const { image, frame, effect, game, toolbar, cartridge, pause, reset, exit, touch, xPad, yPad } = layout;
+  const overlaps = (a,b) => a.top < b.bottom && a.bottom > b.top && a.left < b.right && a.right > b.left;
   assert.equal(layout.overflow, false, 'no horizontal overflow');
+  assert.equal(layout.fullscreen, fullscreen ? 'game' : undefined);
   assert.deepEqual(layout.backing, [224,144]);
   const ratio = orientation === 'vertical' ? 144/224 : 224/144;
   assert.ok(Math.abs(image.width / image.height - ratio) < 0.01, 'screen aspect ratio');
@@ -147,21 +164,47 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop' } = {}
   assert.ok(image.left >= frame.left && image.top >= frame.top && image.right <= frame.right && image.bottom <= frame.bottom);
   assert.ok(Math.abs(image.left + image.right - frame.left - frame.right) <= 3, 'picture is horizontally centered');
   assert.ok(Math.abs(image.top + image.bottom - frame.top - frame.bottom) <= 3, 'picture is vertically centered');
-  assert.ok(toolbar.top >= frame.bottom, 'toolbar follows the screen');
   if (effect.width) assert.deepEqual(effect, image, 'shader covers the same image bounds');
-  if (kind === 'desktop') {
+  if (fullscreen) {
+    assert.equal(await page.locator('#player > :not(#game):not([inert]), #debug-panel:not([inert])').count(), 0);
+    // Use Chromium's accessibility tree to verify native inert semantics.
+    const session = await page.context().newCDPSession(page);
+    const {nodes} = await session.send('Accessibility.getFullAXTree');
+    await session.detach();
+    const exposed = nodes.filter(node => !node.ignored);
+    const buttons = exposed.filter(node => node.role?.value === 'button').map(node => node.name.value);
+    assert.equal(buttons.length, kind === 'desktop' ? 0 : 12);
+    assert.equal(exposed.some(node => ['heading','combobox','link','slider'].includes(node.role?.value)), false);
+    await checkInViewport('#screen');
+    if (kind === 'desktop') {
+      assert.ok(touch.every(target => target.width === 0));
+      assert.equal(exit.width, 0);
+    } else {
+      await checkInViewport('#exit-fullscreen');
+      assert.ok(exit.width >= 44 && exit.height >= 44 && !overlaps(exit, frame));
+    }
+  } else {
+    assert.ok(toolbar.bottom <= game.top, 'toolbar precedes gameplay');
+  }
+  if (kind === 'desktop' && !fullscreen) {
     assert.ok(frame.right < cartridge.left && cartridge.top === frame.top, 'slot sits beside the screen');
     assert.ok(frame.width > cartridge.width * 1.8, 'screen dominates the desktop layout');
-  } else {
-    assert.ok(cartridge.top >= toolbar.bottom, 'slot follows the toolbar');
-    const overlaps = (a,b) => a.top < b.bottom && a.bottom > b.top && a.left < b.right && a.right > b.left;
+  } else if (kind !== 'desktop') {
+    if (!fullscreen) assert.ok(cartridge.top >= game.bottom + 24, 'slot is separated from gameplay');
     assert.deepEqual(touch.map(b => b.mask).sort((a,b) => a-b), [2,4,8,16,32,64,128,256,512,1024,2048]);
     const button = mask => touch.find(b => b.mask === mask);
     const a = button(4), b = button(8), start = button(2);
     for (const [index,target] of touch.entries()) {
       assert.ok(target.width >= 44 && target.height >= 44, `button ${target.mask} has a practical touch target`);
-      assert.ok(target.left >= 0 && target.right <= page.viewportSize().width && target.bottom <= toolbar.top,
-        `button ${target.mask} fits horizontally and precedes the toolbar`);
+      assert.ok(target.left >= 0 && target.right <= page.viewportSize().width, `button ${target.mask} fits horizontally`);
+      if (target.hit !== null) assert.ok(target.hit, `button ${target.mask} receives hits at its center`);
+      if (fullscreen) {
+        assert.ok(target.top >= 0 && target.bottom <= page.viewportSize().height);
+        assert.ok(exit.bottom <= target.top && !overlaps(target,exit), 'exit clears gameplay targets');
+      } else {
+        assert.ok(target.top >= Math.max(pause.bottom,reset.bottom) + 24,
+          `button ${target.mask} is separated from Pause and Reset`);
+      }
       assert.ok(!overlaps(target,frame), `button ${target.mask} clears the screen`);
       assert.ok(touch.slice(index+1).every(other => !overlaps(target,other)), `button ${target.mask} clears other targets`);
     }
@@ -185,13 +228,14 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop' } = {}
       if (kind !== 'landscape') assert.ok(frame.bottom <= yPad.top, 'vertical keypads are below the screen');
     }
   }
-  for (const selector of ['#model','#pause','#reset','#load-rom','#fullscreen','#settings','#sound','#volume','#display-effect']) {
+  const management = ['#model','#pause','#reset','#load-rom','#fullscreen','#settings','#sound','#volume','#display-effect'];
+  for (const selector of fullscreen ? [] : management) {
     const box = await page.locator(selector).boundingBox();
     const viewport = page.viewportSize();
     assert.ok(box && box.x >= 0 && box.x + box.width <= viewport.width, `${selector} fits viewport`);
     assert.ok(box.height >= 44, `${selector} has practical touch target`);
     if (kind === 'landscape' && !['#model','#load-rom'].includes(selector)) {
-      assert.ok(box.y >= 0 && box.y + box.height <= viewport.height, `${selector} fits the first landscape viewport`);
+      assert.ok(box.y >= 0 && box.y + box.height <= viewport.height, `${selector} (${JSON.stringify(box)}) fits the first landscape viewport`);
     }
   }
   return frame;
@@ -202,6 +246,19 @@ async function visibility(hidden) {
     else delete document.hidden;
     document.dispatchEvent(new Event('visibilitychange'));
   }, hidden);
+}
+const frames = () => page.evaluate(() => window.executedFrames);
+async function expectNoFrames() {
+  const before = await frames();
+  await page.waitForTimeout(120);
+  assert.equal(await frames(), before, 'suspension stops actual Wasm frames');
+}
+async function expectNewFrames(before) {
+  await page.waitForFunction(before => window.executedFrames > before + 1, before);
+}
+function pageTransition(type, persisted = true) {
+  return page.evaluate(({type,persisted}) => window.dispatchEvent(new PageTransitionEvent(type,{persisted})),
+    {type,persisted});
 }
 async function openHelp() {
   await page.locator('#settings').click();
@@ -241,7 +298,7 @@ try {
   await page.setViewportSize({ width:1280,height:800 });
   await page.locator('#display-effect').selectOption('clean');
   await page.locator('#display-effect').focus();
-  for (const id of ['fullscreen','load-rom']) {
+  for (const id of ['fullscreen','screen','load-rom']) {
     await page.keyboard.press('Tab');
     assert.equal(await page.evaluate(() => document.activeElement.id),id);
     assert.equal(await page.locator(`#${id}`).evaluate(el => el.matches(':focus-visible')),true);
@@ -270,6 +327,9 @@ try {
   assert.equal(await page.locator('#debug-frames').textContent(), '0');
   await page.locator('#debug-close').click();
   await cancelPicker();
+  await visibility(true);
+  await visibility(false);
+  await expectNoFrames();
   assert.equal(await page.locator('#rom-status').textContent(), 'No ROM loaded');
   const countBeforeFile = requests.length;
   const longName = `${'wonder-swan-'.repeat(18)}cartridge.wsc`;
@@ -314,7 +374,10 @@ try {
   await page.locator('#pause').click();
   await page.keyboard.down('d');
   await expectInput(0,2);
-  await page.locator('#reset').click();
+  const beforeReset = await page.evaluate(() => window.reboots);
+  await page.getByRole('button', { name:'Reset', exact:true }).focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => window.reboots), beforeReset + 1);
   await page.keyboard.up('d');
   await initial();
   await page.keyboard.down('ArrowRight');
@@ -322,10 +385,33 @@ try {
   await page.locator('#model').selectOption('crystal');
   await page.keyboard.up('ArrowRight');
   await initial();
+  await page.keyboard.down('ArrowRight');
+  await expectInput(0,2);
+  await visibility(true);
   await visibility(true);
   assert.equal(await page.locator('#pause').textContent(), 'Resume');
+  await expectNoFrames();
+  const beforeVisible = await frames();
   await visibility(false);
-  assert.equal(await page.locator('#pause').textContent(), 'Resume');
+  await visibility(false);
+  await expectNewFrames(beforeVisible);
+  await expectInput();
+  await page.keyboard.up('ArrowRight');
+  await pageTransition('pagehide');
+  await visibility(true);
+  await visibility(false);
+  await expectNoFrames();
+  const beforeRestore = await frames();
+  await pageTransition('pageshow');
+  await pageTransition('pageshow');
+  await expectNewFrames(beforeRestore);
+  await page.locator('#pause').click();
+  await visibility(true);
+  await pageTransition('pagehide');
+  await pageTransition('pageshow');
+  await visibility(false);
+  await expectNoFrames();
+  assert.equal(await page.locator('#pause').textContent(), 'Resume', 'manual pause survives visibility and page restoration');
   await page.locator('#pause').click();
   await initial();
   await cancelPicker();
@@ -339,7 +425,7 @@ try {
   assert.equal(await page.locator('#rom-status').textContent(), 'Running');
   await load();
   assert.equal(await page.locator('#error').textContent(), '');
-  console.log('Empty startup/cancellation, three-model local ROM CPU/input, pause/restart/model clearing, no uploads and invalid-file recovery passed');
+  console.log('Empty startup/cancellation, three-model local ROM CPU/input, Pause/Reset/model clearing, no uploads and invalid-file recovery passed');
   // Modal input isolation, native focus confinement, Escape, and conditional resume.
   await page.locator('#settings').focus();
   await page.keyboard.press('Enter');
@@ -367,9 +453,18 @@ try {
   await openHelp();
   await visibility(true);
   await visibility(false);
+  await expectNoFrames();
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'help-close');
   await closeHelp(true);
-  assert.equal(await page.locator('#pause').textContent(), 'Resume', 'background-paused modal never resumes');
-  await page.locator('#pause').click();
+  await initial();
+  await openHelp();
+  await visibility(true);
+  await closeHelp();
+  await expectNoFrames();
+  await visibility(false);
+  await initial();
+  console.log('Simulated visibility and page lifecycle suspend/resume, Help overlap, manual pause and held input passed with real Wasm frames');
+  await page.locator('#screen').focus();
 
   await page.keyboard.down('ArrowRight');
   await page.waitForTimeout(40);
@@ -418,42 +513,56 @@ try {
   console.log('Dialog focus/Escape, input isolation, conditional resume, and Debug Mode default/on/off passed');
 
   if (await page.evaluate(() => document.fullscreenEnabled)) {
-    await page.locator('#fullscreen').click();
-    await page.waitForFunction(() => !!document.fullscreenElement);
-    const fullscreenFrame = await checkLayout();
-    await screenshot('desktop-fullscreen');
-    await openHelp();
-    await closeHelp(true);
-    assert.equal(await page.locator('#pause').textContent(), 'Pause');
     await page.locator('#pause').click();
-    assert.deepEqual(await checkLayout(), fullscreenFrame, 'pausing preserves fullscreen geometry');
+    const pausedFrame = await frame();
+    const persisted = () => page.evaluate(() => Object.entries(localStorage).sort());
+    const title = await page.locator('#rom-title').textContent();
+    await effectSelect.selectOption('lcd-light');
+    const saved = await persisted();
+    const effect = await page.locator('#screen').getAttribute('data-effect');
+    const beforeFullscreen = await frames();
+    await page.locator('#fullscreen').focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'game' && document.activeElement.id === 'screen');
+    const fullscreenFrame = await checkLayout({ fullscreen:true });
+    await screenshot('desktop-fullscreen', false);
+    for (let i=0; i<3; i++) {
+      await page.keyboard.press('Tab');
+      assert.ok(await page.evaluate(() => document.activeElement === document.body
+        || document.fullscreenElement.contains(document.activeElement)));
+    }
+    // Emulate a viewport resize without changing the fullscreen window bounds.
+    const metrics = await page.context().newCDPSession(page);
+    await metrics.send('Emulation.setDeviceMetricsOverride', {width:682,height:732,deviceScaleFactor:1,mobile:false});
+    assert.notDeepEqual(await checkLayout({ fullscreen:true }), fullscreenFrame);
+    assert.equal(await frame(), pausedFrame);
+    assert.equal(await frames(), beforeFullscreen, 'fullscreen and resize redraw a frozen Wasm frame');
+    assert.equal(await page.locator('#screen-effect').isVisible(), true);
+    await page.locator('#screen').focus();
+    await page.keyboard.press('Escape');
+    await waitForFullscreenExit();
+    assert.equal(await page.locator('#pause').textContent(), 'Resume');
+    assert.equal(await page.locator('#rom-title').textContent(), title);
+    assert.equal(await page.locator('#screen').getAttribute('data-effect'), effect);
+    assert.deepEqual(await persisted(), saved);
+    await metrics.send('Emulation.clearDeviceMetricsOverride');
+    await metrics.detach();
+    await page.setViewportSize({ width:1280,height:800 });
     await page.locator('#pause').click();
-    await page.locator('#sound').click();
-    await load(verticalRom);
-    const verticalFrame = await checkLayout({ orientation:'vertical' });
-    const image = await page.locator('#screen').boundingBox();
-    await rejectEmptyRom();
-    await checkInViewport('#error');
-    assert.deepEqual(await checkLayout({ orientation:'vertical' }), verticalFrame, 'feedback preserves desktop fullscreen frame geometry');
-    assert.deepEqual(await page.locator('#screen').boundingBox(), image, 'feedback preserves desktop fullscreen picture geometry');
-    await load();
-    await page.locator('#sound').click();
-    await page.evaluate(() => document.exitFullscreen());
-    await page.waitForFunction(() => !document.fullscreenElement && document.querySelector('#fullscreen').textContent === 'Fullscreen');
-    assert.equal(await page.locator('#fullscreen').textContent(), 'Fullscreen');
-    assert.equal(await page.evaluate(() => document.activeElement.id), 'screen');
-    console.log('Native Chromium fullscreen entry/exit and aspect ratio passed');
+    await initial();
+    console.log('Actual Chromium desktop gameplay fullscreen, paused redraw, isolated Tab focus and Escape exit passed');
   } else console.log('Native fullscreen unavailable; graceful fallback tested below');
   // Deterministically exercise unsupported and rejected Fullscreen API branches.
   await page.evaluate(() => Object.defineProperty(document, 'fullscreenEnabled', { configurable:true, value:false }));
   await page.locator('#fullscreen').click();
-  assert.match(await page.locator('#notice').textContent(), /unavailable/);
+  assert.match(await page.locator('#fullscreen-status').textContent(), /unavailable/);
+  await checkInViewport('#fullscreen-status');
   await page.evaluate(() => {
     Object.defineProperty(document, 'fullscreenEnabled', { configurable:true, value:true });
-    document.querySelector('#player').requestFullscreen = () => Promise.reject(new Error('test rejection'));
+    document.querySelector('#game').requestFullscreen = () => Promise.reject(new Error('test rejection'));
   });
   await page.locator('#fullscreen').click();
-  await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('could not open'));
+  await page.waitForFunction(() => document.querySelector('#fullscreen-status').textContent.includes('Could not enter'));
   assert.equal(await page.locator('#pause').textContent(), 'Pause');
 
   // A checksum-valid unsupported opcode exercises the real CPU error path.
@@ -463,6 +572,11 @@ try {
   await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Execution stopped'));
   assert.equal(await page.locator('#rom-status').textContent(), 'Stopped');
   assert.equal(await page.locator('#pause').isDisabled(), true);
+  assert.match(await page.locator('#error').textContent(), /Try Reset/);
+  await visibility(true);
+  await visibility(false);
+  await expectNoFrames();
+  assert.equal(await page.locator('#rom-status').textContent(), 'Stopped');
   await page.locator('#rom').setInputFiles(rom);
   await initial();
   console.log('Fullscreen fallback/rejection, stopped execution feedback, and recovery passed');
@@ -492,6 +606,7 @@ try {
   releaseWasm();
   await page.waitForFunction(() => !document.querySelector('#retry').hidden);
   assert.match(await page.locator('#error').textContent(), /Could not initialize/);
+  await page.locator('.feedback-row').filter({has:page.locator('#retry')}).scrollIntoViewIfNeeded();
   await checkInViewport('#error');
   await checkInViewport('#retry');
   await page.unroute('**/*.wasm');
@@ -512,8 +627,8 @@ try {
     };
   });
   const localFile = {name:'local.wsc',mimeType:'application/octet-stream',buffer:await readFile(rom)};
-  async function beginRead() {
-    await page.locator('#rom').setInputFiles(localFile);
+  async function beginRead(file = localFile) {
+    await page.locator('#rom').setInputFiles(file);
     await page.waitForFunction(() => window.fileReads.length > 0);
     assert.equal(await page.locator('#rom-status').textContent(), 'Loading ROM…');
   }
@@ -541,16 +656,26 @@ try {
   await finishRead(true);
   await page.waitForFunction(() => document.querySelector('#error').textContent.includes('simulated local read failure'));
   assert.equal(await page.locator('#rom-status').textContent(), 'Paused', 'failure preserves prior pause');
-  await page.locator('#pause').click();
   await beginRead();
   await visibility(true);
   await visibility(false);
+  await expectNoFrames();
   await finishRead();
   await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Paused');
-  await page.locator('#pause').click();
+  await expectNoFrames();
+
+  await page.locator('#load-rom').focus();
+  await beginRead(verticalRom);
+  await visibility(true);
+  await finishRead();
+  await page.waitForFunction(() => document.querySelector('#rom-title').textContent === 'keypad-vertical.ws');
+  assert.equal(await page.locator('#rom-status').textContent(), 'Paused');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'load-rom', 'background completion leaves focus alone');
+  await expectNoFrames();
+  await visibility(false);
   await initial();
 
-  // Restart/model changes and newer selections invalidate an older read.
+  // Reset/model changes and newer selections invalidate an older read.
   for (const action of ['reset','model','newer']) {
     await beginRead();
     if (action === 'newer') {
@@ -567,9 +692,16 @@ try {
     assert.equal(await page.locator('#error').textContent(), '');
     assert.equal(await page.locator('#rom-status').textContent(), 'Running');
   }
+  await beginRead(verticalRom);
+  await pageTransition('pagehide', false);
+  await finishRead();
+  await pageTransition('pageshow', false);
+  await visibility(false);
+  await expectNoFrames();
+  assert.equal(await page.locator('#rom-title').textContent(), 'newer.ws', 'departed page discards the late replacement');
   assert.deepEqual(errors, []);
   await recovery.close();
-  console.log('Wasm initialization/retry, failed local reads, cartridge preservation and asynchronous read/modal/background/restart/replacement races passed');
+  console.log('Wasm initialization/retry, failed local reads, cartridge preservation and asynchronous read/modal/background/reset/replacement races passed');
 
   const mobile = await browser.newContext({ viewport:{width:375,height:812}, isMobile:true, hasTouch:true });
   await mobile.addInitScript(observeFrameProgress);
@@ -588,8 +720,22 @@ try {
   assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false');
   await page.locator('#volume').tap();
   await load();
+  await page.evaluate(() => window.scrollTo(0,0));
   await checkLayout({ kind:'portrait' });
+  const controlGeometry = () => Promise.all(['#pause','#reset','#game'].map(selector => page.locator(selector).boundingBox()));
+  const playingGeometry = await controlGeometry();
   await screenshot('mobile-playing', false);
+  await page.locator('#pause').tap();
+  assert.deepEqual(await controlGeometry(), playingGeometry, 'Resume leaves the player and gameplay targets in place');
+  await page.locator('#pause').tap();
+  if (await page.evaluate(() => document.fullscreenEnabled)) {
+    await page.locator('#fullscreen').tap();
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
+    await checkLayout({ kind:'portrait', fullscreen:true });
+    await screenshot('mobile-portrait-horizontal-fullscreen', false);
+    await page.locator('#exit-fullscreen').tap();
+    await waitForFullscreenExit();
+  }
   const mobileEffect = page.locator('#display-effect');
   for (const effect of ['clean','retro-crt']) {
     await mobileEffect.selectOption(effect);
@@ -636,6 +782,31 @@ try {
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await touch(32,'touchEnd');
   await expectInput();
+  await page.evaluate(() => window.scrollTo(0,0));
+  const resetCenter = await page.locator('#reset').evaluate(button => {
+    const box = button.getBoundingClientRect();
+    return {x:box.x+box.width/2, y:box.y+box.height/2, id:1};
+  });
+  const beforeGestures = await page.evaluate(() => window.reboots);
+  for (const end of ['touchEnd','touchCancel']) {
+    await touch(256,'touchStart');
+    await expectInput(1);
+    const toolbar = await page.locator('#controls').boundingBox();
+    await page.locator('#notice').evaluate(notice => { notice.textContent = 'Test save notice'; });
+    assert.deepEqual(await page.locator('#controls').boundingBox(), toolbar, 'feedback leaves the toolbar in place');
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchMove',touchPoints:[resetCenter]});
+    await cdp.send('Input.dispatchTouchEvent', {type:end,touchPoints:[]});
+    await expectInput();
+  }
+  for (let i=0; i<3; i++) {
+    await touch(256,'touchStart');
+    await touch(256,'touchEnd');
+  }
+  await expectInput();
+  assert.equal(await page.locator('.is-pressed').count(), 0);
+  assert.equal(await page.locator('#rom-status').textContent(), 'Running');
+  assert.equal(await page.evaluate(() => window.reboots), beforeGestures, 'gameplay gestures never reach Reset');
+  await page.locator('#notice').evaluate(notice => { notice.textContent = ''; });
   await page.locator('#settings').tap();
   await page.locator('#debug-toggle').check();
   await screenshot('mobile-settings');
@@ -670,21 +841,18 @@ try {
   await page.setViewportSize({ width:375,height:812 });
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     await page.locator('#fullscreen').tap();
-    await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
-    await checkLayout({ orientation:'vertical', kind:'portrait' });
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
+    await checkLayout({ orientation:'vertical', kind:'portrait', fullscreen:true });
     const image = await page.locator('#screen').boundingBox();
-    await rejectEmptyRom();
-    await checkInViewport('#error');
-    await checkInViewport('#load-rom');
-    await page.evaluate(() => { document.fullscreenElement.scrollTop = 0; });
-    await checkLayout({ orientation:'vertical', kind:'portrait' });
+    await page.locator('#notice').evaluate(notice => { notice.textContent = 'Test fullscreen save notice'; });
+    assert.equal(await page.locator('#notice').evaluate(notice => Boolean(notice.closest('[inert]'))), true);
     assert.deepEqual(await page.locator('#screen').boundingBox(), image, 'feedback preserves portrait fullscreen picture geometry');
-    await checkInViewport('#screen');
-    await checkInViewport('#error');
-    await screenshot('mobile-vertical-fullscreen-feedback', false);
-    await page.locator('#fullscreen').tap();
-    await page.waitForFunction(() => !document.fullscreenElement);
-    await load(verticalRom);
+    await screenshot('mobile-vertical-fullscreen', false);
+    await page.locator('#exit-fullscreen').tap();
+    await waitForFullscreenExit();
+    await page.getByRole('status').filter({hasText:'Test fullscreen save notice'}).scrollIntoViewIfNeeded();
+    await checkInViewport('#notice');
+    await page.locator('#notice').evaluate(notice => { notice.textContent = ''; });
   }
   await page.setViewportSize({ width:680,height:340 });
   async function checkGameplayInViewport() {
@@ -702,56 +870,67 @@ try {
       assert.ok(box.width >= 44 && box.height >= 44, `${selector} has a practical touch target`);
     }
   }
-  async function checkCompactLandscape(mode) {
+  async function checkCompactLandscape() {
     const screen = page.locator('#display');
+    const scrollToCartridge = () => page.evaluate(() => window.scrollTo(0,document.documentElement.scrollHeight));
+    await scrollToCartridge();
     const chooser = page.waitForEvent('filechooser');
     await page.locator('#load-rom').tap();
     await page.locator('#open-local-rom').tap();
-    assert.ok((await screen.boundingBox()).y < 0, `680×340 ${mode} picker opens from a clipped screen`);
+    assert.ok(await page.evaluate(() => window.scrollY > 0), '680×340 picker opens after scrolling to the cartridge');
     await (await chooser).setFiles(verticalRom);
     await initial();
     await checkGameplayInViewport();
 
     const model = page.locator('#model');
+    await scrollToCartridge();
     await model.scrollIntoViewIfNeeded();
-    assert.ok((await screen.boundingBox()).y < 0, `680×340 ${mode} Console is reached from a clipped screen`);
-    await model.selectOption(mode === 'windowed' ? 'color' : 'crystal');
+    await checkInViewport('#model');
+    await model.selectOption('color');
     await initial();
     await checkGameplayInViewport();
 
     const screenBox = await screen.boundingBox();
     const toolbar = await page.locator('#controls').boundingBox();
-    assert.ok(screenBox && toolbar && screenBox.y + screenBox.height <= toolbar.y,
-      `680×340 ${mode} portrait cartridge leaves the toolbar clear`);
+    assert.ok(screenBox && toolbar && toolbar.y + toolbar.height + 24 <= screenBox.y,
+      '680×340 portrait cartridge leaves the toolbar clear');
     const mute = page.locator('#sound');
     const wasMuted = await mute.getAttribute('aria-pressed');
     // The screen previously covered the top of this button.
     await mute.tap({ position:{x:10,y:3}, timeout:3000 });
     assert.equal(await mute.getAttribute('aria-pressed'), wasMuted === 'true' ? 'false' : 'true');
   }
-  await checkCompactLandscape('windowed');
+  await checkCompactLandscape();
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     await page.locator('#fullscreen').tap();
-    await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
-    await checkCompactLandscape('fullscreen');
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
+    await checkLayout({ orientation:'vertical', kind:'landscape', fullscreen:true });
     await page.evaluate(() => document.exitFullscreen());
-    await page.waitForFunction(() => !document.fullscreenElement);
+    await waitForFullscreenExit();
   }
   await page.setViewportSize({ width:640,height:360 });
   await load(verticalRom);
   await checkGameplayInViewport();
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     await page.locator('#fullscreen').tap();
-    await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
     await checkGameplayInViewport();
     await page.evaluate(() => document.exitFullscreen());
-    await page.waitForFunction(() => !document.fullscreenElement);
+    await waitForFullscreenExit();
   }
   console.log('640×360 portrait cartridge and all 11 touch buttons fit together during landscape play');
   await page.setViewportSize({ width:812,height:375 });
   await page.evaluate(() => window.scrollTo(0,0));
   await checkLayout({ orientation:'vertical', kind:'landscape' });
   await screenshot('mobile-landscape-vertical', false);
+  if (await page.evaluate(() => document.fullscreenEnabled)) {
+    await page.locator('#fullscreen').tap();
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
+    await checkLayout({ orientation:'vertical', kind:'landscape', fullscreen:true });
+    await screenshot('mobile-landscape-vertical-fullscreen', false);
+    await page.locator('#exit-fullscreen').tap();
+    await waitForFullscreenExit();
+  }
   await rejectEmptyRom();
   assert.equal(await page.evaluate(() => document.activeElement.id), 'load-rom');
   await checkInViewport('#error');
@@ -775,18 +954,19 @@ try {
   await screenshot('mobile-landscape', false);
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     await page.locator('#fullscreen').tap();
-    await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
-    await checkLayout({ kind:'landscape' });
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
+    await checkLayout({ kind:'landscape', fullscreen:true });
     await screenshot('mobile-landscape-fullscreen', false);
     await touch(2048,'touchStart');
     await expectInput(8);
     await touch(2048,'touchEnd');
     await expectInput();
-    await page.locator('#fullscreen').tap();
-    await page.waitForFunction(() => !document.fullscreenElement);
+    await page.locator('#exit-fullscreen').tap();
+    await waitForFullscreenExit();
   }
   await page.setViewportSize({ width:844,height:520 });
   await page.evaluate(() => window.scrollTo(0,0));
+  await page.locator('#screen').focus();
   await checkGameplayInViewport();
   await checkLayout({ kind:'landscape' });
 
@@ -796,7 +976,7 @@ try {
     [rom, 'horizontal', 672, 432],
   ]) {
     async function checkTabletPicture(mode) {
-      await checkLayout({ orientation, kind:'landscape' });
+      await checkLayout({ orientation, kind:'landscape', fullscreen:mode === 'fullscreen' });
       const {width, height} = await checkInViewport('#screen');
       assert.ok(width >= minWidth && height >= minHeight,
         `1024×768 ${mode} ${orientation} picture is ${width}×${height}, expected at least ${minWidth}×${minHeight}`);
@@ -806,10 +986,10 @@ try {
     await checkTabletPicture('windowed');
     if (await page.evaluate(() => document.fullscreenEnabled)) {
       await page.locator('#fullscreen').tap();
-      await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+      await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
       await checkTabletPicture('fullscreen');
-      await page.locator('#fullscreen').tap();
-      await page.waitForFunction(() => !document.fullscreenElement);
+      await page.locator('#exit-fullscreen').tap();
+      await waitForFullscreenExit();
     }
   }
   console.log('1024×768 landscape touch picture size and controller layout passed in both orientations');
@@ -827,6 +1007,27 @@ try {
       const box = await target.boundingBox();
       assert.ok(box.x >= inset && box.x + box.width <= 320 - inset,
         `${orientation} game and touch targets respect ${inset}px side insets`);
+    }
+    await screenshot(`mobile-constrained-${orientation}`, false);
+    for (const target of await page.locator('#touch-controls button').all()) {
+      await target.scrollIntoViewIfNeeded();
+      await checkInViewport(`[data-button="${await target.getAttribute('data-button')}"]`);
+    }
+    if (await page.evaluate(() => document.fullscreenEnabled)) {
+      await page.evaluate(() => window.scrollTo(0,20));
+      const windowedScroll = await page.evaluate(() => window.scrollY);
+      assert.ok(windowedScroll > 0, 'constrained content can scroll in windowed play');
+      await page.locator('#fullscreen').tap();
+      await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
+      await checkLayout({ orientation, kind:'portrait', fullscreen:true });
+      for (const selector of ['#screen','#exit-fullscreen','.x-pad','.y-pad']) {
+        const box = await checkInViewport(selector);
+        assert.ok(box.x >= inset && box.x + box.width <= 320-inset);
+        assert.ok(box.y >= 24 && box.y + box.height <= 568-24);
+      }
+      await page.locator('#exit-fullscreen').tap();
+      await waitForFullscreenExit();
+      assert.equal(await page.evaluate(() => window.scrollY), windowedScroll);
     }
   }
   await checkSafeArea('horizontal',24);

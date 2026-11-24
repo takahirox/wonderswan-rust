@@ -137,7 +137,7 @@ export async function romLibraryChecks(browser, base, errors) {
     const numChoosers = choosers.length;
     await status(page,'No ROM loaded');
     await chooseRemembered(page,second.name,secondKey); await status(page,'Running');
-    assert.equal(await page.locator('#player').getAttribute('data-orientation'),'vertical');
+    assert.equal(await page.locator('#game').getAttribute('data-orientation'),'vertical');
     assert.equal(await page.evaluate(() => window.romReads),1,'stored selection reads one ROM body');
     assert.equal(choosers.length,numChoosers);
     assert.deepEqual(requests,[],'stored ROM and progress stay local');
@@ -167,7 +167,7 @@ export async function romLibraryChecks(browser, base, errors) {
     await countRows(page,1);
     assert.equal(await page.locator('#library-operation').textContent(),'');
     await status(page,'Running');
-    assert.equal(await page.locator('#player').getAttribute('data-orientation'),'vertical');
+    assert.equal(await page.locator('#game').getAttribute('data-orientation'),'vertical');
     await page.waitForFunction(frames => Number(document.querySelector('#debug-frames').textContent) > frames,frames);
     await page.keyboard.press('Escape');
 
@@ -191,14 +191,14 @@ export async function romLibraryChecks(browser, base, errors) {
     await page.waitForFunction(() => window.staleDigestDone);
     assert.equal(await page.locator('#rom-title').textContent(),color.name);
     await page.locator('#model').selectOption('mono');
-    await textIncludes(page,'#error','Could not restart');
+    await textIncludes(page,'#error','Could not reset');
     // Switch to a compatible cartridge before testing mono rejection.
     await importFile(page,second); await title(page,second.name);
     await page.locator('#model').selectOption('mono');
     await chooseRemembered(page,color.name);
     await textIncludes(page,'#error','Could not load');
     assert.equal(await page.locator('#model').inputValue(),'mono');
-    assert.equal(await page.locator('#player').getAttribute('data-orientation'),'vertical');
+    assert.equal(await page.locator('#game').getAttribute('data-orientation'),'vertical');
     await importFile(page,{...color,name:'incompatible.ws'});
     await textIncludes(page,'#error','incompatible.ws');
     await importFile(page,{...first,name:'invalid.ws',buffer:Buffer.alloc(16)});
@@ -217,12 +217,12 @@ export async function romLibraryChecks(browser, base, errors) {
       await editRecord(page,{key:firstKey,body});
       await chooseRemembered(page,first.name,firstKey);
       await textIncludes(page,'#cartridge-notice-message','Reopen the original file or remove the entry');
-      assert.equal(await page.locator('#player').getAttribute('data-orientation'),'vertical');
+      assert.equal(await page.locator('#game').getAttribute('data-orientation'),'vertical');
       await importFile(page,first);
-      await page.waitForFunction(() => document.querySelector('#player').dataset.orientation === 'horizontal');
+      await page.waitForFunction(() => document.querySelector('#game').dataset.orientation === 'horizontal');
       await page.waitForFunction(() => document.querySelector('#cartridge-notice').hidden);
       await importFile(page,second);
-      await page.waitForFunction(() => document.querySelector('#player').dataset.orientation === 'vertical');
+      await page.waitForFunction(() => document.querySelector('#game').dataset.orientation === 'vertical');
     }
     await editRecord(page,{key:firstKey,name:7});
     await editRecord(page,{key:19,name:'invalid-key.ws'});
