@@ -1045,6 +1045,7 @@ try {
       ['horizontal', 'compact-landscape', {width:455,height:300}, {width:456,height:300}],
       ['vertical', 'landscape', {width:812,height:249}, {width:812,height:250}],
       ['horizontal', 'compact-landscape', {width:358,height:300}, {width:357,height:300}, narrowInsets, 112],
+      ['horizontal', 'compact-landscape', {width:520,height:237}, {width:520,height:236}, {...noInsets, bottom:21}, 112],
     ]) {
       await page.setViewportSize(from);
       await cdp.send('Emulation.setSafeAreaInsetsOverride', {insets});
@@ -1080,6 +1081,7 @@ try {
       [400, 300, 'vertical', 'compact-landscape'],
       [400, 250, 'horizontal', 'compact-landscape', {...compactInsets, top:8}],
       [400, 250, 'vertical', 'compact-landscape', {...compactInsets, top:8}, 112],
+      [390, 230, 'vertical', 'compact-landscape', {...compactInsets, top:8}, 98],
       [390, 300, 'horizontal', 'compact-landscape', compactInsets],
       [390, 300, 'vertical', 'compact-landscape', compactInsets],
       [375, 320, 'horizontal', 'compact-landscape'],
