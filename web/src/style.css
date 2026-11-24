@@ -91,6 +91,7 @@ a { color: var(--accent); text-underline-offset: 3px; }
 #settings:hover:enabled { background: var(--accent-tint); }
 
 #game { grid-area: game; min-width: 0; }
+.fullscreen-layout { display: contents; }
 #game, .screen-frame {
   scroll-margin-block: env(safe-area-inset-top, 0px) env(safe-area-inset-bottom, 0px);
 }
@@ -398,7 +399,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 
 @media (max-width: 700px), (any-pointer: coarse) {
   #player {
-    container-type: inline-size;
+    container: player / inline-size;
     grid-template: "brand" "toolbar" "game" "feedback" "cartridge" "storage" / minmax(0, 1fr);
   }
   .toolbar { gap: 6px 8px; }
@@ -434,7 +435,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 }
 
 @container (width < 280px) {
-  #game[data-orientation="horizontal"] {
+  #game[data-orientation="horizontal"]:not(:fullscreen) {
     grid-template:
       "screen screen"
       "y      actions"
@@ -450,45 +451,75 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   }
 }
 
-@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 400px) {
+@media (any-pointer: coarse) and (orientation: landscape) {
   :root { --page-gutter: 12px; }
   main { padding-top: max(6px, env(safe-area-inset-top)); }
   .brand { margin-bottom: 6px; }
-  #game {
-    --game-height: max(var(--game-min-height, 224px), calc(100dvh - 150px));
-    min-height: var(--game-height);
-    grid-template:
-      "y screen actions" 1fr
-      "x screen start" 1fr / 136px minmax(0, 1fr) 92px;
-    gap: 8px 12px;
-    align-items: center;
-  }
-  #game[data-orientation="vertical"] {
-    /* 68px for A/B, 44px for Start, 108px for X and two 8px gaps. */
-    --game-min-height: 236px;
-    /* Allow one extra pixel for the canvas to align to whole-pixel edges. */
-    --screen-width: max(300px, calc(var(--game-height) * 144 / 224 + 1px));
-    grid-template:
-      ". screen actions"
-      "y screen start"
-      "y screen x" / minmax(136px, 1fr) minmax(0, var(--screen-width)) minmax(136px, 1fr);
-    align-items: end;
-  }
-  #game[data-orientation]:not(:fullscreen) .screen-frame { align-self: stretch; height: auto; aspect-ratio: auto; }
-  #game[data-orientation="vertical"] .y-pad { grid-area: y; justify-self: center; }
-  #game[data-orientation="vertical"] .x-pad { grid-area: x; justify-self: center; }
-  #game[data-orientation="vertical"] .action-buttons {
-    grid-template-rows: 24px 44px;
-    row-gap: 0;
-    align-items: start;
-    justify-self: center;
-  }
-  #game[data-orientation="vertical"] .start { margin-bottom: 0; }
-  .action-buttons { align-self: end; margin-bottom: 0; }
-  .start { align-self: start; }
   .feedback-row { display: flex; align-items: start; gap: 12px; }
   .feedback-row p { flex: 1; min-width: 0; }
   .feedback-row button { flex: none; }
+
+  @container player (width >= 280px) {
+    #game:not(:fullscreen) {
+      --game-height: max(var(--game-min-height, 224px), calc(100dvh - 150px));
+      min-height: var(--game-height);
+      align-items: center;
+      gap: 8px;
+    }
+    #game[data-orientation]:not(:fullscreen) .screen-frame {
+      align-self: stretch;
+      height: auto;
+      aspect-ratio: auto;
+    }
+    #game:not(:fullscreen) .action-buttons {
+      grid-template-rows: 24px 44px;
+      row-gap: 0;
+      align-items: start;
+      margin-bottom: 0;
+    }
+    #game[data-orientation="vertical"]:not(:fullscreen) .start { margin-bottom: 0; }
+  }
+
+  /* Below 440px of usable width, the side columns would leave too little
+     room for the picture. The compact grid needs 280px for its controls and gaps. */
+  @container player (280px <= width < 440px) {
+    #game[data-orientation="horizontal"]:not(:fullscreen) {
+      grid-template:
+        "y screen screen" minmax(108px, 1fr)
+        "x screen screen" minmax(32px, 1fr)
+        "x start  actions" 68px / 136px minmax(44px, 1fr) 92px;
+      column-gap: 4px;
+    }
+    #game:not(:fullscreen) .start { width: min(52px, 100%); }
+    #game[data-orientation="vertical"]:not(:fullscreen) {
+      /* Leave 144px for the picture above the 108px pad row and 8px gap. */
+      --game-min-height: 260px;
+    }
+  }
+
+  @container player (width >= 440px) {
+    #game:not(:fullscreen) {
+      grid-template:
+        "y screen actions" 1fr
+        "x screen start" 1fr / 136px minmax(0, 1fr) 92px;
+      column-gap: 12px;
+    }
+    #game[data-orientation="vertical"]:not(:fullscreen) {
+      /* 68px for A/B, 44px for Start, 108px for X and two 8px gaps. */
+      --game-min-height: 236px;
+      /* Allow one extra pixel for the canvas to align to whole-pixel edges. */
+      --screen-width: max(300px, calc(var(--game-height) * 144 / 224 + 1px));
+      grid-template:
+        ". screen actions"
+        "y screen start"
+        "y screen x" / minmax(136px, 1fr) minmax(0, var(--screen-width)) minmax(136px, 1fr);
+      align-items: end;
+    }
+    #game[data-orientation="vertical"]:not(:fullscreen) .y-pad { grid-area: y; justify-self: center; }
+    #game[data-orientation="vertical"]:not(:fullscreen) .x-pad { grid-area: x; justify-self: center; }
+    #game[data-orientation="vertical"]:not(:fullscreen) .action-buttons { justify-self: center; }
+    #game:not(:fullscreen) .start { align-self: start; }
+  }
 }
 
 @media (any-pointer: coarse) and (orientation: landscape) and (min-width: 560px) {
@@ -511,15 +542,21 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 }
 
 #game:fullscreen {
-  display: grid;
-  grid-template: "screen" minmax(0, 1fr) / minmax(0, 1fr);
-  gap: 8px 12px;
+  display: block;
+  container: fullscreen-game / size;
   padding: max(8px, env(safe-area-inset-top))
     max(8px, env(safe-area-inset-right))
     max(8px, env(safe-area-inset-bottom))
     max(8px, env(safe-area-inset-left));
   background: var(--screen);
   overflow: auto;
+}
+#game:fullscreen .fullscreen-layout {
+  display: grid;
+  height: 100%;
+  grid-template: "screen" minmax(0, 1fr) / minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: center;
 }
 #game:fullscreen .screen-frame {
   align-self: stretch;
@@ -530,14 +567,14 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 #game:fullscreen #touch-controls { display: none; }
 
 @media (any-pointer: coarse) {
-  #game:fullscreen {
+  #game:fullscreen .fullscreen-layout {
     grid-template:
       "exit   exit" 44px
       "screen screen" minmax(100px, 1fr)
       "y      actions" auto
       "x      start" auto / minmax(136px, 1fr) 92px;
   }
-  #game:fullscreen[data-orientation="vertical"] {
+  #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
     grid-template:
       "exit   exit" 44px
       "screen actions" minmax(92px, 1fr)
@@ -555,31 +592,58 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   }
 }
 
-@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 380px) {
-  #game:fullscreen {
-    /* Put Exit in a side column so the picture can use the full safe height. */
-    grid-template:
-      "y screen actions" minmax(120px, 1fr)
-      "x screen start" minmax(108px, 1fr) / 136px minmax(0, 1fr) 136px;
-    row-gap: 6px;
+@media (any-pointer: coarse) and (orientation: landscape) {
+  /* The fullscreen container queries measure the content box inside the safe areas. */
+  @container fullscreen-game (width >= 280px) {
+    #game:fullscreen .action-buttons {
+      /* Stagger A and B in separate columns to save height with 44px targets. */
+      grid-template-rows: 24px 44px;
+      row-gap: 0;
+      align-items: start;
+    }
   }
-  #game:fullscreen #exit-fullscreen { align-self: start; }
-  #game:fullscreen[data-orientation="horizontal"] #exit-fullscreen { grid-area: actions; }
-  #game:fullscreen .action-buttons {
-    /* Stagger A and B in separate columns to save height with 44px targets. */
-    grid-template-rows: 24px 44px;
-    row-gap: 0;
-    align-items: start;
-    align-self: end;
-    justify-self: center;
+
+  @container fullscreen-game (width >= 280px) and ((width < 440px) or (height < 234px)) {
+    #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
+      grid-template:
+        "y exit   exit" 44px
+        "y screen screen" minmax(56px, 1fr)
+        "x screen screen" minmax(32px, 1fr)
+        "x start  actions" 68px / 136px minmax(44px, 1fr) 92px;
+      gap: 8px 4px;
+    }
+    #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
+      grid-template:
+        "screen exit    exit" 44px
+        "screen actions start" minmax(60px, 1fr)
+        "pads   pads    pads" 108px / minmax(0, 1fr) 92px 52px;
+      gap: 8px 4px;
+    }
+    #game:fullscreen[data-orientation="vertical"] .action-buttons { grid-template-rows: 16px 44px; }
+    #game:fullscreen .start { align-self: center; width: min(52px, 100%); }
+    #game:fullscreen[data-orientation="vertical"] .x-pad { justify-self: end; }
   }
-  #game:fullscreen .start { align-self: start; }
-  #game:fullscreen[data-orientation="vertical"] {
-    grid-template:
-      "exit screen actions" 68px
-      ".    screen start" 44px
-      "y    screen x" minmax(108px, 1fr) / 136px minmax(0, 1fr) 136px;
+
+  /* The side-by-side grids need at least 234px for their rows and gaps. */
+  @container fullscreen-game (width >= 440px) and (height >= 234px) {
+    #game:fullscreen .fullscreen-layout {
+      /* Put Exit in a side column so the picture can use the full safe height. */
+      grid-template:
+        "y screen actions" minmax(120px, 1fr)
+        "x screen start" minmax(108px, 1fr) / 136px minmax(0, 1fr) 136px;
+      row-gap: 6px;
+    }
+    #game:fullscreen #exit-fullscreen { align-self: start; }
+    #game:fullscreen[data-orientation="horizontal"] #exit-fullscreen { grid-area: actions; }
+    #game:fullscreen .action-buttons { align-self: end; justify-self: center; }
+    #game:fullscreen .start { align-self: start; }
+    #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
+      grid-template:
+        "exit screen actions" 68px
+        ".    screen start" 44px
+        "y    screen x" minmax(108px, 1fr) / 136px minmax(0, 1fr) 136px;
+    }
+    #game:fullscreen[data-orientation="vertical"] .y-pad { grid-area: y; justify-self: center; }
+    #game:fullscreen[data-orientation="vertical"] .x-pad { grid-area: x; justify-self: center; }
   }
-  #game:fullscreen[data-orientation="vertical"] .y-pad { grid-area: y; justify-self: center; }
-  #game:fullscreen[data-orientation="vertical"] .x-pad { grid-area: x; justify-self: center; }
 }
