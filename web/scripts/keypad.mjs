@@ -25,10 +25,9 @@ export async function keypadChecks(browser, base, errors) {
   const click = id => page.locator(id).evaluate(button => button.click());
   const focus = () => page.locator('#screen').focus();
   async function setEffect(mode) {
-    await page.locator('#settings').click();
     await page.locator('#display-effect').selectOption(mode);
-    await page.locator('#help-close').click();
-    await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
+    assert.equal(await page.locator('#rom-status').textContent(), 'Running');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'screen');
   }
   let expectedError = '';
   async function expect(y=0,x=0,a=0) {

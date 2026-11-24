@@ -39,6 +39,7 @@ const probes = await Promise.all(['sram32-common','sram128-2003','eeprom128','ee
   return { name, bytes, key:`wonderswan:save:v1:${createHash('sha256').update(bytes).digest('hex')}` };
 }));
 const browser = await chromium.launch({ headless: true });
+console.log(`Chromium ${browser.version()} (${process.platform} ${process.arch})`);
 const context = await browser.newContext();
 let page = await context.newPage();
 const errors = [];
@@ -170,9 +171,10 @@ async function pause() {
 }
 try {
   await page.goto(base); await ready();
-  assert.equal(await page.locator('#sound').textContent(),'Mute');
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false');
   assert.equal(await page.locator('#volume').inputValue(),'70');
   assert.match(await page.locator('#sound-status').textContent(),/Start a game/);
+  assert.equal(await page.locator('#sound-status.visually-hidden').count(),1,'ordinary sound status uses no layout space');
   assert.equal(await page.locator('#enable-audio').isVisible(),false,'no extra unlock action before game start');
   assert.equal(await page.evaluate(() => window.audioProbe.contexts),0,'no context on page load');
   assert.equal(await page.getByRole('slider',{name:'Volume',exact:true}).count(),1);
@@ -199,7 +201,7 @@ try {
 
   // Default-on playback uses the actual original CC0 square-wave cartridge.
   await page.waitForFunction(() => window.audioProbe.nonzero > 3);
-  assert.equal(await page.locator('#sound').textContent(),'Mute');
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false');
   assert.match(await page.locator('#sound-status').textContent(),/Audio ready/);
   assert.equal(await page.evaluate(() => window.audioProbe.activations[0]),true,'Load ROM resumes in its trusted click');
   assert.ok(await page.evaluate(() => window.audioProbe.chooserResumes[0] > 0),'resume precedes file chooser');
@@ -227,7 +229,7 @@ try {
   assert.equal(await page.locator('#volume').inputValue(),'69','native keyboard slider');
   await level(70);
   await page.locator('#sound').click();
-  assert.equal(await page.locator('#sound').textContent(),'Unmute');
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true');
   assert.equal(await page.locator('#volume').inputValue(),'70');
   assert.equal(await page.evaluate(() => window.audioProbe.lastGain),0);
   assert.equal(await page.evaluate(() => window.audioProbe.active),0);
@@ -235,11 +237,11 @@ try {
   await page.locator('#model').selectOption('color'); await display();
   await pause(); await page.locator('#pause').click(); await display();
   await load(probes[0]);
-  assert.equal(await page.locator('#sound').textContent(),'Unmute','lifecycle never overrides mute');
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true','lifecycle never overrides mute');
   await page.locator('#volume').fill('42');
   assert.equal(await page.evaluate(() => window.audioProbe.lastGain),0,'slider respects explicit mute');
   await page.reload(); await ready();
-  assert.equal(await page.locator('#sound').textContent(),'Unmute');
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true');
   assert.equal(await page.locator('#volume').inputValue(),'42');
   assert.equal(await page.evaluate(() => window.audioProbe.contexts),0,'remembered mute creates no context');
   await load(probes[0]);
@@ -275,7 +277,8 @@ try {
   const createBuffer = await page.evaluateHandle(() => AudioContext.prototype.createBuffer);
   await page.evaluate(() => { AudioContext.prototype.createBuffer = () => { throw new Error('test playback unavailable'); }; });
   await page.waitForFunction(() => document.querySelector('#sound-status').textContent.includes('Audio playback unavailable'));
-  assert.equal(await page.locator('#sound').textContent(),'Mute','failure preserves preference');
+  assert.equal(await page.locator('#sound-status:not(.visually-hidden)').isVisible(),true);
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false','failure preserves preference');
   assert.equal(await page.locator('#rom-status').textContent(),'Running','audio failure must not stop CPU/video');
   await page.evaluate(original => { AudioContext.prototype.createBuffer = original; },createBuffer);
   const beforeRecovery = await page.evaluate(() => window.audioProbe.buffers);
@@ -290,6 +293,7 @@ try {
   await page.reload();await ready();await page.evaluate(key => localStorage.setItem(key,'invalid!'),probes[0].key);
   await load(probes[0]);await pause();
   assert.match(await page.locator('#notice').textContent(),/could not be read/);
+  assert.equal(await page.getByRole('status').filter({hasText:'could not be read'}).isVisible(),true);
   assert.equal(await page.evaluate(key => localStorage.getItem(key),probes[0].key),'invalid!');
   // Storage-denied and missing-audio paths use real probes and stay playable.
   const unavailable = await browser.newContext();
@@ -302,7 +306,7 @@ try {
   assert.match(await page.locator('#notice').textContent(),/storage is unavailable/);
   await page.locator('#enable-audio').click();
   await page.waitForFunction(() => document.querySelector('#sound-status').textContent.includes('Audio unavailable'));
-  assert.equal(await page.locator('#sound').textContent(),'Mute');
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false');
   await unavailable.close();page = original;
 
   // Isolated contexts exercise policies deterministically; native Chromium output
@@ -363,18 +367,18 @@ try {
   await page.locator('#volume').fill('31');
   await page.reload();await ready();
   assert.equal(await page.locator('#volume').inputValue(),'31');
-  assert.equal(await page.locator('#sound').textContent(),'Mute','on preference survives reload');
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false','on preference survives reload');
   assert.equal(await page.evaluate(() => window.audioProbe.contexts),0);
   // Mute before any context exists, including starting/restarting a cartridge.
   await page.locator('#sound').click();
   await load(probes[0]);
-  assert.equal(await page.locator('#sound').textContent(),'Unmute','Load ROM preserves mute');
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true','Load ROM preserves mute');
   await page.locator('#reset').click(); await display();
   assert.equal(await page.evaluate(() => window.audioProbe.contexts),0);
-  assert.equal(await page.locator('#sound').textContent(),'Unmute');
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true');
   await page.close();page = await fresh.newPage();page.on('pageerror',e => errors.push(e.message));
   await page.goto(base);await ready();
-  assert.equal(await page.locator('#sound').textContent(),'Unmute','mute survives reopen');
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true','mute survives reopen');
   assert.equal(await page.locator('#volume').inputValue(),'31');
   await page.locator('#sound').click(); // Unmute before any game is loaded.
   await page.waitForFunction(() => window.audioContext?.state === 'suspended');
@@ -395,13 +399,13 @@ try {
     },preference);
     page = await storage.newPage();page.on('pageerror',e => errors.push(e.message));
     await page.goto(base);await ready();
-    assert.equal(await page.locator('#sound').textContent(),'Mute');
+    assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false');
     assert.equal(await page.locator('#volume').inputValue(),'70');
     await load(probes[0]);
     await page.waitForFunction(() => window.audioProbe.nonzero > 3);
     await page.locator('#sound').click();
     await page.locator('#volume').fill('56');
-    assert.equal(await page.locator('#sound').textContent(),'Unmute');
+    assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true');
     assert.equal(await page.locator('#rom-status').textContent(),'Running');
     await storage.close();
   }
