@@ -655,6 +655,26 @@ try {
     await page.waitForFunction(() => !document.fullscreenElement);
     await load(verticalRom);
   }
+  await page.setViewportSize({ width:680,height:340 });
+  async function checkCompactLandscapeToolbar(mode) {
+    const screen = await page.locator('#display').boundingBox();
+    const toolbar = await page.locator('#controls').boundingBox();
+    assert.ok(screen && toolbar && screen.y + screen.height <= toolbar.y,
+      `680×340 ${mode} portrait cartridge leaves the toolbar clear`);
+    const mute = page.locator('#sound');
+    const wasMuted = await mute.getAttribute('aria-pressed');
+    // The screen previously covered the top of this button.
+    await mute.tap({ position:{x:10,y:3}, timeout:3000 });
+    assert.equal(await mute.getAttribute('aria-pressed'), wasMuted === 'true' ? 'false' : 'true');
+  }
+  await checkCompactLandscapeToolbar('windowed');
+  if (await page.evaluate(() => document.fullscreenEnabled)) {
+    await page.locator('#fullscreen').tap();
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+    await checkCompactLandscapeToolbar('fullscreen');
+    await page.evaluate(() => document.exitFullscreen());
+    await page.waitForFunction(() => !document.fullscreenElement);
+  }
   await page.setViewportSize({ width:812,height:375 });
   await page.evaluate(() => window.scrollTo(0,0));
   await checkLayout({ orientation:'vertical', kind:'landscape' });
