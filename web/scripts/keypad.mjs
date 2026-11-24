@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { chooseRemembered } from './rom-library.mjs';
 
 const vectors = [
   ['ArrowUp',16,0,1,0], ['ArrowRight',32,0,2,0],
@@ -15,6 +16,10 @@ const rows = (y=0,x=0,a=0) => [0,0x10|y,0x20|x,0x30|y|x,0x40|a,0x50|y|a,0x60|x|a
 export async function keypadChecks(browser, base, errors) {
   const horizontal = await readFile(new URL('../../fixtures/generated/keypad-horizontal.ws', import.meta.url));
   const vertical = await readFile(new URL('../../fixtures/generated/keypad-vertical.ws', import.meta.url));
+  const replacement = Buffer.from(vertical);
+  replacement[100] ^= 1; // Unused padding gives the replacement a distinct identity.
+  const sum = replacement.subarray(0,-2).reduce((sum,byte) => sum+byte,0);
+  replacement.writeUInt16LE(sum & 65535,replacement.length-2);
   const context = await browser.newContext({viewport:{width:1440,height:1000},hasTouch:true});
   await context.addInitScript(() => localStorage.setItem('wonderswan:display:v1','clean'));
   const page = await context.newPage();
@@ -286,7 +291,7 @@ export async function keypadChecks(browser, base, errors) {
       if (action==='pagehide') {await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));await click('#pause');}
       if (action==='restart') await click('#reset');
       if (action==='model') await page.locator('#model').selectOption('color');
-      if (action==='load') await load(vertical,'replacement.ws');
+      if (action==='load') await load(replacement,'replacement.ws');
       if (action==='invalid') {
         await page.locator('#rom').setInputFiles({name:'bad.ws',mimeType:'application/octet-stream',buffer:Buffer.from([0])});
         await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Could not load'));
@@ -325,7 +330,8 @@ export async function keypadChecks(browser, base, errors) {
     }
 
     const portrait = {width:375,height:812}, landscape = {width:812,height:375};
-    const orientationKey = bytes => `wonderswan:orientation:v1:${createHash('sha256').update(bytes).digest('hex')}`;
+    const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+    const orientationKey = bytes => `wonderswan:orientation:v1:${digest(bytes)}`;
     const sameName = 'same-name.ws';
     await page.setViewportSize(portrait);
     await load(horizontal,sameName);
@@ -379,8 +385,11 @@ export async function keypadChecks(browser, base, errors) {
 
     await page.reload();
     await page.waitForFunction(() => !document.querySelector('#model').disabled);
-    await load(vertical,sameName);
+    await chooseRemembered(page,sameName,digest(vertical));
+    await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
+    await expect();
     assert.equal(await orientationSelect.inputValue(),'horizontal');
+    await layout('horizontal');
     await load(horizontal,'renamed.ws');
     assert.equal(await orientationSelect.inputValue(),'vertical');
     await click('#reset');await expect();
@@ -413,10 +422,11 @@ export async function keypadChecks(browser, base, errors) {
     await chooseOrientation('horizontal');
     assert.equal(await playerOrientation(),'horizontal','write failure keeps the live choice');
     assert.deepEqual(await progress(),records);
+    await load(horizontal,sameName);
     await load(vertical,'renamed.ws');
     assert.equal(await orientationSelect.inputValue(),'auto','read failure falls back to Auto');
     assert.equal(await playerOrientation(),'vertical');
-    console.log('Per-ROM orientation overrides, live input clearing, paused frame, resize/fullscreen, restart/model, rename/reload, Auto and storage fallback passed');
+    console.log('Per-ROM orientation overrides, live input clearing, paused frame, resize/fullscreen, restart/model, remembered selection, rename/reload, Auto and storage fallback passed');
 
     await load(vertical,'renamed.ws');
     await click('#pause');

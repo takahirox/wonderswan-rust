@@ -64,6 +64,7 @@ a { color: var(--accent); text-underline-offset: 3px; }
     "game     cartridge" auto
     "toolbar  toolbar" auto
     "feedback feedback" auto
+    "storage  storage" auto
     / minmax(0, 1fr) minmax(220px, 236px);
   column-gap: 20px;
   align-items: start;
@@ -146,6 +147,7 @@ canvas {
   border-radius: 9px;
 }
 #load-rom { scroll-margin-block: 6px; }
+.cartridge-warning-cue { display: none; }
 .cartridge-name { min-width: 0; }
 .cartridge h2, .model-control label { font-size: 14px; font-weight: 650; }
 #rom-title {
@@ -276,6 +278,77 @@ dialog p { margin-top: 6px; color: var(--muted); }
   margin-top: 16px;
 }
 .orientation-control label { font-weight: 650; }
+#cartridge-picker {
+  width: min(388px, calc(100% - 2 * max(16px, env(safe-area-inset-left), env(safe-area-inset-right))));
+  padding: 0;
+}
+#cartridge-picker::backdrop { background: #101a1759; }
+.cartridge-picker-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: inherit;
+  overflow: auto;
+  padding: 12px;
+}
+#cartridge-picker .dialog-heading { padding: 0; }
+#cartridge-picker .dialog-heading, #open-local-rom { flex: none; }
+.cartridge-picker-warnings {
+  display: grid;
+  gap: 4px;
+  flex: none;
+  max-height: 25dvh;
+  overflow: auto;
+}
+.cartridge-picker-warnings:not(:has(p:not(:empty))) { display: none; }
+#cartridge-picker [role="status"]:empty { display: none; }
+#cartridge-picker p { margin: 0; overflow-wrap: anywhere; }
+#my-cartridges {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Keep one full touch row usable even when warnings need to scroll. */
+  min-height: calc(1lh + 56px);
+}
+#my-cartridges-title { margin: 0; }
+#cartridge-list {
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+#cartridge-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+#cartridge-list button[aria-disabled="true"] { opacity: .55; cursor: default; }
+.cartridge-choice { min-width: 0; text-align: left; }
+.cartridge-choice span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cartridge-choice small { display: block; color: var(--muted); }
+#cartridge-notice {
+  grid-area: storage;
+  width: min(360px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  color: #693417;
+  background: #fff7e8;
+  border: 1px solid #c5a585;
+  border-radius: 9px;
+  font-size: 14px;
+}
+#cartridge-notice p { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+#cartridge-notice-dismiss { flex: none; width: 44px; margin: 0; font-size: 20px; }
 #rtc-mode { display: block; margin-top: 4px; }
 dialog label[for="rtc-mode"] { display: block; margin-top: 8px; }
 .debug-setting { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 8px; }
@@ -318,7 +391,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   :root { --page-gutter: 12px; }
   main { padding-top: max(8px, env(safe-area-inset-top)); }
   #player {
-    grid-template: "brand" "game" "toolbar" "feedback" "cartridge" / minmax(0, 1fr);
+    grid-template: "brand" "game" "toolbar" "feedback" "cartridge" "storage" / minmax(0, 1fr);
   }
   #player:fullscreen { align-content: start; }
   .brand { margin-bottom: 8px; }
@@ -333,6 +406,18 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   .model-control label { align-self: end; }
   .model-control select { grid-area: 1 / 2 / 3; align-self: center; }
   .model-control .hint { grid-column: 1; align-self: start; }
+}
+
+@media (max-width: 700px) and (orientation: portrait) {
+  #player:has(#cartridge-notice:not([hidden])) #load-rom {
+    padding-block: 3px;
+    line-height: 1.25;
+  }
+  #player:has(#cartridge-notice:not([hidden])) .cartridge-warning-cue {
+    display: block;
+    font-size: 12px;
+    font-weight: 400;
+  }
 }
 
 @media (max-width: 700px), (any-pointer: coarse) {
@@ -368,7 +453,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   :root { --page-gutter: 12px; }
   main { padding-top: max(6px, env(safe-area-inset-top)); }
   #player, #player:fullscreen {
-    grid-template: "brand" "game" "feedback" "toolbar" "cartridge" / minmax(0, 1fr);
+    grid-template: "brand" "game" "feedback" "toolbar" "cartridge" "storage" / minmax(0, 1fr);
     align-content: start;
   }
   .brand { margin-bottom: 6px; }

@@ -1,6 +1,8 @@
 import { Saves, romIdentity, consoleKey, RtcRecords, rtcKey, orientationKey } from "./saves";
 import { Sound } from "./audio";
 import { Display, type DisplayEffect } from "./display";
+import { isRomIdentity, maxRomBytes, readCartridge, type CartridgeEntry } from "./cartridge-library";
+import { cartridgePicker } from "./cartridge-picker";
 import init, { WebMachine } from "../pkg/ws_web.js";
 
 const element = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
@@ -249,9 +251,10 @@ async function main() {
     orientation = next;
     player.dataset.orientation = orientation;
   }
-  function load(name: string, bytes: Uint8Array, key: string, autoplay = true) {
+  function load(name: string, bytes: Uint8Array, key: string, autoplay: boolean) {
     persist();
     machine.load_rom(bytes); // Validation errors preserve the previous machine.
+    sound.pause();
     display.resetHistory();
     machine.configure_rtc(rtcMode.value);
     loaded = { name, key };
@@ -272,7 +275,6 @@ async function main() {
     // An asynchronous load must not run behind an open modal or steal its focus.
     resumeAfterDialog = autoplay && help.open && !document.hidden;
     setRunning(autoplay);
-    if (!help.open) focusGame();
   }
   function restart(model: string) {
     readRevision++; // Invalidate any in-flight file read.
@@ -294,30 +296,41 @@ async function main() {
     display.present();
     refresh();
   }
-  async function readROM(name: string, read: () => Promise<Uint8Array>) {
+  async function readROM(name: string, read: () => Promise<Uint8Array>, entry?: CartridgeEntry) {
     const revision = ++readRevision;
     const visibleRevision = visibilityRevision;
-    const wasRunning = running;
+    const sourceFocus = document.activeElement;
+    let verified = !entry;
+    clearKeys();
     loading = true;
-    errorStatus.textContent = "";
-    setRunning(false);
+    if (!faulted) errorStatus.textContent = "";
+    refresh();
     try {
       const bytes = await read();
+      if (revision !== readRevision) return;
       const key = await romIdentity(bytes);
-      if (revision === readRevision) load(name, bytes, key, visibleRevision === visibilityRevision);
+      if (revision !== readRevision) return;
+      if (entry && key !== entry.key) throw new Error("Saved ROM identity mismatch.");
+      verified = true;
+      const visible = visibleRevision === visibilityRevision && !document.hidden;
+      // An identical cartridge keeps its frame, playback state, and inserted name.
+      if (key !== loaded?.key) load(name, bytes, key, visible);
+      if (entry) picker.clearProblem(entry.key);
+      else void picker.remember(key, name, bytes);
+      if (visible && !help.open && !picker.open && document.activeElement === sourceFocus) focusGame();
     } catch (error) {
       if (revision === readRevision) {
-        loading = false;
-        errorStatus.textContent = `Could not load “${name}”: ${message(error)} Choose another local ROM.`;
-        setRunning(wasRunning && visibleRevision === visibilityRevision);
-        if (document.activeElement === loadButton) {
-          loadButton.scrollIntoView({ block: "nearest", inline: "nearest" });
+        if (entry && !verified) picker.readFailed(entry.key);
+        else {
+          errorStatus.textContent = `Could not load “${name}”: ${message(error)} Choose another ROM.`;
+          if (document.activeElement === loadButton) {
+            loadButton.scrollIntoView({ block: "nearest", inline: "nearest" });
+          }
         }
       }
     } finally {
       if (revision === readRevision) {
         loading = false;
-        romInput.value = "";
         refresh();
       }
     }
@@ -358,17 +371,26 @@ async function main() {
     setRunning(!running);
     if (running) canvas.focus({ preventScroll: true });
   });
-  loadButton.addEventListener("click", () => {
-    sound.unlock();
+  const picker = cartridgePicker(loadButton, () => {
     clearKeys();
-    loadButton.focus({ preventScroll: true });
+    if (loading) {
+      readRevision++;
+      loading = false;
+      refresh();
+    }
+  }, () => {
+    sound.unlock();
     romInput.click();
+  }, entry => {
+    if (isRomIdentity(entry.key)) sound.unlock();
+    void readROM(entry.name, () => readCartridge(entry.key), entry);
   });
   romInput.addEventListener("change", () => {
     const file = romInput.files?.[0];
+    romInput.value = "";
     if (!file) return;
     void readROM(file.name, async () => {
-      if (file.size > 64 * 1024 * 1024) throw new Error("Supported ROM size is at most 64 MiB (mapper dependent).");
+      if (file.size > maxRomBytes) throw new Error("Supported ROM size is at most 64 MiB (mapper dependent).");
       return new Uint8Array(await file.arrayBuffer());
     });
   });
@@ -418,7 +440,7 @@ async function main() {
   document.addEventListener("fullscreenchange", () => {
     fullscreenButton.textContent = document.fullscreenElement === player ? "Exit fullscreen" : "Fullscreen";
     clearKeys();
-    if (!help.open) canvas.focus({ preventScroll: true });
+    if (!help.open && !picker.open) canvas.focus({ preventScroll: true });
   });
   // Integer scaling where space allows; fractional nearest-neighbor scaling on narrow screens.
   function sizeScreen() {
@@ -445,7 +467,7 @@ async function main() {
   window.addEventListener("resize", clearKeys);
 
   window.addEventListener("keydown", (event) => {
-    if (!running || help.open || document.activeElement !== canvas || !(event.code in bindings)
+    if (!running || help.open || picker.open || document.activeElement !== canvas || !(event.code in bindings)
       || event.ctrlKey || event.metaKey || event.altKey) return;
     event.preventDefault();
     pressed.add(event.code);

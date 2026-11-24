@@ -128,13 +128,14 @@ export async function lcdChecks(browser, base, errors) {
       await step(time += 5000);
       for (let i=0;i<25;i++) await step(time += 14);
       await click('#pause');await saved(model,180,0);
-      // Invalid load preserves the running cartridge and resets pacing history.
+      // Invalid load preserves the running cartridge and its pacing history.
       await click('#pause');
+      await page.evaluate(() => {window.lcdReference.time=null;window.lcdReference.credit=0;});
+      await step(time += 5000);
+      await step(time += 14);
       await page.locator('#rom').setInputFiles({name:'bad.ws',mimeType:'application/octet-stream',buffer:Buffer.from([1,2,3])});
       await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Could not load'),null,{polling:25});
       expectedError = await page.locator('#error').textContent();
-      await page.evaluate(() => {window.lcdReference.time=null;window.lcdReference.credit=0;});
-      await step(time += 5000);
       for (let i=0;i<5;i++) await step(time += 14);
       // Visibility cancels scheduling, requires explicit resume, and drops debt.
       await page.evaluate(() => {Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});

@@ -13,8 +13,9 @@ turn of the keypad labels, with Y to the lower left and X to the lower right.
 
 Validation used Playwright 1.64.1 with headless Chromium 156.0.8078.4 on macOS
 arm64. Mobile viewports, touch contacts, and safe-area insets were emulated.
-The remembered-ROM picker from #138 was absent on the selected upstream
-revision, so cartridge selection used the existing local file picker.
+The production preview included the remembered-ROM picker from #139
+(`main` at `81c4c6f`). Reopening the vertical fixture from My cartridges after
+page reload restored its Horizontal override for both the picture and controller.
 
 | Check | Result |
 | --- | --- |
@@ -31,9 +32,10 @@ composited corner pixels to verify rotation direction, checked the native
 They exercised all eleven physical masks, combined keyboard and touch input,
 independent release, pointer cancellation, and Help pause/resume.
 Orientation preference checks include opposite-header overrides, a paused LCD
-frame, same-name and renamed files, reload, restart, a compatible model change,
-Auto clearing, and malformed or denied local storage. The storage test also
-verified that changing orientation preserved the existing progress records.
+frame, same-name and renamed files, remembered selection after reload, restart,
+a compatible model change, Auto clearing, and malformed or denied local storage.
+The storage test also verified that changing orientation preserved the existing
+progress records.
 
 Rust core and fixture sources were outside the change. Mobile WebKit and
 physical devices were outside this run.
