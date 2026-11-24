@@ -790,6 +790,30 @@ try {
   await checkGameplayInViewport();
   await checkLayout({ kind:'landscape' });
 
+  await page.setViewportSize({ width:1024,height:768 });
+  for (const [file, orientation, minWidth, minHeight] of [
+    [verticalRom, 'vertical', 288, 448],
+    [rom, 'horizontal', 672, 432],
+  ]) {
+    async function checkTabletPicture(mode) {
+      await checkLayout({ orientation, kind:'landscape' });
+      const {width, height} = await checkInViewport('#screen');
+      assert.ok(width >= minWidth && height >= minHeight,
+        `1024×768 ${mode} ${orientation} picture is ${width}×${height}, expected at least ${minWidth}×${minHeight}`);
+    }
+    await load(file);
+    await page.evaluate(() => window.scrollTo(0,0));
+    await checkTabletPicture('windowed');
+    if (await page.evaluate(() => document.fullscreenEnabled)) {
+      await page.locator('#fullscreen').tap();
+      await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+      await checkTabletPicture('fullscreen');
+      await page.locator('#fullscreen').tap();
+      await page.waitForFunction(() => !document.fullscreenElement);
+    }
+  }
+  console.log('1024×768 landscape touch picture size and controller layout passed in both orientations');
+
   await page.setViewportSize({ width:320,height:568 });
   async function checkSafeArea(orientation, inset) {
     await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets:{top:24,bottom:24,left:inset,right:inset} });
