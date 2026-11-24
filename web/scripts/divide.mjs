@@ -91,6 +91,7 @@ export async function divisionChecks(browser, base, errors) {
       page.on('request', request => requests.push(request.url()));
       const chooser = page.waitForEvent('filechooser');
       await page.locator('#load-rom').click();
+      await page.locator('#open-local-rom').click();
       await (await chooser).setFiles({name:'divide.ws',mimeType:'application/octet-stream',buffer:bytes});
       for (let boot=1;boot<=2;boot++) {
         if (boot === 2) await page.locator('#reset').click();

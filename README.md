@@ -4,10 +4,11 @@ A from-scratch Rust WonderSwan emulator with a browser WebAssembly adapter.
 Choose **WonderSwan (mono)**, **WonderSwan Color**, or **SwanCrystal** (default).
 No existing emulator core is copied, ported, vendored, or used as a dependency.
 
-The player starts empty. Choose **Load ROM** to open a local `.ws` or `.wsc`
-file you are entitled to use. No games are supplied, fetched or uploaded. The Rust
-core executes the cartridge and produces the 224×144 RGBA framebuffer; the browser
-provides input, timing, audio and presentation.
+The player starts empty. Choose **Insert cartridge** to pick a remembered game or
+open a local `.ws` or `.wsc` file you are entitled to use. No games are supplied,
+fetched or uploaded. The Rust core executes the cartridge and produces the
+224×144 RGBA framebuffer. The browser provides input, timing, audio and
+presentation.
 The core now also implements cartridge SRAM/EEPROM, common and Bandai 2003
 banking, a broader 80186 instruction set, interrupts/timers, color backgrounds
 and sprites, four-channel audio, and Color/Crystal General DMA, Sound DMA and
@@ -56,10 +57,14 @@ Public URL: **https://takahirox.github.io/wonderswan-rust/**. The new version be
 public after the existing `main` deployment workflow succeeds; local pre-merge
 validation does not establish that deployment has happened.
 
-1. In **Cartridge**, click **Load ROM** and select a local `.ws` or `.wsc` file.
-   No cartridge is preloaded or remembered across page loads. Cancelling keeps the current state;
-   invalid files or failed reads report a recoverable error and preserve the current
-   cartridge. There is no backend or ROM catalog.
+1. In **Cartridge**, choose **Insert cartridge → Open local ROM…** and select a
+   local `.ws` or `.wsc` file. The player remembers successfully loaded ROMs in
+   this browser when storage is available. On a later visit, choose one under
+   **My cartridges**. Use **Remove** beside a name to delete its browser copy and
+   keep your progress. Keep your original files separately. Private browsing,
+   browser storage limits, or clearing site data can erase ROM copies and progress.
+   Cancelling or opening the already inserted ROM keeps its current state.
+   Invalid files and failed reads preserve the current cartridge.
 2. **Arrow keys or W A S D** select the X keypad; **Enter** is Start, and **Z/X**
    map to A/B. **I / L / K / J** select Y1 / Y2 / Y3 / Y4 independently.
    Click the screen to focus gameplay controls if needed.
@@ -126,7 +131,7 @@ word zero under a conservative emulator policy; nonzero ERASE, bulk commands
 and exact programming timing remain hardware gaps. There is no settings editor.
 See the [console behavior and core/Wasm API](docs/hardware-subset.md#internal-eeprom-transfers-retention-and-api).
 
-Sound defaults to **on at 70%** after a **Load ROM** interaction;
+Sound defaults to **on at 70%** after choosing a cartridge;
 there is no audible autoplay on page load. Browser autoplay restrictions may keep
 audio suspended: use **Enable audio** to retry directly. The status describes the
 actual browser audio state; an audio-ready cartridge can still be silent.

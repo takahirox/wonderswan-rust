@@ -61,6 +61,7 @@ export async function startupChecks(browser, base, errors) {
         // Each preceding iteration ends on Crystal, compatible with both headers.
         const chooser = page.waitForEvent('filechooser');
         await page.locator('#load-rom').click();
+        await page.locator('#open-local-rom').click();
         await (await chooser).setFiles({name:`startup-${probe.name}.ws`,mimeType:'application/octet-stream',buffer:probe.bytes});
         let count = (counts.get(probe.name) ?? 0)+1;
         await completed(probe,models[2],count);

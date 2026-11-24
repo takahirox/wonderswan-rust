@@ -30,6 +30,7 @@ import { fpo1PollChecks } from './fpo1-poll.mjs';
 import { buslockChecks } from './buslock.mjs';
 import { consoleChecks } from './console.mjs';
 import { rawRomChecks } from './raw-rom.mjs';
+import { chooseRemembered, openCartridges } from './rom-library.mjs';
 import { chromium } from 'playwright';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -157,6 +158,7 @@ async function display() {
 async function load(probe, filename='same-name.ws') {
   const chooser = page.waitForEvent('filechooser');
   await page.locator('#load-rom').click();
+  await page.locator('#open-local-rom').click();
   await (await chooser).setFiles({ name:filename, mimeType:'application/octet-stream', buffer:probe.bytes });
   await display();
 }
@@ -195,9 +197,18 @@ try {
   await page.close();page = await context.newPage();page.on('pageerror',e => errors.push(e.message));
   await page.goto(base);await ready();await load(probes[0],'renamed.ws');await saved(probes[0],5);
   await page.reload();await ready();await load(probes[0]);await saved(probes[0],6);
-  await load(probes[2]);await saved(probes[2],5); // Isolated EEPROM identity, same filename.
+  await chooseRemembered(page,'same-name.ws',probes[2].key);await display();await saved(probes[2],5);
+  await pause();
+  const eeprom = await page.evaluate(key => localStorage.getItem(key),probes[2].key);
+  const picker = await openCartridges(page);
+  const remove = picker.getByRole('button',{name:'Remove same-name.ws',description:probes[2].key.slice(-64,-52)});
+  await remove.click();await remove.waitFor({state:'detached'});await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(key => localStorage.getItem(key),probes[2].key),eeprom);
+  assert.equal(await page.locator('#rom-status').textContent(),'Paused');
   await load(probes[0]);await saved(probes[0],7);
-  console.log('SHA-256 save isolation, renamed/same-name ROMs, reopen/reload, all SRAM/EEPROM probes, pause/reset/model preservation passed');
+  await load(probes[2]);await saved(probes[2],6); // Reimport restores the same cartridge EEPROM.
+  await load(probes[0]);await saved(probes[0],8);
+  console.log('SHA-256 save isolation, renamed/same-name ROMs, remembered EEPROM, removal and reimport, plus all SRAM/EEPROM pause/reset/model checks passed');
 
   // Default-on playback uses the actual original CC0 square-wave cartridge.
   await page.waitForFunction(() => window.audioProbe.nonzero > 3);
@@ -493,6 +504,7 @@ try {
       await page.reload();await ready();await page.locator('#model').selectOption(model);
       const chooser = page.waitForEvent('filechooser');
       await page.locator('#load-rom').click();
+      await page.locator('#open-local-rom').click();
       await (await chooser).setFiles({name:`${name}.ws`,mimeType:'application/octet-stream',buffer:bytes});
       await greenSound();await soundBuffer(path,0);
       assert.equal(await page.evaluate(() => window.audioProbe.activations[0]),true);
@@ -529,6 +541,7 @@ try {
     // Each cartridge explicitly detects mono and halts without color-only I/O.
     await page.reload();await ready();await page.locator('#model').selectOption('mono');
     const chooser = page.waitForEvent('filechooser');await page.locator('#load-rom').click();
+    await page.locator('#open-local-rom').click();
     await (await chooser).setFiles({name:`${name}.ws`,mimeType:'application/octet-stream',buffer:bytes});
     await page.waitForFunction(() => window.audioProbe.buffers>3);
     assert.equal(await page.evaluate(() => window.audioProbe.nonzero),0);
