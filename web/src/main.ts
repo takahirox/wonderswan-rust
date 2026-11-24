@@ -283,6 +283,9 @@ async function main() {
         loading = false;
         errorStatus.textContent = `Could not load “${name}”: ${message(error)} Choose another local ROM.`;
         setRunning(wasRunning && visibleRevision === visibilityRevision);
+        if (document.activeElement === loadButton) {
+          loadButton.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
       }
     } finally {
       if (revision === readRevision) {

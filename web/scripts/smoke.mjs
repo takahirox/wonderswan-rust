@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 
 const base = process.env.WS_PREVIEW_URL ?? 'http://127.0.0.1:4173/wonderswan-rust/';
 const rom = fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws', import.meta.url));
+const verticalRom = fileURLToPath(new URL('../../fixtures/generated/keypad-vertical.ws', import.meta.url));
 const emptyRom = {name:'empty.ws',mimeType:'application/octet-stream',buffer:Buffer.alloc(0)};
 const browser = await chromium.launch({ headless: true });
 let page = await browser.newPage({ viewport: { width:1280, height:800 } }); // fresh, unauthenticated context
@@ -79,7 +80,14 @@ async function checkInViewport(selector) {
   const {width, height} = page.viewportSize();
   assert.ok(box && box.width > 0 && box.height > 0 && box.x >= 0 && box.y >= 0
     && box.x + box.width <= width && box.y + box.height <= height,
-  `${selector} (${JSON.stringify(box)}) fits the ${width}×${height} viewport without scrolling`);
+  `${selector} (${JSON.stringify(box)}) is fully visible in the ${width}×${height} viewport`);
+}
+function luminance(color) {
+  const [red, green, blue] = color.match(/\d+/g).map(value => {
+    const channel = Number(value) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 // Hold/release through two genuine emulator frames, then present. Paused input
 // still exercises the handlers without expecting the CPU to advance.
@@ -393,6 +401,16 @@ try {
     await page.locator('#pause').click();
     assert.deepEqual(await checkLayout(), fullscreenFrame, 'pausing preserves fullscreen geometry');
     await page.locator('#pause').click();
+    await page.locator('#sound').click();
+    await load(verticalRom);
+    const verticalFrame = await checkLayout({ orientation:'vertical' });
+    const image = await page.locator('#screen').boundingBox();
+    await rejectEmptyRom();
+    await checkInViewport('#error');
+    assert.deepEqual(await checkLayout({ orientation:'vertical' }), verticalFrame, 'feedback preserves desktop fullscreen frame geometry');
+    assert.deepEqual(await page.locator('#screen').boundingBox(), image, 'feedback preserves desktop fullscreen picture geometry');
+    await load();
+    await page.locator('#sound').click();
     await page.evaluate(() => document.exitFullscreen());
     await page.waitForFunction(() => !document.fullscreenElement && document.querySelector('#fullscreen').textContent === 'Fullscreen');
     assert.equal(await page.locator('#fullscreen').textContent(), 'Fullscreen');
@@ -544,6 +562,23 @@ try {
   await page.locator('#volume').tap();
   await load();
   await screenshot('mobile-playing');
+  const mobileEffect = page.locator('#display-effect');
+  for (const effect of ['clean','retro-crt']) {
+    await mobileEffect.selectOption(effect);
+    await mobileEffect.focus();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#screen:focus-visible').getAttribute('data-effect'), effect);
+    const { style, width, color, background } = await page.locator('#display').evaluate(frame => {
+      const { outlineStyle, outlineWidth, outlineColor } = getComputedStyle(frame);
+      return { style:outlineStyle, width:outlineWidth, color:outlineColor,
+        background:getComputedStyle(document.documentElement).backgroundColor };
+    });
+    assert.equal(style, 'solid', `${effect} has a visible keyboard focus ring`);
+    assert.ok(parseFloat(width) >= 2, `${effect} has a clear outline`);
+    const contrast = [luminance(color), luminance(background)].sort((a,b) => a-b);
+    assert.ok((contrast[1]+0.05)/(contrast[0]+0.05) >= 3, `${effect} focus ring contrasts with the page`);
+  }
+  await mobileEffect.selectOption('clean');
   const cdp = await mobile.newCDPSession(page);
   async function touch(button, type) {
     const box = await page.locator(`[data-button="${button}"]`).boundingBox();
@@ -587,12 +622,11 @@ try {
   await page.waitForFunction(() => !document.querySelector('#model').disabled);
   assert.equal(await page.locator('#debug-toggle').isChecked(), false);
   assert.equal(await page.locator('#debug-panel').isVisible(), false);
-  const verticalRom = fileURLToPath(new URL('../../fixtures/generated/keypad-vertical.ws', import.meta.url));
   await load(verticalRom);
   await page.locator('#display-effect').selectOption('retro-crt');
   await page.evaluate(() => window.scrollTo(0,0));
   await checkLayout({ orientation:'vertical', kind:'portrait' });
-  await screenshot('mobile-vertical');
+  await screenshot('mobile-vertical', false);
   await page.setViewportSize({ width:375,height:736 });
   await page.evaluate(() => window.scrollTo(0,0));
   await checkLayout({ orientation:'vertical', kind:'portrait' });
@@ -626,8 +660,9 @@ try {
   await checkLayout({ orientation:'vertical', kind:'landscape' });
   await screenshot('mobile-landscape-vertical', false);
   await rejectEmptyRom();
-  assert.equal(await page.evaluate(() => window.scrollY), 0, 'invalid ROM does not require scrolling to see feedback');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'load-rom');
   await checkInViewport('#error');
+  await checkInViewport('#load-rom');
   const points = [];
   for (const [index, button] of [16,512,4].entries()) {
     const box = await page.locator(`[data-button="${button}"]`).boundingBox();

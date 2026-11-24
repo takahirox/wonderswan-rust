@@ -19,9 +19,10 @@ macOS arm64. Touch contacts and mobile viewports used browser emulation.
 | `git diff --check` | Passed |
 | Additional Rust and fixture checks | Skipped. The core, Wasm adapter, and fixture sources were outside the change. |
 
-A focused headless WebKit 27.2 check passed on the same host. It loaded the
-vertical CC0 fixture at 375×812 and 812×375, checked the canvas and control
-layout, confirmed Retro CRT, and dismissed Help with Escape.
+A focused headless WebKit 27.2 check passed during the initial layout validation
+on the same host. It loaded the vertical CC0 fixture at 375×812 and 812×375,
+checked the canvas and control layout, confirmed Retro CRT, and dismissed Help
+with Escape.
 Physical-device testing was outside this run.
 
 Chrome 157.0.8103.52 was outside this run. The LCD Authentic portrait corner
@@ -33,13 +34,17 @@ The smoke checks exercise local file selection, display switching with input
 held, keyboard focus and Help dismissal, and all eleven controller buttons
 through the fixture's CPU-produced bit tiles. Landscape includes simultaneous
 X, Y, and A touches and checks that the toolbar and cartridge controls fit
-within the first 812×375 viewport.
+within the first 812×375 viewport. After an invalid ROM selection, the alert
+and the focused Load ROM button are both fully visible. The desktop fullscreen
+check verifies that an invalid ROM alert leaves the vertical picture's bounds
+unchanged. The 375×812 check verifies at least 3:1 contrast between the keyboard
+focus outline and the page in Clean and Retro CRT modes.
 
 ## Screenshots
 
 Playwright captured the production preview with the original CC0 keypad
-fixtures selected as local files. The portrait phone screenshot includes the
-scrollable controller below the fold.
+fixtures selected as local files. In the 375×812 portrait view, Start, B, and A
+are stacked beside the X and Y keypads, with all eleven buttons in view.
 
 - [Desktop empty, 1280×800 viewport](images/issue-136-desktop-empty.png)
 - [Desktop with a horizontal cartridge, 1280×800 viewport](images/issue-136-desktop-playing.png)
