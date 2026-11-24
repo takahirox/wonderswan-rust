@@ -1078,6 +1078,7 @@ try {
       [667, 280, 'vertical', 'landscape'],
       [400, 300, 'horizontal', 'compact-landscape'],
       [400, 300, 'vertical', 'compact-landscape'],
+      [400, 250, 'horizontal', 'compact-landscape', {...compactInsets, top:8}],
       [400, 250, 'vertical', 'compact-landscape', {...compactInsets, top:8}, 112],
       [390, 300, 'horizontal', 'compact-landscape', compactInsets],
       [390, 300, 'vertical', 'compact-landscape', compactInsets],
