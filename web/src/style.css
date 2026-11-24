@@ -549,18 +549,31 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   }
 }
 
-@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 560px) {
+@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 420px) {
   #game:fullscreen {
+    /* Put Exit in a side column so the picture can use the full safe height. */
     grid-template:
-      "exit exit   exit" 44px
-      "y    screen actions" minmax(108px, 1fr)
-      "x    screen start" minmax(108px, 1fr) / 136px minmax(0, 1fr) 92px;
+      "y screen actions" minmax(120px, 1fr)
+      "x screen start" minmax(108px, 1fr) / 136px minmax(0, 1fr) 136px;
+    row-gap: 6px;
   }
+  #game:fullscreen #exit-fullscreen { align-self: start; }
+  #game:fullscreen[data-orientation="horizontal"] #exit-fullscreen { grid-area: actions; }
+  #game:fullscreen .action-buttons {
+    /* Stagger A and B in separate columns to save height with 44px targets. */
+    grid-template-rows: 24px 44px;
+    row-gap: 0;
+    align-items: start;
+    align-self: end;
+    justify-self: center;
+  }
+  #game:fullscreen .start { align-self: start; }
   #game:fullscreen[data-orientation="vertical"] {
     grid-template:
-      "exit exit   exit" 44px
-      ".    screen actions" 68px
-      "y    screen start" 44px
+      "exit screen actions" 68px
+      ".    screen start" 44px
       "y    screen x" minmax(108px, 1fr) / 136px minmax(0, 1fr) 136px;
   }
+  #game:fullscreen[data-orientation="vertical"] .y-pad { grid-area: y; justify-self: center; }
+  #game:fullscreen[data-orientation="vertical"] .x-pad { grid-area: x; justify-self: center; }
 }
