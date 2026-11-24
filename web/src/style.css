@@ -476,7 +476,8 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   }
   .brand { margin-bottom: 6px; }
   #game {
-    min-height: clamp(var(--game-min-height, 224px), calc(100dvh - 150px), 320px);
+    --game-height: max(var(--game-min-height, 224px), calc(100dvh - 150px));
+    min-height: var(--game-height);
     grid-template:
       "y screen actions" 1fr
       "x screen start" 1fr / 136px minmax(0, 1fr) 92px;
@@ -486,10 +487,12 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   #player[data-orientation="vertical"] #game {
     /* 68px for A/B, 44px for Start, 108px for X and two 8px gaps. */
     --game-min-height: 236px;
+    /* Allow one extra pixel for the canvas to align to whole-pixel edges. */
+    --screen-width: max(300px, calc(var(--game-height) * 144 / 224 + 1px));
     grid-template:
       ". screen actions"
       "y screen start"
-      "y screen x" / minmax(136px, 1fr) minmax(0, 300px) minmax(136px, 1fr);
+      "y screen x" / minmax(136px, 1fr) minmax(0, var(--screen-width)) minmax(136px, 1fr);
     align-items: end;
   }
   #player #game .screen-frame { align-self: stretch; height: auto; aspect-ratio: auto; }
