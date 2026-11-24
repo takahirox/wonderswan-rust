@@ -91,6 +91,9 @@ a { color: var(--accent); text-underline-offset: 3px; }
 #settings:hover:enabled { background: var(--accent-tint); }
 
 #game { grid-area: game; min-width: 0; }
+#game, .screen-frame {
+  scroll-margin-block: env(safe-area-inset-top, 0px) env(safe-area-inset-bottom, 0px);
+}
 .screen-frame {
   grid-area: screen;
   position: relative;
@@ -447,7 +450,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   }
 }
 
-@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 500px) {
+@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 400px) {
   :root { --page-gutter: 12px; }
   main { padding-top: max(6px, env(safe-area-inset-top)); }
   .brand { margin-bottom: 6px; }
@@ -552,7 +555,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   }
 }
 
-@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 400px) {
+@media (any-pointer: coarse) and (orientation: landscape) and (min-width: 380px) {
   #game:fullscreen {
     /* Put Exit in a side column so the picture can use the full safe height. */
     grid-template:
