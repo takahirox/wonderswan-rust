@@ -107,6 +107,36 @@ fn screen1_scroll_write_reads_back_now_and_applies_to_the_next_row() {
 }
 
 #[test]
+fn each_screen_scroll_axis_applies_from_the_next_row() {
+    for (layer, map) in [(0, 0x800), (1, 0x1000)] {
+        for axis in 0..2 {
+            let mut m = Machine::new(Model::Color);
+            out(&mut m, 0x60, 0x80);
+            out(&mut m, 0x14, 1);
+            out(&mut m, 0, 1 << layer);
+            out(&mut m, 7, 0x21);
+            tile(&mut m, 0x80, 0, 1, 255);
+            tile(&mut m, 0x80, 1, 2, 255);
+            palette(&mut m, 0, 1, 0xf00);
+            palette(&mut m, 0, 2, 0x0f0);
+            entry(&mut m, map + 2, 1); // One tile to the right.
+            entry(&mut m, map + 64, 1); // One tile below.
+
+            m.advance(159 * 256); // Populate the composition and translation caches.
+            assert_eq!(pixel(&m, 0, 2), [255, 0, 0, 255]);
+            m.advance(256 + 96);
+            let port = 0x10 + layer * 2 + axis;
+            out(&mut m, port, 8);
+            assert_eq!(m.bus.input(port).unwrap(), 8);
+            m.advance(256 - 96 + 256);
+            assert_eq!(pixel(&m, 0, 1), [255, 0, 0, 255], "port {port:02x}");
+            m.advance(256);
+            assert_eq!(pixel(&m, 0, 2), [0, 255, 0, 255], "port {port:02x}");
+        }
+    }
+}
+
+#[test]
 fn sprite_window_write_reads_back_now_and_applies_to_the_next_row() {
     let mut m = scene(Model::Color, 0xc0);
     final_palettes(&mut m, 0xc0);

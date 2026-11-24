@@ -195,12 +195,17 @@ fn tile_row(bus: &Bus, entry: u16, y: usize, sprite: bool) -> [Option<Pixel>; 8]
     row
 }
 
-fn screen_line(bus: &Bus, layer: usize, y: usize, scroll_x: u8) -> [Option<Pixel>; FRAME_WIDTH] {
+fn screen_line(
+    bus: &Bus,
+    layer: usize,
+    y: usize,
+    [scroll_x, scroll_y]: [u8; 2],
+) -> [Option<Pixel>; FRAME_WIDTH] {
     let mut row = [None; FRAME_WIDTH];
     if bus.ports[0] & (1 << layer) == 0 {
         return row;
     }
-    let sy = (y + bus.ports[0x11 + layer * 2] as usize) & 255;
+    let sy = (y + usize::from(scroll_y)) & 255;
     let scroll = usize::from(scroll_x);
     let base =
         ((bus.ports[7] >> (layer * 4)) & if bus.color_mode() { 15 } else { 7 }) as usize * 0x800;
@@ -236,7 +241,7 @@ fn screen_line(bus: &Bus, layer: usize, y: usize, scroll_x: u8) -> [Option<Pixel
 fn compose_line(
     bus: &Bus,
     y: usize,
-    screen1_scroll_x: u8,
+    [x1, y1, x2, y2]: [u8; 4],
     sprite_bounds: &[u8],
 ) -> [Pixel; FRAME_WIDTH] {
     let background = if bus.color_mode() {
@@ -245,8 +250,8 @@ fn compose_line(
         Pixel::Shade(bus.ports[1] & 7)
     };
     let mut row = [background; FRAME_WIDTH];
-    let back = screen_line(bus, 0, y, screen1_scroll_x);
-    let front = screen_line(bus, 1, y, bus.ports[0x12]);
+    let back = screen_line(bus, 0, y, [x1, y1]);
+    let front = screen_line(bus, 1, y, [x2, y2]);
     let mut sprites = [None; FRAME_WIDTH];
     if bus.ports[0] & 4 != 0 {
         let count = usize::from(bus.sprite_count);
@@ -357,7 +362,12 @@ mod row_tests {
                     sprite[2] = (y as u8).wrapping_sub(next() % 12);
                     sprite[3] = [0, 7, 220, 248, 255, next()][scene % 6];
                 }
-                let row = compose_line(&bus, y, bus.ports[0x10], &bus.ports[12..16]);
+                let row = compose_line(
+                    &bus,
+                    y,
+                    bus.ports[0x10..0x14].try_into().unwrap(),
+                    &bus.ports[12..16],
+                );
                 assert_eq!(row, compose_line_reference(&bus, y), "scene {scene}, y {y}");
                 let mut pixels = vec![0; crate::FRAME_BYTES];
                 // Palette changes belong to translation, including mixed
@@ -411,7 +421,7 @@ impl Pipeline {
         if line < FRAME_HEIGHT {
             let key = (bus.video_generation, bus.video_row_generations[line]);
             if self.generations[line] != key {
-                self.rows[line] = compose_line(bus, line, bus.screen1_scroll_x, &bus.sprite_window);
+                self.rows[line] = compose_line(bus, line, bus.screen_scroll, &bus.sprite_window);
                 self.generations[line] = key;
             }
             self.pending = Some((line, self.rows[line], self.generations[line]));
@@ -434,7 +444,12 @@ fn render_line(bus: &Bus, pixels: &mut [u8], y: usize) {
         bus,
         pixels,
         y,
-        compose_line(bus, y, bus.ports[0x10], &bus.ports[12..16]),
+        compose_line(
+            bus,
+            y,
+            bus.ports[0x10..0x14].try_into().unwrap(),
+            &bus.ports[12..16],
+        ),
     );
 }
 #[cfg(test)]
