@@ -1026,8 +1026,10 @@ try {
   const noInsets = {top:0,right:0,bottom:0,left:0};
   async function checkCompactPicture(orientation, insets, minSize = 140) {
     const {width, height} = await checkGameplayInViewport(insets);
-    assert.ok((orientation === 'horizontal' ? width : height) >= minSize,
+    const longEdge = orientation === 'horizontal' ? width : height;
+    assert.ok(longEdge >= minSize,
       `${orientation} picture is ${width}×${height}, expected at least ${minSize}px along its long edge`);
+    return longEdge;
   }
   await page.setViewportSize({width:400,height:300});
   await cdp.send('Emulation.setSafeAreaInsetsOverride', {insets:compactInsets});
@@ -1038,8 +1040,36 @@ try {
   await cdp.send('Emulation.setSafeAreaInsetsOverride', {insets:noInsets});
 
   if (await page.evaluate(() => document.fullscreenEnabled)) {
+    for (const [orientation, kind, smaller, larger] of [
+      ['horizontal', 'compact-landscape', {width:455,height:300}, {width:456,height:300}],
+      ['vertical', 'landscape', {width:812,height:249}, {width:812,height:250}],
+    ]) {
+      await page.setViewportSize(smaller);
+      await load(orientation === 'horizontal' ? rom : verticalRom);
+      await page.locator('#fullscreen').tap();
+      await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
+      const pictureSizes = [];
+      for (const viewport of [smaller, larger]) {
+        // Change the emulated viewport without resizing the native fullscreen window.
+        await cdp.send('Emulation.setDeviceMetricsOverride', { ...viewport, deviceScaleFactor:1, mobile:true });
+        await page.waitForFunction(({width, height}) => innerWidth === width && innerHeight === height, viewport);
+        await checkLayout({ orientation, kind, fullscreen:true });
+        pictureSizes.push(await checkCompactPicture(orientation, noInsets, 210));
+        await checkInViewport('#exit-fullscreen');
+        await screenshot(`mobile-${viewport.width}x${viewport.height}-${orientation}-fullscreen`, false);
+      }
+      const [before, after] = pictureSizes;
+      assert.ok(after >= before && after - before <= 14,
+        `${orientation} picture stays within one pixel-aligned scale step across a 1px resize (${before} to ${after})`);
+      console.log(`Native ${orientation} fullscreen picture long edge across a 1px resize: ${before} → ${after}px`);
+      await page.locator('#exit-fullscreen').tap();
+      await waitForFullscreenExit();
+    }
+
+    const narrowInsets = {top:8,right:49,bottom:21,left:49};
     for (const [width, height, orientation, kind, insets = noInsets, minSize] of [
-      [540, 320, 'horizontal', 'landscape'],
+      // The compact grid has room for 266px of picture, compared with 224px in the side grid.
+      [540, 320, 'horizontal', 'compact-landscape', noInsets, 266],
       [667, 280, 'vertical', 'landscape'],
       [400, 300, 'horizontal', 'compact-landscape'],
       [400, 300, 'vertical', 'compact-landscape'],
@@ -1056,6 +1086,9 @@ try {
       // Wider side insets leave only 264px, enough for two 132px keypads.
       [360, 300, 'horizontal', 'compact-landscape', wideInsets, 126],
       [360, 300, 'vertical', 'compact-landscape', wideInsets],
+      [360, 300, 'horizontal', 'compact-landscape', narrowInsets, 126],
+      // The 262px safe width needs taller pads to separate adjacent 44px targets.
+      [360, 300, 'vertical', 'compact-landscape', narrowInsets, 126],
     ]) {
       await page.setViewportSize({ width, height });
       await cdp.send('Emulation.setSafeAreaInsetsOverride', {insets});
@@ -1067,12 +1100,13 @@ try {
       await checkInViewport('#exit-fullscreen', insets);
       assert.ok(await page.locator('#game').evaluate(game => game.scrollHeight === game.clientHeight
         && game.scrollWidth === game.clientWidth), 'short fullscreen keeps the entire game visible without scrolling');
-      const safeArea = insets === noInsets ? '' : insets === wideInsets ? '-wide-safe-area' : '-safe-area';
+      const safeArea = insets === noInsets ? '' : insets === wideInsets ? '-wide-safe-area'
+        : insets === narrowInsets ? '-narrow-safe-area' : '-safe-area';
       await screenshot(`mobile-${width}x${height}-${orientation}${safeArea}-fullscreen`, false);
       await page.locator('#exit-fullscreen').tap();
       await waitForFullscreenExit();
     }
-    console.log('Native touch fullscreen in compact portrait and landscape viewports with simulated safe areas keeps an aspect-correct picture, eleven controls and Exit visible');
+    console.log('Native touch fullscreen keeps picture size stable across one-pixel resizes and fits the picture, eleven controls and Exit inside simulated safe areas');
   }
   await cdp.send('Emulation.setSafeAreaInsetsOverride', {insets:noInsets});
   await load();
@@ -1088,7 +1122,8 @@ try {
     [rom, 'horizontal', 672, 432],
   ]) {
     async function checkTabletPicture(mode) {
-      await checkLayout({ orientation, kind:'landscape', fullscreen:mode === 'fullscreen' });
+      const kind = mode === 'fullscreen' && orientation === 'horizontal' ? 'compact-landscape' : 'landscape';
+      await checkLayout({ orientation, kind, fullscreen:mode === 'fullscreen' });
       const {width, height} = await checkInViewport('#screen');
       assert.ok(width >= minWidth && height >= minHeight,
         `1024×768 ${mode} ${orientation} picture is ${width}×${height}, expected at least ${minWidth}×${minHeight}`);
