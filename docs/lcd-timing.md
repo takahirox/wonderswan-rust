@@ -88,8 +88,8 @@ following are explicit, deterministic compatibility policies, not silicon claims
 
 | State | Sampling policy |
 | --- | --- |
-| Screen 1 horizontal scroll (10) | Readback reflects writes immediately. Composition uses the offset sampled at entry to row L. |
-| Tile/map data, other scroll registers, windows, layer enables, latched OAM, sprite selection/priority and transparency | Compose at line L end using current state. Retain the winning identity for every pixel of row L. Later writes never refetch or recomposite that row. |
+| Screen 1 and Screen 2 scroll (10–13), sprite window bounds (0C–0F) | Readback reflects writes immediately. Composition uses the values sampled at entry to row L. |
+| Tile/map data, Screen 2 window, layer enables, latched OAM, sprite selection/priority and transparency | Compose at line L end using current state. Retain the winning identity for every pixel of row L. Later writes never refetch or recomposite that row. |
 | Mono palette ports 20–3F | Resolve tile index to a shade identity at composition; retain that shade (all three physical models in mono mode). |
 | Mono shade LUT 1C–1F | Translate the retained shade with current LUT at line L+1 end. |
 | Color palette RAM FE00–FFFF | Retain palette/index at composition; read RGB12 at line L+1 end for supported 2bpp planar and 4bpp planar/packed modes on Color/Crystal. |
@@ -248,3 +248,24 @@ two scripted opening transitions as Beetle. In Albert's opening, the six
 previously observed character disappearances are absent and the caption holds
 for 164 frames, as in both references. Final Fantasy II and Wild Card produced
 zero isolated changes in their 14,000-frame replays.
+
+## Tilemap scroll during the Final Fantasy II battle warp (Issue #134)
+
+The first scripted battle writes the two screens' X and Y offsets in each
+HBlank handler. In the trace at visible row 0, the registers enter the row
+with Y=$D0, then the handler writes Y=$CF for row 1. The following handlers
+decrement Y each row so the scroll points to the same tilemap scanline. Using
+each write on its current row selected the previous texture row and left
+forest pixels in the margins of the warp. Both screens now use their entry
+values for both axes, consistent with the early tilemap fetch and the ares
+scanline sampler. [WSdev frame timing](https://ws.nesdev.org/wiki/Frame_timing) · [ares screen sampling](https://raw.githubusercontent.com/ares-emulator/ares/master/ares/ws/ppu/screen.cpp)
+
+In the opening battle replay, the upper and lower black margins advance to
+the center. From the first visible warp frame to the first entirely black
+frame, the project now takes 41 frames, matching Beetle. The previous core
+took 79 frames. Oswan took 66 presented frames and also left forest pixels
+in the margins. In the 42-frame interval including the black frame,
+31 aligned project frames match Beetle pixel for pixel in RGB444.
+The first visible battle screen follows full black by 117 frames in the
+project and 91 in Beetle. The register trace puts that later difference
+between the end of the warp and the battle's layer enable.
