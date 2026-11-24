@@ -315,9 +315,12 @@ alarm/periodic IRQ delivery remain unsupported; commercial impact is unmeasured.
 
 The existing [Pages workflow](.github/workflows/deploy-pages.yml) builds and
 publishes `web/dist` on pushes to `main`, using locked Rust/npm dependencies,
-wasm-pack and Vite. Manual retries use
+wasm-pack and Vite. The deploy job waits for the artifact from its build job.
+After a deploy failure, use **Re-run failed jobs** while the artifact is retained
+(one day) to reuse that build. Use **Re-run all jobs** to build the same revision
+and upload a new artifact for the new attempt. To build the current `main`, use
 [Actions → Deploy browser prototype to Pages](https://github.com/takahirox/wonderswan-rust/actions/workflows/deploy-pages.yml)
-with branch `main`. Other branches do not deploy. Overlapping runs cancel older
+and select `main` in **Run workflow**. Overlapping runs cancel older
 runs. No personal access token or custom repository secret is needed.
 
 One-time administrator prerequisite: **Settings → Pages → Build and deployment →
