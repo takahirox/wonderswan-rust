@@ -107,8 +107,8 @@ fn top_aligned_bank_markers_cover_both_interfaces_and_rounded_aliases() {
             }
             assert_eq!(c.rom(gap / 65536, 0), bytes[0]);
             assert_eq!(c.rom(capacity / 65536 - 1, 65535), bytes[size - 1]);
-            let mut b = Bus::new(Model::Crystal);
-            b.insert_cartridge(c);
+            let mut b = Bus::for_test(Model::Crystal);
+            b.insert_test_cartridge(c);
             for bank in 0..if mapper == 1 { 1024 } else { 256 } {
                 for (low, high, base) in [(0xc2, 0xd3, 0x20000), (0xc3, 0xd5, 0x30000)] {
                     b.output(low, bank as u8).unwrap();
@@ -167,8 +167,8 @@ fn raw_dma_crosses_mapped_banks_with_existing_a0_costs_and_counters() {
                 let mut bytes = marked(size, mapper);
                 bytes[size - 4] = 4; // fast physical 16-bit ROM
                 checksum(&mut bytes);
-                let mut b = Bus::new(model);
-                b.insert_cartridge(Cartridge::parse(&bytes).unwrap());
+                let mut b = Bus::for_test(model);
+                b.insert_test_cartridge(Cartridge::parse(&bytes).unwrap());
                 if model != Model::Mono {
                     b.output(0x60, 0x80).unwrap();
                 }

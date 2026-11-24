@@ -5,12 +5,12 @@ use bus::Bus;
 use sdma::SoundDma;
 
 fn bus() -> Bus {
-    let mut b = Bus::new(Model::Crystal);
+    let mut b = Bus::for_test(Model::Crystal);
     let mut c = cartridge::Cartridge::parse(&cartridge::tests::rom(262144, 3, 0)).unwrap();
     for bank in 0..4 {
         c.bytes[bank * 65536..(bank + 1) * 65536].fill(0x30 + bank as u8);
     }
-    b.insert_cartridge(c);
+    b.insert_test_cartridge(c);
     b.output(0x60, 0x80).unwrap();
     b.output(0x91, 8).unwrap();
     b
@@ -47,7 +47,7 @@ fn pcm(b: &mut Bus, control: u8) {
 #[test]
 fn sound_ports_masks_reserved_bytes_unknown_bits_and_model_scope() {
     for model in [Model::Color, Model::Crystal] {
-        let mut b = Bus::new(model); // Color hardware also available in 2bpp mono video mode.
+        let mut b = Bus::for_test(model); // Color hardware also available in 2bpp mono video mode.
         program(&mut b, 0xffffff, 0xffffff, 0xff);
         assert_eq!(counter(&mut b, 0x4a), 0xfffff);
         assert_eq!(counter(&mut b, 0x4e), 0xfffff);
@@ -86,7 +86,7 @@ fn sound_ports_masks_reserved_bytes_unknown_bits_and_model_scope() {
             assert!(b.output(p, 0).is_err());
         }
     }
-    let mut b = Bus::new(Model::Mono);
+    let mut b = Bus::for_test(Model::Mono);
     for p in (0x4a..=0x52).chain(0x64..=0x6b) {
         assert!(b.input(p).is_err());
         assert!(b.output(p, 0).is_err());

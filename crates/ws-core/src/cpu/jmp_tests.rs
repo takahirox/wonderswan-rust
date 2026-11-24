@@ -2,7 +2,7 @@
 use super::*;
 
 fn setup(model: Model) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     b.ram.fill(0xa5);
     (
         Cpu {
@@ -152,7 +152,7 @@ fn mapped_code(b: &mut Bus, addresses: &[u32], code: &[u8]) {
             cart.bytes[index as usize] = value;
         }
     }
-    b.insert_cartridge(cart);
+    b.insert_test_cartridge(cart);
 }
 
 #[test]
@@ -451,7 +451,7 @@ fn shared_call_indirect_jmp_and_corrected_jcc_jcxz_cost_and_state() {
 fn normal_run_frame_charges_one_jump_for_raster_timer_and_audio() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let (c, mut b) = setup(model);
-        b.insert_cartridge(
+        b.insert_test_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
         );

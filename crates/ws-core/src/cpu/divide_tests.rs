@@ -17,7 +17,7 @@ fn modes() -> [(Model, u8); 9] {
 }
 
 fn setup(model: Model, color: u8, code: &[u8]) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     if model != Model::Mono {
         b.output(0x60, color).unwrap();
     }
@@ -318,7 +318,7 @@ fn word_division_full_flags_results_mapped_sources_and_branches() {
                         }
                         _ => {}
                     }
-                    b.insert_cartridge(cart);
+                    b.insert_test_cartridge(cart);
                     b.output(0xa0, 4).unwrap(); // no ROM wait, word bus
                     let mut expected = c.registers;
                     expected[0] = quotient;
@@ -432,7 +432,7 @@ fn accumulator_and_high_divisor_aliases_sample_before_writeback() {
 fn runtime_modes_and_normal_machine_scheduler_advance_division_once() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let (c, mut b) = setup(model, 0, &[0xf7, 0xf3, 0xf7, 0xfb]);
-        b.insert_cartridge(
+        b.insert_test_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
         );
@@ -543,7 +543,7 @@ fn byte_vectors(vectors: &[ByteVector], signed: bool, seed: u16) {
                         }
                         _ => {}
                     }
-                    b.insert_cartridge(cart);
+                    b.insert_test_cartridge(cart);
                     b.output(0xa0, 4).unwrap(); // no ROM wait, word bus
                     let mut expected = c.registers;
                     expected[0] = result;
@@ -651,7 +651,7 @@ fn byte_division_aliases_sample_before_writeback() {
 fn byte_idiv_runtime_modes_and_normal_machine_scheduler_advance_once() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let (c, mut b) = setup(model, 0, &[0xf6, 0xfb, 0x90]);
-        b.insert_cartridge(
+        b.insert_test_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
         );
@@ -935,7 +935,7 @@ fn explicit_multiplication_producers_replace_history_without_changing_products()
 fn byte_div_history_runtime_modes_and_normal_machine_scheduler_advance_once() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let (c, mut b) = setup(model, 0, &[0xf6, 0xf3, 0x90]);
-        b.insert_cartridge(
+        b.insert_test_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
         );

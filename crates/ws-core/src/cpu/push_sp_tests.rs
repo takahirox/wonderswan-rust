@@ -18,7 +18,7 @@ fn modes() -> [(Model, u8); 9] {
 }
 
 fn setup(model: Model, mode: u8, code: &[u8]) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     if model != Model::Mono {
         b.output(0x60, mode).unwrap();
     }
@@ -160,7 +160,7 @@ fn push_sp_runtime_modes_and_normal_machine_scheduler_advance_once() {
         for encoding in [&[0x54][..], &[0xff, 0xf4][..]] {
             for (sp, result, word_cost) in [(0x2000, 0x1ffe, 1), (0x2001, 0x1fff, 2)] {
                 let (c, mut b) = setup(model, 0, encoding);
-                b.insert_cartridge(
+                b.insert_test_cartridge(
                     crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                         .unwrap(),
                 );

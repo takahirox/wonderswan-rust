@@ -30,11 +30,14 @@ pub(crate) struct InternalEeprom {
     pending: Option<(u32, Operation)>,
 }
 impl InternalEeprom {
-    /// Minimal firmware-free handoff: firmware normally unlocks ordinary writes
-    /// and protects settings unless the cartridge header requests an exception.
-    pub fn handoff(&mut self, protected: bool) {
-        self.enabled = true;
-        self.protected = protected;
+    /// Importing persistent bytes aborts the transfer and clears its buffers.
+    /// Write-enable and protection are controller latches, cleared by reset.
+    pub fn clear_transfer(&mut self) {
+        *self = Self {
+            enabled: self.enabled,
+            protected: self.protected,
+            ..Self::default()
+        };
     }
     pub fn read(&self, port: u16) -> u8 {
         match port {
@@ -60,7 +63,7 @@ impl InternalEeprom {
             0xbd => self.command = (self.command & 255) | (u16::from(value) << 8),
             0xbf => {}
             0xbe => {
-                // Protection is sticky until a new handoff. It is never an abort.
+                // Protection is sticky until reset. It is never an abort.
                 self.protected |= value & 0x80 != 0;
                 let control = value & 0x70;
                 if control == 0 {
@@ -106,7 +109,13 @@ impl InternalEeprom {
                 if control == 0x10 {
                     self.done = false;
                 }
-                self.pending = Some((if control == 0x10 { 32 } else { 3072 }, operation));
+                let clocks = match operation {
+                    Operation::Read(_) => 32,
+                    // WEN/WDS shift 16 bits without an EEPROM programming cycle.
+                    Operation::Enable(_) => 16,
+                    _ => 3072,
+                };
+                self.pending = Some((clocks, operation));
             }
             _ => unreachable!(),
         }

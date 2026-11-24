@@ -5,7 +5,7 @@ use super::*;
 include!("shift_vectors.rs");
 
 fn setup(model: Model, mode: u8, code: &[u8]) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
+    let mut b = Bus::for_test(model);
     if model != Model::Mono {
         b.output(0x60, mode).unwrap();
     }
@@ -98,7 +98,7 @@ fn decoded_full_flags_results_memory_state_and_accounting() {
                             cart.save[address as usize..address as usize + 2]
                                 .copy_from_slice(&value.to_le_bytes());
                         }
-                        b.insert_cartridge(cart);
+                        b.insert_test_cartridge(cart);
                         let mut registers = c.registers;
                         let segments = c.segments;
                         let mut ram = b.ram.clone();

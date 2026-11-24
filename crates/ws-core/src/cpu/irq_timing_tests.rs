@@ -2,8 +2,8 @@
 use super::*;
 
 fn setup(model: Model) -> (Cpu, Bus) {
-    let mut b = Bus::new(model);
-    b.insert_cartridge(
+    let mut b = Bus::for_test(model);
+    b.insert_test_cartridge(
         crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0)).unwrap(),
     );
     b.ram[0x1100..0x1103].copy_from_slice(&[0x90, 0x43, 0x90]); // NOP; INC BX; NOP

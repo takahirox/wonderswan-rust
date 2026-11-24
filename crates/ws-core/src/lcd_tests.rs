@@ -19,7 +19,7 @@ fn machine(model: Model) -> Machine {
 #[test]
 fn independent_byte_registers_and_actual_cpu_word_io_on_every_model() {
     for model in MODELS {
-        let mut b = Bus::new(model);
+        let mut b = Bus::for_test(model);
         assert_eq!(b.input(0x16).unwrap(), 158);
         assert_eq!(
             b.input(0x17).unwrap(),
@@ -70,7 +70,7 @@ fn independent_byte_registers_and_actual_cpu_word_io_on_every_model() {
 fn exact_full_height_vectors_share_line_irq_timers_vblank_and_sprite_latch() {
     for model in MODELS {
         for (total, clocks) in [(156, 40192), (158, 40704), (180, 46336)] {
-            let mut b = Bus::new(model);
+            let mut b = Bus::for_test(model);
             out(&mut b, 0x16, total);
             out(&mut b, 0xb2, 0xf0);
             out(&mut b, 3, 144);
@@ -108,7 +108,7 @@ fn exact_full_height_vectors_share_line_irq_timers_vblank_and_sprite_latch() {
                 b.tick(1);
                 assert_eq!(b.input(2).unwrap(), 0);
             }
-            let mut repeated = Bus::new(model);
+            let mut repeated = Bus::for_test(model);
             out(&mut repeated, 0x16, total);
             out(&mut repeated, 0xa4, 0xe8);
             out(&mut repeated, 0xa5, 3); // H countdown from 1000
@@ -149,7 +149,7 @@ fn runtime_writes_preserve_history_and_take_effect_at_the_next_line_end() {
             (170, 180, 156),
             (150, 180, 0),
         ] {
-            let mut b = Bus::new(model);
+            let mut b = Bus::for_test(model);
             out(&mut b, 0x16, old);
             b.tick(256 * (u32::from(old) + 1) * 2 + line * 256 + 73);
             let history = (b.cycles, b.raster_line, b.completed_frames);
@@ -175,8 +175,8 @@ fn runtime_writes_preserve_history_and_take_effect_at_the_next_line_end() {
 #[test]
 fn all_short_odd_and_maximum_totals_terminate_and_chunking_matches_single_clocks() {
     for total in 0..=255 {
-        let mut chunked = Bus::new(Model::Crystal);
-        let mut single = Bus::new(Model::Crystal);
+        let mut chunked = Bus::for_test(Model::Crystal);
+        let mut single = Bus::for_test(Model::Crystal);
         for b in [&mut chunked, &mut single] {
             out(b, 0x16, total);
             out(b, 3, 0);
@@ -210,7 +210,7 @@ fn all_short_odd_and_maximum_totals_terminate_and_chunking_matches_single_clocks
             }
             assert_eq!(chunked.audio.drain(), single.audio.drain());
         }
-        let mut short = Bus::new(Model::Mono);
+        let mut short = Bus::for_test(Model::Mono);
         out(&mut short, 0x16, total);
         out(&mut short, 0xb2, 0x40);
         short.tick(256 * (u32::from(total) + 1));
@@ -293,10 +293,10 @@ fn run_frame_follows_runtime_completion_and_preserves_instruction_and_dma_oversh
 fn nondefault_frames_keep_audio_sdma_hyper_and_eeprom_on_elapsed_machine_clocks() {
     for total in [156, 180] {
         for hyper in [false, true] {
-            let mut b = Bus::new(Model::Crystal);
+            let mut b = Bus::for_test(Model::Crystal);
             let cart =
                 cartridge::Cartridge::parse(&cartridge::tests::rom(131072, 0x10, 0)).unwrap();
-            b.insert_cartridge(cart);
+            b.insert_test_cartridge(cart);
             out(&mut b, 0x16, total);
             let clocks = 256 * (u32::from(total) + 1);
             for (p, v) in [(0xc6, 0x30), (0xc7, 1), (0xc8, 0x40)] {

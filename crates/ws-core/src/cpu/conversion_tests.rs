@@ -64,7 +64,7 @@ fn vectors(conversion: u8) {
                     &original_ah[..]
                 } {
                     for location in 0..3 {
-                        let mut b = Bus::new(model);
+                        let mut b = Bus::for_test(model);
                         if model != Model::Mono {
                             b.output(0x60, mode).unwrap();
                         }
@@ -93,7 +93,7 @@ fn vectors(conversion: u8) {
                             )
                             .unwrap();
                             cart.bytes[65536..65541].copy_from_slice(&code);
-                            b.insert_cartridge(cart);
+                            b.insert_test_cartridge(cart);
                             b.output(0xa0, if location == 1 { 4 } else { 12 }).unwrap();
                             c.segments[1] = 0xf000;
                             c.ip = 0;
@@ -147,7 +147,8 @@ fn conversion_aad_literal_full_flags_state_continuation_and_fetch_costs() {
 fn conversions_runtime_modes_normal_scheduler_advances_shared_devices_once() {
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let mut m = crate::Machine::new(model);
-        m.bus.insert_cartridge(
+        m.bus = Bus::for_test(model);
+        m.bus.insert_test_cartridge(
             crate::cartridge::Cartridge::parse(&crate::cartridge::tests::rom(131072, 2, 0))
                 .unwrap(),
         );
@@ -196,7 +197,7 @@ fn conversions_runtime_modes_normal_scheduler_advances_shared_devices_once() {
 #[test]
 fn aam_zero_base_keeps_existing_fault_stack_and_return_behavior() {
     for (model, mode) in modes() {
-        let mut b = Bus::new(model);
+        let mut b = Bus::for_test(model);
         if model != Model::Mono {
             b.output(0x60, mode).unwrap();
         }

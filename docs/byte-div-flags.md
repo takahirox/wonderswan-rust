@@ -68,11 +68,10 @@ the Issue's alias wording mathematically without changing fault acceptance.
 
 ## Lifecycle policy and bounded validation
 
-Cloning preserves history. Synthetic unloaded initialization and firmware-free
-cartridge entry clear it deterministically. Reset, restart, successful cartridge
-replacement and compatible model changes create fresh CPUs. Rejected loads and
-model changes preserve running CPU/history and other state. Cleared initialization
-is an emulator startup policy, not an established firmware-handoff value.
+Cloning preserves history. Reset creates a fresh CPU with its history cleared
+by emulator policy, and the original IPL leaves it clear at cartridge entry.
+Restart, successful cartridge replacement and compatible model changes all reset
+the CPU. Rejected loads and model changes preserve the running history and state.
 
 Independent literal native vectors cover both histories, opposing FLAGS,
 zero, exact/inexact odd/even quotients and FF, register and even/odd mapped

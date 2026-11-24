@@ -17,7 +17,10 @@ fn command(b: &mut Bus, op: u16, address: u16, control: u8) {
 fn latch(b: &mut Bus, enabled: bool) {
     let bits = if b.color_mode() { 10 } else { 6 };
     command(b, 0, if enabled { 3 << (bits - 2) } else { 0 }, 0x40);
-    b.tick(3072);
+    b.tick(15);
+    assert_eq!(b.input(0xbe).unwrap() & 2, 0);
+    b.tick(1);
+    assert_eq!(b.input(0xbe).unwrap() & 2, 2);
 }
 fn read(b: &mut Bus, address: u16) -> u16 {
     command(b, 2, address, 0x10);
@@ -274,25 +277,33 @@ fn machine_retention_import_failures_header_handoff_and_pending_cancellation() {
         assert!(m.load_rom(&[1, 2]).is_err());
         assert_eq!(m.console_data(), bytes);
         m.load_rom(&rom).unwrap(); // header exception: settings writable
+        m.boot_to_cartridge();
         assert_eq!(m.bus.input(0xbe).unwrap(), 2);
         write(&mut m.bus, 0x30, 0x1234);
         out_word(&mut m.bus, 0xba, 0x8888);
         command(&mut m.bus, 1, 0, 0x20);
         m.restart(); // discard unfinished write, keep completed settings word
+        m.boot_to_cartridge();
         assert_eq!(m.console_data()[0], i as u8);
         assert_eq!(&m.console_data()[0x60..0x62], &[0x34, 0x12]);
         m.bus.output(0xbe, 0x80).unwrap();
+        let bytes = m.console_data().to_vec();
+        m.load_console_data(&bytes).unwrap();
+        assert_eq!(m.bus.input(0xbe).unwrap(), 0x82);
         m.restart();
+        m.boot_to_cartridge();
         assert_eq!(m.bus.input(0xbe).unwrap(), 2);
         let mut protected = rom.clone();
         protected[131072 - 7] = 0;
         cartridge::tests::checksum(&mut protected);
         m.load_rom(&protected).unwrap();
+        m.boot_to_cartridge();
         assert_eq!(m.bus.input(0xbe).unwrap(), 0x82);
         write(&mut m.bus, 0x30, 0);
         assert_eq!(&m.console_data()[0x60..0x62], &[0x34, 0x12]);
         write(&mut m.bus, 0x2f, 0x4567);
         m.restart();
+        m.boot_to_cartridge();
         assert_eq!(m.bus.input(0xbe).unwrap(), 0x82);
         m.reset(model); // unload
         assert_eq!(m.console_data()[0], i as u8);
@@ -311,6 +322,7 @@ fn machine_retention_import_failures_header_handoff_and_pending_cancellation() {
     color_rom[131072 - 9] = 1;
     cartridge::tests::checksum(&mut color_rom);
     m.load_rom(&color_rom).unwrap();
+    m.boot_to_cartridge();
     let bytes = m.console_data().to_vec();
     assert!(m.change_model(Model::Mono).is_err());
     assert_eq!(m.model(), Model::Color);
@@ -393,6 +405,7 @@ fn read_captures_address_and_failed_import_preserves_pending_controller_state() 
     for model in [Model::Mono, Model::Color, Model::Crystal] {
         let mut m = Machine::new(model);
         m.load_rom(&cartridge::tests::rom(131072, 2, 0)).unwrap();
+        m.boot_to_cartridge();
         write(&mut m.bus, 0, 0x1234);
         write(&mut m.bus, 1, 0xabcd);
         command(&mut m.bus, 2, 0, 0x10);
@@ -434,6 +447,7 @@ fn erase_lifecycle_cancellation_retention_and_failed_transitions() {
             let mut m = Machine::new(model);
             let rom = cartridge::tests::rom(131072, 2, 0);
             m.load_rom(&rom).unwrap();
+            m.boot_to_cartridge();
             m.load_save(&vec![0x77; 32768]).unwrap();
             if model != Model::Mono {
                 m.bus.output(0x60, if color { 0x80 } else { 0 }).unwrap();
@@ -469,6 +483,7 @@ fn erase_lifecycle_cancellation_retention_and_failed_transitions() {
             // Completed erase survives every lifecycle above, including a
             // successful administrative import of the same completed bytes.
             m.load_rom(&rom).unwrap();
+            m.boot_to_cartridge();
             command(&mut m.bus, 3, 0, 0x40);
             assert!(m.load_console_data(&[0]).is_err());
             assert!(m.load_rom(&[0]).is_err());
@@ -495,6 +510,7 @@ fn erase_lifecycle_cancellation_retention_and_failed_transitions() {
                 color_rom[131072 - 9] = 1;
                 cartridge::tests::checksum(&mut color_rom);
                 m.load_rom(&color_rom).unwrap();
+                m.boot_to_cartridge();
                 write(&mut m.bus, 0, 0xbeef);
                 command(&mut m.bus, 3, 0, 0x40);
                 assert!(m.change_model(Model::Mono).is_err());
