@@ -439,7 +439,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
     grid-template:
       "screen screen"
       "y      actions"
-      "x      start" / minmax(136px, 1fr) 92px;
+      "x      start" / minmax(132px, 1fr) 92px;
   }
   #game[data-orientation="vertical"] .dpad {
     width: calc((100% - 4px) / 2);
@@ -449,6 +449,11 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
     grid-template-rows: 44px 48px 44px;
     justify-items: center;
   }
+}
+
+@container (width < 232px) {
+  /* Keep the 44px pad columns and recover their gaps when space is tight. */
+  #game[data-orientation="horizontal"] .dpad { column-gap: 0; }
 }
 
 @media (any-pointer: coarse) and (orientation: landscape) {
@@ -577,10 +582,10 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
       "exit   exit" 44px
       "screen screen" minmax(100px, 1fr)
       "y      actions" auto
-      "x      start" auto / minmax(136px, 1fr) 92px;
+      "x      start" auto / minmax(132px, 1fr) 92px;
   }
   @container fullscreen-game (width < 240px) {
-    /* The 136px pad and 92px action column leave 4px at a 232px safe width. */
+    /* Leave room for both the pad and the 92px action column. */
     #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout { column-gap: 4px; }
   }
   #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
@@ -603,8 +608,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   /* The inner container and #game's content box share the safe dimensions.
      Query the inner container so cqw/cqh resolve against #game. Each grid
      switch first fits the controls, then compares the picture at native aspect. */
-  @container fullscreen-viewport (width >= 260px) and (height >= 224px)
-      and ((width >= 272px) or (height >= 248px))
+  @container fullscreen-viewport (width >= 228px) and (height >= 224px)
       and (height <= calc(284px + (100cqw - 134px) * 9 / 14)) {
     /* Stacked rows and gaps take 284px of height. The compact grid leaves
        more height for the picture, but takes 134px from its width. */
@@ -629,12 +633,13 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
       width: min(52px, 100%);
     }
     @container fullscreen-viewport (width < 272px) {
-      /* Start shares the top row of A/B, above B and to the left of A. */
+      /* Start shares the top row of A/B. The X pad needs only 8px above
+         that 92px action row plus the gap to reach its full 108px height. */
       #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
         grid-template:
           "y exit"    44px
           "y screen"  minmax(56px, 1fr)
-          "x screen"  minmax(32px, 1fr)
+          "x screen"  minmax(8px, 1fr)
           "x actions" 92px / 132px minmax(92px, 1fr);
       }
       #game:fullscreen[data-orientation="horizontal"] .action-buttons {
@@ -648,7 +653,13 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
         justify-self: start;
         width: 44px;
       }
-      #game:fullscreen[data-orientation="horizontal"] #exit-fullscreen { justify-self: end; }
+      #game:fullscreen[data-orientation="horizontal"] #exit-fullscreen {
+        justify-self: end;
+        /* The column gap supplies the other 2px of clearance from Y. */
+        max-width: calc(100% - 6px);
+        padding: 4px;
+        line-height: 1.2;
+      }
     }
   }
 
@@ -706,6 +717,13 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
       align-self: center;
     }
     #game:fullscreen[data-orientation="vertical"] .start { align-self: center; }
+    @container fullscreen-viewport (width >= 264px) {
+      #game:fullscreen[data-orientation="vertical"] .dpad {
+        /* Reserve 120px for Exit, A/B, and the gaps, plus two 44px pad
+           rows. The center targets use separate columns and can overhang. */
+        grid-template-rows: 44px clamp(4px, 100cqh - 208px, 20px) 44px;
+      }
+    }
   }
 
   @container fullscreen-viewport (height >= 176px)
