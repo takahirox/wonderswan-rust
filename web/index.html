@@ -48,7 +48,7 @@
               <option value="lcd-authentic">LCD Authentic</option>
               <option value="retro-crt" selected>Retro CRT</option>
             </select>
-            <span id="display-help" hidden>Changes the picture without restarting the game.</span>
+            <span id="display-help" hidden>Changes the picture without restarting the game. After choosing an effect, press Escape to focus the loaded game.</span>
           </div>
           <button id="fullscreen" type="button" disabled>Fullscreen</button>
         </div>
@@ -71,10 +71,14 @@
         </section>
         <div class="feedback">
           <p id="rom-status" role="status">Loading WebAssembly…</p>
-          <p id="error" role="alert"></p>
-          <button id="retry" type="button" hidden>Retry initialization</button>
-          <p id="sound-status" role="status" class="visually-hidden"></p>
-          <button id="enable-audio" type="button" hidden disabled>Enable audio</button>
+          <div class="feedback-row">
+            <p id="error" role="alert"></p>
+            <button id="retry" type="button" hidden>Retry initialization</button>
+          </div>
+          <div class="feedback-row">
+            <p id="sound-status" role="status" class="visually-hidden"></p>
+            <button id="enable-audio" type="button" hidden disabled>Enable audio</button>
+          </div>
           <p id="display-notice" role="status"></p>
           <p id="console-notice" role="status"></p>
           <p id="rtc-notice" role="status"></p>
@@ -115,6 +119,7 @@
           <p>Touch controls appear on small or touch screens. Hiding the tab pauses gameplay. Choose Resume when you return.</p>
           <h3>Display</h3>
           <p>Retro CRT adds a mask and scanlines. Clean shows sharp pixels. LCD Light adds subtle cells and persistence. LCD Authentic uses a stronger effect tailored to each console. Your choice stays in this browser. If graphics effects fail, the player uses Clean.</p>
+          <p>After choosing a display effect, press Escape or click the game screen to return to gameplay input.</p>
           <h3>Cartridge settings</h3>
           <p>Changing Console restarts the loaded cartridge.</p>
           <label for="rtc-mode">Cartridge clock</label>

@@ -263,9 +263,10 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   #player {
     grid-template: "brand" "screen" "toolbar" "cartridge" "feedback" "touch" / minmax(0, 1fr);
   }
-  #player:fullscreen { grid-template-rows: auto minmax(140px, 1fr) auto auto auto auto; }
+  #player:fullscreen { grid-template-rows: auto auto auto auto auto auto; align-content: start; }
+  #player:fullscreen .screen-frame { aspect-ratio: 224 / 144; }
   .brand { margin-bottom: 8px; }
-  #player:not(:fullscreen) .screen-frame[data-orientation="vertical"] {
+  #player .screen-frame[data-orientation="vertical"] {
     height: clamp(224px, 43svh, 448px);
     aspect-ratio: auto;
   }
@@ -276,10 +277,21 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
     margin-top: 10px;
     padding: 10px;
   }
-  .model-control { grid-column: 1 / -1; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 3px 10px; padding-top: 7px; }
-  .model-control .hint { grid-column: 2; }
+  .model-control { grid-column: 1 / -1; grid-template-columns: auto minmax(0, 1fr); gap: 0 10px; padding-top: 7px; }
+  .model-control label { align-self: end; }
+  .model-control select { grid-area: 1 / 2 / 3; align-self: center; }
+  .model-control .hint { grid-column: 1; align-self: start; }
   #touch-controls { display: flex; }
   .action-row { width: 100%; justify-content: space-between; }
+}
+
+@media (min-width: 370px) and (max-width: 700px) and (orientation: portrait) {
+  #player .screen-frame[data-orientation="vertical"] {
+    /* Leave room for the toolbar, cartridge, and three controller rows. */
+    height: clamp(224px, min(43svh, calc(100svh - 466px - env(safe-area-inset-top) - env(safe-area-inset-bottom))), 448px);
+  }
+  .action-row, .action-buttons { flex-direction: column; gap: 4px; }
+  .action-row { width: auto; }
 }
 
 @media (any-pointer: coarse) {
@@ -290,12 +302,13 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   :root { --page-gutter: 12px; }
   main { padding-top: max(6px, env(safe-area-inset-top)); }
   #player {
+    --screen-height: clamp(196px, calc(100dvh - 174px), 300px);
     grid-template:
       "brand     brand     brand" auto
-      ".         screen    ." clamp(196px, calc(100dvh - 174px), 300px)
+      ".         screen    ." var(--screen-height)
+      "feedback  feedback  feedback" auto
       "toolbar   toolbar   toolbar" auto
       "cartridge cartridge cartridge" auto
-      "feedback  feedback  feedback" auto
       / 144px minmax(0, 1fr) 144px;
     column-gap: 8px;
   }
@@ -321,6 +334,9 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   #touch-controls .dpad:first-child { grid-area: x; }
   #touch-controls .dpad:nth-child(2) { grid-area: y; }
   .action-row { grid-area: actions; width: auto; }
+  .feedback-row { display: flex; align-items: start; gap: 12px; }
+  .feedback-row p { flex: 1; min-width: 0; }
+  .feedback-row button { flex: none; }
   .toolbar { margin-top: 8px; }
   .cartridge {
     grid-template-columns: minmax(0, 1fr) auto minmax(266px, 1.35fr);
@@ -339,5 +355,6 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   .model-control label { align-self: end; }
   .model-control select { grid-area: 1 / 2 / 3; align-self: center; }
   .model-control .hint { grid-column: 1; align-self: start; }
-  #player:fullscreen { grid-template-rows: auto minmax(196px, 1fr) auto auto auto; }
+  #player:fullscreen { grid-template-rows: auto var(--screen-height) auto auto auto; }
+  #player:fullscreen .screen-frame { aspect-ratio: auto; }
 }

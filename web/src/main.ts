@@ -36,9 +36,14 @@ async function main() {
   const display = new Display(canvas, element<HTMLCanvasElement>("screen-effect"),
     message => { element("display-notice").textContent = message; });
   const effectSelect = element<HTMLSelectElement>("display-effect");
+  let loaded: { name: string; key: string } | null = null;
   effectSelect.value = display.effect;
   effectSelect.addEventListener("change", () => display.select(effectSelect.value as DisplayEffect));
-  let loaded: { name: string; key: string } | null = null;
+  effectSelect.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && loaded) {
+      canvas.focus();
+    }
+  });
   const report = (message: string) => { element("notice").textContent = message; };
   const saves = new Saves(report);
   const rtcMode = element<HTMLSelectElement>("rtc-mode");
@@ -86,7 +91,6 @@ async function main() {
   let faulted = false;
   let resumeAfterDialog = false;
   let visibilityRevision = 0;
-  let returnFocus: HTMLElement | null = null;
   let animation: number | null = null;
   let production: number | null = null;
   let lastTime = 0;
@@ -329,7 +333,6 @@ async function main() {
   });
 
   settingsButton.addEventListener("click", () => {
-    returnFocus = document.activeElement as HTMLElement;
     resumeAfterDialog = running;
     setRunning(false);
     help.showModal();
@@ -339,7 +342,7 @@ async function main() {
     const resume = resumeAfterDialog;
     resumeAfterDialog = false;
     setRunning(resume);
-    (running ? canvas : returnFocus ?? settingsButton).focus({ preventScroll: true });
+    (running ? canvas : settingsButton).focus({ preventScroll: true });
   });
   function toggleDebug(enabled: boolean) {
     debugToggle.checked = enabled;

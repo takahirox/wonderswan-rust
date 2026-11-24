@@ -313,7 +313,8 @@ try {
   // above is real, while these restrictions/errors and visibility are injected.
   const originalPage = page;
   for (const mode of ['suspended','reject','pending','create']) {
-    const policy = await browser.newContext();
+    const policy = await browser.newContext(mode === 'reject'
+      ? {viewport:{width:812,height:375}, isMobile:true, hasTouch:true} : {});
     await policy.addInitScript(observeAudio);
     await policy.addInitScript(mode => {
       window.audioMode = mode;
@@ -331,6 +332,15 @@ try {
     assert.equal(await page.locator('#error').textContent(),'');
     assert.equal(await page.locator('#enable-audio').isVisible(),true);
     assert.doesNotMatch(await page.locator('#sound-status').textContent(),/Audio ready|Sound playing/);
+    if (mode === 'reject') {
+      await page.waitForFunction(() => /Enable audio/.test(document.querySelector('#sound-status').textContent));
+      assert.equal(await page.evaluate(() => window.scrollY),0);
+      for (const selector of ['#sound-status','#enable-audio']) {
+        const box = await page.locator(selector).boundingBox();
+        assert.ok(box && box.height > 0 && box.width > 0 && box.y >= 0 && box.y + box.height <= 375
+          && box.x >= 0 && box.x + box.width <= 812,`${selector} fits in the first landscape viewport`);
+      }
+    }
     if (mode === 'pending') {
       await pause();
       await page.evaluate(async () => { window.audioMode = ''; await window.releaseAudio(); });

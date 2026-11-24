@@ -290,13 +290,16 @@ export async function keypadChecks(browser, base, errors) {
         await layout(orientation,true);
         if (await page.evaluate(() => document.fullscreenEnabled)) {
           await page.locator('#fullscreen').click();
-          await page.waitForFunction(() => !!document.fullscreenElement);
+          // Wait for the player's fullscreenchange handler to restore focus.
+          await page.waitForFunction(() => document.fullscreenElement?.id === 'player'
+            && document.querySelector('#fullscreen').textContent === 'Exit fullscreen');
           await setEffect('clean');
           await layout(orientation); // retain exact composited Clean assertions in fullscreen
           await setEffect('lcd-authentic');
           await layout(orientation,true);
           await page.locator('#fullscreen').click();
-          await page.waitForFunction(() => !document.fullscreenElement);
+          await page.waitForFunction(() => !document.fullscreenElement
+            && document.querySelector('#fullscreen').textContent === 'Fullscreen');
         }
         await setEffect('clean');
       }

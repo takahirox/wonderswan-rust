@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 
 const base = process.env.WS_PREVIEW_URL ?? 'http://127.0.0.1:4173/wonderswan-rust/';
 const rom = fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws', import.meta.url));
+const emptyRom = {name:'empty.ws',mimeType:'application/octet-stream',buffer:Buffer.alloc(0)};
 const browser = await chromium.launch({ headless: true });
 let page = await browser.newPage({ viewport: { width:1280, height:800 } }); // fresh, unauthenticated context
 console.log(`Chromium ${browser.version()} (${process.platform} ${process.arch})`);
@@ -66,6 +67,19 @@ async function cancelPicker() {
   await page.locator('#load-rom').click();
   await (await chooser).setFiles([]);
   assert.equal(await page.evaluate(() => document.activeElement.id), 'load-rom');
+}
+async function rejectEmptyRom() {
+  const chooser = page.waitForEvent('filechooser');
+  await page.locator('#load-rom').click();
+  await (await chooser).setFiles(emptyRom);
+  await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Expected a 128 KiB'));
+}
+async function checkInViewport(selector) {
+  const box = await page.locator(selector).boundingBox();
+  const {width, height} = page.viewportSize();
+  assert.ok(box && box.width > 0 && box.height > 0 && box.x >= 0 && box.y >= 0
+    && box.x + box.width <= width && box.y + box.height <= height,
+  `${selector} (${JSON.stringify(box)}) fits the ${width}×${height} viewport without scrolling`);
 }
 // Hold/release through two genuine emulator frames, then present. Paused input
 // still exercises the handlers without expecting the CPU to advance.
@@ -208,9 +222,14 @@ try {
   assert.equal(await page.locator('#rom').getAttribute('accept'), '.ws,.wsc');
   assert.equal(await page.locator('#pause').isDisabled(), true);
   assert.equal(await page.locator('#reset').isDisabled(), true);
+  // Simulate Safari's pointer activation without native button focus.
+  await page.locator('#settings').evaluate(button => {
+    button.addEventListener('mousedown', event => event.preventDefault(), {once:true});
+  });
   await openHelp();
   await page.locator('#debug-toggle').check();
-  await closeHelp();
+  await closeHelp(true);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'settings');
   assert.equal(await page.locator('#debug-rom').textContent(), 'None');
   assert.equal(await page.locator('#debug-bytes').textContent(), '0');
   assert.equal(await page.locator('#debug-frames').textContent(), '0');
@@ -225,17 +244,24 @@ try {
   assert.deepEqual(await checkLayout(), initialScreen, 'filename and playback status leave screen geometry stable');
   await load();
   assert.equal(await page.locator('#empty-state').isVisible(), false);
+  const effectSelect = page.locator('#display-effect');
+  await effectSelect.selectOption('retro-crt');
   await screenshot('desktop-playing');
   if (process.env.WS_SMOKE_SCREENSHOT) await page.screenshot({path:process.env.WS_SMOKE_SCREENSHOT,fullPage:true});
   await page.keyboard.down('ArrowRight');
   await expectInput(0,2);
-  await page.locator('#display-effect').selectOption('lcd-light');
-  assert.equal(await page.locator('#screen').getAttribute('data-effect'),'lcd-light');
-  assert.equal(await page.evaluate(() => document.activeElement.id),'screen');
+  await effectSelect.focus();
+  await expectInput();
+  await page.keyboard.up('ArrowRight');
+  await page.keyboard.press('c');
+  assert.equal(await effectSelect.inputValue(),'clean');
+  assert.equal(await page.locator('#screen').getAttribute('data-effect'),'clean');
+  assert.equal(await page.evaluate(() => document.activeElement.id),'display-effect');
   assert.equal(await page.locator('#rom-status').textContent(),'Running');
-  await inputFrames();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(() => document.activeElement.id),'screen');
+  await page.keyboard.down('ArrowRight');
   await expectInput(0,2);
-  await page.locator('#display-effect').selectOption('clean');
   await page.keyboard.up('ArrowRight');
   await expectInput();
   for (const model of ['crystal','mono','color']) {
@@ -272,8 +298,7 @@ try {
   await load();
   assert.equal(requests.length, countBeforeFile, 'local ROM selection must not send requests');
   assert.equal(await page.locator('#rom-title').textContent(), 'keypad-horizontal.ws');
-  await page.locator('#rom').setInputFiles({name:'empty.ws',mimeType:'application/octet-stream',buffer:Buffer.alloc(0)});
-  await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Expected a 128 KiB'));
+  await rejectEmptyRom();
   assert.equal(await page.getByRole('alert').filter({ hasText:'Could not load' }).isVisible(), true);
   assert.equal(await page.locator('#rom-title').textContent(), 'keypad-horizontal.ws', 'invalid file preserves cartridge');
   assert.equal(await page.locator('#rom-status').textContent(), 'Running');
@@ -404,7 +429,7 @@ try {
   console.log('Production base path, Wasm loading, local-only cartridges and no browser errors passed');
 
   // Isolated fault injection: no production network/service is modified.
-  const recovery = await browser.newContext({ viewport:{width:1440,height:900} });
+  const recovery = await browser.newContext({ viewport:{width:812,height:375}, isMobile:true, hasTouch:true });
   await recovery.addInitScript(observeFrameProgress);
   await recovery.addInitScript(() => localStorage.setItem('wonderswan:display:v1','clean'));
   page = await recovery.newPage();
@@ -422,6 +447,8 @@ try {
   releaseWasm();
   await page.waitForFunction(() => !document.querySelector('#retry').hidden);
   assert.match(await page.locator('#error').textContent(), /Could not initialize/);
+  await checkInViewport('#error');
+  await checkInViewport('#retry');
   await page.unroute('**/*.wasm');
   await page.locator('#retry').click();
   await page.waitForFunction(() => !document.querySelector('#model').disabled);
@@ -566,10 +593,41 @@ try {
   await page.evaluate(() => window.scrollTo(0,0));
   await checkLayout({ orientation:'vertical', kind:'portrait' });
   await screenshot('mobile-vertical');
+  await page.setViewportSize({ width:375,height:736 });
+  await page.evaluate(() => window.scrollTo(0,0));
+  await checkLayout({ orientation:'vertical', kind:'portrait' });
+  await checkInViewport('#screen');
+  for (const button of await page.locator('#touch-controls button').all()) {
+    await checkInViewport(`[data-button="${await button.getAttribute('data-button')}"]`);
+  }
+  await screenshot('mobile-vertical-reduced-height', false);
+  await touch(2,'touchStart');
+  await expectInput(0,0,2);
+  await touch(2,'touchEnd');
+  await expectInput();
+  await page.setViewportSize({ width:375,height:812 });
+  if (await page.evaluate(() => document.fullscreenEnabled)) {
+    await page.locator('#fullscreen').tap();
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+    await checkLayout({ orientation:'vertical', kind:'portrait' });
+    const image = await page.locator('#screen').boundingBox();
+    await rejectEmptyRom();
+    await checkLayout({ orientation:'vertical', kind:'portrait' });
+    assert.deepEqual(await page.locator('#screen').boundingBox(), image, 'feedback preserves portrait fullscreen picture geometry');
+    await checkInViewport('#screen');
+    await checkInViewport('#error');
+    await screenshot('mobile-vertical-fullscreen-feedback', false);
+    await page.locator('#fullscreen').tap();
+    await page.waitForFunction(() => !document.fullscreenElement);
+    await load(verticalRom);
+  }
   await page.setViewportSize({ width:812,height:375 });
   await page.evaluate(() => window.scrollTo(0,0));
   await checkLayout({ orientation:'vertical', kind:'landscape' });
   await screenshot('mobile-landscape-vertical', false);
+  await rejectEmptyRom();
+  assert.equal(await page.evaluate(() => window.scrollY), 0, 'invalid ROM does not require scrolling to see feedback');
+  await checkInViewport('#error');
   const points = [];
   for (const [index, button] of [16,512,4].entries()) {
     const box = await page.locator(`[data-button="${button}"]`).boundingBox();
