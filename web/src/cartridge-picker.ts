@@ -5,6 +5,11 @@ import {
 const element = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
 const sameKey = (a: IDBValidKey, b: IDBValidKey) => a === b || indexedDB.cmp(a, b) === 0;
 
+function warningName(name: string) {
+  const characters = Array.from(name);
+  return characters.length > 40 ? `${characters.slice(0, 39).join("")}…` : name;
+}
+
 export function cartridgePicker(
   trigger: HTMLButtonElement,
   onOpen: () => void,
@@ -28,7 +33,7 @@ export function cartridgePicker(
   let entries: CartridgeEntry[] = [];
   let listRevision = 0;
   let removing: IDBValidKey | undefined;
-  let lastRemoval: { button: HTMLButtonElement; bounds: DOMRect; time: number } | undefined;
+  let lastRemoval: { bounds: DOMRect; time: number } | undefined;
 
   function updateNotice() {
     const text = noticeSource === "operation" ? operation.textContent
@@ -57,7 +62,7 @@ export function cartridgePicker(
   function updateRetention() {
     const name = [...failures.values()].at(-1);
     retention.textContent = name
-      ? `Could not remember ${name}. Allow or free browser storage, then reopen the original file to retry.`
+      ? `Could not remember ${warningName(name)}. Allow or free browser storage, then reopen the original file to retry.`
       : "";
     updateNotice();
   }
@@ -90,7 +95,7 @@ export function cartridgePicker(
       remove.setAttribute("aria-label", `Remove ${name}`);
       if (removing !== undefined && sameKey(removing, key)) remove.setAttribute("aria-disabled", "true");
       remove.addEventListener("click", event => {
-        if (event.detail) lastRemoval = { button: remove, bounds: remove.getBoundingClientRect(), time: event.timeStamp };
+        if (event.detail) lastRemoval = { bounds: remove.getBoundingClientRect(), time: event.timeStamp };
         void removeEntry(entry, remove);
       });
       if (counts.get(name)! > 1) {
@@ -120,6 +125,7 @@ export function cartridgePicker(
       listStatus.textContent = "";
     } catch {
       if (revision === listRevision && dialog.open) {
+        render([]);
         listStatus.textContent = "Could not read My cartridges. Reopen the picker to retry or open a local ROM.";
       }
     }
@@ -136,14 +142,14 @@ export function cartridgePicker(
       clearProblem(key);
       if (dialog.open) void refreshList();
     } catch {
-      reportProblem(key, `Could not remove ${name}. Choose Remove to retry.`, !dialog.open);
+      reportProblem(key, `Could not remove ${warningName(name)}. Choose Remove to retry.`, !dialog.open);
     } finally {
       removing = undefined;
       list.querySelector('[aria-disabled="true"]')?.removeAttribute("aria-disabled");
     }
   }
 
-  // Repeated activation must not act on whatever control moves into a removed row.
+  // A removal or its warning can move a different control under a repeat tap.
   const suppressEnterRepeat = (event: KeyboardEvent) => {
     if (event.key === "Enter" && event.repeat) event.preventDefault();
   };
@@ -151,10 +157,10 @@ export function cartridgePicker(
   dialog.addEventListener("keydown", suppressEnterRepeat);
   document.addEventListener("click", event => {
     if (!lastRemoval || !event.detail) return;
-    const { button, bounds, time } = lastRemoval;
+    const { bounds, time } = lastRemoval;
     const nearby = event.clientX >= bounds.left - 8 && event.clientX <= bounds.right + 8
       && event.clientY >= bounds.top - 8 && event.clientY <= bounds.bottom + 8;
-    if (!button.isConnected && (event.detail > 1 || (nearby && event.timeStamp - time < 500))) {
+    if (nearby && event.timeStamp - time < 500) {
       event.preventDefault();
       event.stopPropagation();
     } else {

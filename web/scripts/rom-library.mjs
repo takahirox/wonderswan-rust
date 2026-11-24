@@ -241,14 +241,62 @@ export async function romLibraryChecks(browser, base, errors) {
     assert.equal(await picker.isVisible(),true,'held Enter does not activate the next focused control');
     await page.keyboard.press('Escape');
     await status(page,'Running');
+
+    // A deletion blocked in another tab queues opens without notifying them.
+    const otherTab = await context.newPage();
+    await otherTab.goto(base);
+    await otherTab.evaluate(async () => {
+      window.libraryConnection = await new Promise((resolve,reject) => {
+        const request = indexedDB.open('wonderswan-rust:cartridges',1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      await new Promise((resolve,reject) => {
+        const deletion = indexedDB.deleteDatabase('wonderswan-rust:cartridges');
+        window.libraryDeletion = new Promise(done => { deletion.onsuccess = done; });
+        deletion.onblocked = resolve;
+        deletion.onerror = () => reject(deletion.error);
+      });
+    });
+    await page.bringToFront();
+    await page.evaluate(() => {
+      const open = indexedDB.open.bind(indexedDB);
+      window.queuedOpens = [];
+      indexedDB.open = (...args) => {
+        const request = open(...args);
+        window.queuedOpens.push(new Promise(resolve => {
+          request.addEventListener('success',resolve,{once:true});
+          request.addEventListener('error',resolve,{once:true});
+        }));
+        return request;
+      };
+    });
+    const queued = {...first,name:'queued-import.ws'};
+    await importFile(page,queued); await title(page,queued.name); await status(page,'Running');
+    await openCartridges(page);
+    await page.waitForFunction(() =>
+      document.querySelector('#library-list-status').textContent.includes('Reopen the picker to retry') &&
+      document.querySelector('#library-retention').textContent.includes('reopen the original file to retry'),
+    null,{timeout:5000});
+    assert.equal(await picker.locator('#cartridge-list li').count(),0,'failed refresh clears stale rows');
+    await otherTab.evaluate(async () => { window.libraryConnection.close(); await window.libraryDeletion; });
+    await page.evaluate(async () => { await Promise.all(window.queuedOpens); });
+    assert.equal(await page.evaluate(async () => (await indexedDB.databases())
+      .some(db => db.name === 'wonderswan-rust:cartridges')),false,'expired opens cannot recreate the database or write');
+    await otherTab.close();
+    await page.keyboard.press('Escape');
+    await importFile(page,queued);
+    await openCartridges(page); await countRows(page,1);
+    assert.equal(await picker.locator('#library-list-status').textContent(),'');
+    assert.equal(await picker.locator('#library-retention').textContent(),'');
   } finally { await context.close(); }
-  console.log('Real IndexedDB cartridge commits, deduplication, raw identity, reload, selection, corruption, model validation, removal, stale reads and local-only requests passed');
+  console.log('Real IndexedDB cartridge commits, deduplication, raw identity, reload, corruption, model validation, removal, stale reads, blocked deletion recovery and local-only requests passed');
 
   const mobile = await browser.newContext({viewport:{width:375,height:812},isMobile:true,hasTouch:true});
   const phone = await mobile.newPage();
   phone.on('pageerror',error => errors.push(error.message));
   const cdp = await mobile.newCDPSession(phone);
-  const save = await fixture('sram32-common');
+  const save = await fixture('sram32-common','battery-save.ws');
   const origin = new URL(base).origin;
   try {
     await phone.goto(base); await ready(phone);
@@ -282,34 +330,46 @@ export async function romLibraryChecks(browser, base, errors) {
     await phone.waitForFunction(() => document.querySelector('#library-list-status').textContent === '');
     await phone.keyboard.press('Escape');
     await cdp.send('Storage.overrideQuotaForOrigin',{origin,quotaSize:1});
-    const longName = `${'local-cartridge-'.repeat(14)}.wsc`;
-    await importFile(phone,{...first,name:longName}); await title(phone,longName);
-    await textIncludes(phone,'#cartridge-notice-message','Could not remember '+longName);
+    const longName = `${'local-cartridge-'.repeat(15)}tail-name-end.wsc`;
+    await importFile(phone,{...save,name:longName});
+    await textIncludes(phone,'#cartridge-notice-message','Could not remember local-cartridge-');
+    const saveWarning = phone.locator('#notice');
+    assert.match(await saveWarning.textContent(),/local save could not be read/);
+    await saveWarning.scrollIntoViewIfNeeded();
+    const progressBounds = await saveWarning.boundingBox();
+    const storageBounds = await phone.locator('#cartridge-notice').boundingBox();
+    assert.ok(storageBounds.y >= progressBounds.y+progressBounds.height,'storage warning leaves progress feedback clear');
+    assert.ok(storageBounds.height < 120,'long filenames keep the warning compact');
     await status(phone,'Running');
+    const picker = await openCartridges(phone); await countRows(phone,0);
+    await phone.keyboard.press('Escape');
+    await cdp.send('Storage.overrideQuotaForOrigin',{origin});
+    await importFile(phone,second); await title(phone,second.name);
     await phone.setViewportSize({width:680,height:340});
-    const warning = await phone.locator('#cartridge-notice').boundingBox();
-    assert.ok(warning.y >= 0 && warning.y+warning.height <= 340);
-    const picker = await openCartridges(phone);
-    await countRows(phone,0);
+    await openCartridges(phone); await countRows(phone,1);
     await textIncludes(phone,'#library-retention','Allow or free browser storage');
-    assert.ok(await picker.getByRole('button',{name:'Open local ROM…'}).isVisible());
+    assert.ok(await phone.locator('#cartridge-list').evaluate(list => list.clientHeight >= 52));
+    await picker.getByRole('button',{name:'Open local ROM…'}).tap({trial:true});
+    await picker.getByRole('button',{name:`Remove ${second.name}`,exact:true}).tap();
+    await countRows(phone,0);
     await phone.keyboard.press('Escape');
     await phone.getByRole('button',{name:'Dismiss ROM storage warning'}).tap();
     assert.equal(await phone.locator('#cartridge-notice').isVisible(),false);
-    await cdp.send('Storage.overrideQuotaForOrigin',{origin});
 
     // Force an abort after a successful binary put. Both stores must roll back.
     await phone.evaluate(() => {
-      const put = IDBObjectStore.prototype.put;
-      IDBObjectStore.prototype.put = function (...args) {
-        const request = put.apply(this,args);
-        if (this.name === 'roms' && window.abortWrite) {
-          window.abortWrite = false;
-          request.addEventListener('success',() => this.transaction.abort(),{once:true});
-        }
-        return request;
-      };
-      window.abortWrite = true;
+      for (const method of ['put','delete']) {
+        const original = IDBObjectStore.prototype[method];
+        IDBObjectStore.prototype[method] = function (...args) {
+          const request = original.apply(this,args);
+          if (this.name === 'roms' && window.abortOperation === method) {
+            window.abortOperation = null;
+            request.addEventListener('success',() => this.transaction.abort(),{once:true});
+          }
+          return request;
+        };
+      }
+      window.abortOperation = 'put';
     });
     await importFile(phone,{...first,name:'aborted.ws'}); await status(phone,'Running');
     await textIncludes(phone,'#cartridge-notice-message','Could not remember aborted.ws');
@@ -335,6 +395,7 @@ export async function romLibraryChecks(browser, base, errors) {
     const frames = await phone.locator('#debug-frames').textContent();
     await chooseRemembered(phone,longName); await status(phone,'Paused');
     assert.equal(await phone.locator('#debug-frames').textContent(),frames);
+    const remove = picker.getByRole('button',{name:`Remove ${longName}`,exact:true});
     for (const [width,height] of [[375,812],[680,340]]) {
       await phone.setViewportSize({width,height});
       await phone.locator('#load-rom').tap();
@@ -348,15 +409,28 @@ export async function romLibraryChecks(browser, base, errors) {
       assert.equal(fits.wide,false);
       if (height === 340) assert.equal(fits.tall,true);
       assert.ok((await picker.getByRole('button',{name:'Open local ROM…'}).boundingBox()).y+44 <= height);
-      if (height === 812) await phone.keyboard.press('Escape');
+      if (height === 812) {
+        await phone.evaluate(() => { window.abortOperation = 'delete'; });
+        const target = await remove.boundingBox();
+        const x = target.x+target.width/2, y = target.y+12;
+        await phone.touchscreen.tap(x,y);
+        await textIncludes(phone,'#library-operation','Could not remove');
+        const underTap = await phone.evaluate(({x,y}) =>
+          document.elementFromPoint(x,y)?.closest('button')?.getAttribute('aria-label'),{x,y});
+        assert.equal(underTap,`Remove ${save.name}`,'the warning moves another Remove under the first tap');
+        await phone.touchscreen.tap(x,y);
+        assert.equal(await picker.getByRole('button',{name:`Remove ${save.name}`,exact:true}).getAttribute('aria-disabled'),null);
+        assert.equal(await picker.locator('#cartridge-list li').count(),10);
+        await phone.keyboard.press('Escape');
+      }
     }
-    const remove = picker.getByRole('button',{name:`Remove ${longName}`,exact:true});
     await remove.scrollIntoViewIfNeeded();
     const bounds = await remove.boundingBox();
     assert.ok(bounds.height >= 44);
     const x = bounds.x+bounds.width/2, y = bounds.y+bounds.height/2;
     await phone.touchscreen.tap(x,y);
     await countRows(phone,9);
+    assert.equal(await picker.locator('#library-operation').textContent(),'');
     await phone.touchscreen.tap(x,y);
     assert.equal(await picker.isVisible(),true,'repeat tap does not launch or dismiss');
     await countRows(phone,9);

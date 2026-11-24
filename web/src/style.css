@@ -256,13 +256,23 @@ dialog p { margin-top: 6px; color: var(--muted); }
   padding: 12px;
 }
 #cartridge-picker .dialog-heading { padding: 0; }
+#cartridge-picker .dialog-heading, #open-local-rom { flex: none; }
+.cartridge-picker-warnings {
+  display: grid;
+  gap: 4px;
+  flex: none;
+  max-height: 25dvh;
+  overflow: auto;
+}
+.cartridge-picker-warnings:not(:has(p:not(:empty))) { display: none; }
 #cartridge-picker [role="status"]:empty { display: none; }
 #cartridge-picker p { margin: 0; overflow-wrap: anywhere; }
 #my-cartridges {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-height: 0;
+  /* Keep one full touch row usable even when warnings need to scroll. */
+  min-height: calc(1lh + 56px);
 }
 #my-cartridges-title { margin: 0; }
 #cartridge-list {
@@ -288,13 +298,11 @@ dialog p { margin-top: 6px; color: var(--muted); }
 }
 .cartridge-choice small { display: block; color: var(--muted); }
 #cartridge-notice {
-  position: fixed;
-  z-index: 2;
-  inset: auto max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) auto;
-  width: min(360px, calc(100% - 2 * max(12px, env(safe-area-inset-left), env(safe-area-inset-right))));
+  width: min(360px, 100%);
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-top: 8px;
   padding: 8px 10px;
   color: #693417;
   background: #fff7e8;
@@ -302,9 +310,8 @@ dialog p { margin-top: 6px; color: var(--muted); }
   border-radius: 9px;
   font-size: 14px;
 }
-#cartridge-notice p { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-#cartridge-notice-dismiss { flex: none; width: 44px; font-size: 20px; }
-#player:has(#cartridge-picker[open]) #cartridge-notice { visibility: hidden; }
+#cartridge-notice p { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+#cartridge-notice-dismiss { flex: none; width: 44px; margin: 0; font-size: 20px; }
 #rtc-mode { display: block; margin-top: 4px; }
 dialog label[for="rtc-mode"] { display: block; margin-top: 8px; }
 .debug-setting { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 8px; }

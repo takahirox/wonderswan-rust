@@ -2,6 +2,7 @@ const databaseName = "wonderswan-rust:cartridges";
 const metadata = "cartridges";
 const roms = "roms";
 const stores = [metadata, roms];
+const openTimeoutMs = 2000;
 export const maxRomBytes = 64 * 1024 * 1024;
 
 export interface CartridgeEntry {
@@ -23,13 +24,17 @@ function filename(record: unknown): string | undefined {
 function openLibrary(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(databaseName, 1);
-    let blocked = false;
-    request.onblocked = () => {
-      blocked = true;
-      reject(new Error("Cartridge storage is busy."));
+    let expired = false;
+    const fail = (error: unknown) => {
+      expired = true;
+      window.clearTimeout(timeout);
+      reject(error);
     };
+    // An open queued behind a blocked deletion may never receive a blocked event.
+    const timeout = window.setTimeout(() => fail(new Error("Cartridge storage timed out.")), openTimeoutMs);
+    request.onblocked = () => fail(new Error("Cartridge storage is busy."));
     request.onupgradeneeded = () => {
-      if (blocked) {
+      if (expired) {
         request.transaction!.abort();
         return;
       }
@@ -38,13 +43,14 @@ function openLibrary(): Promise<IDBDatabase> {
         request.result.createObjectStore(roms);
       } catch (error) {
         request.transaction!.abort();
-        reject(error);
+        fail(error);
       }
     };
-    request.onerror = () => reject(request.error);
+    request.onerror = () => fail(request.error);
     request.onsuccess = () => {
+      window.clearTimeout(timeout);
       const db = request.result;
-      if (blocked) db.close();
+      if (expired) db.close();
       else {
         db.onversionchange = () => db.close();
         resolve(db);
