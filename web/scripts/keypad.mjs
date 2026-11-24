@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { chooseRemembered } from './rom-library.mjs';
 
 const vectors = [
   ['ArrowUp',16,0,1,0], ['ArrowRight',32,0,2,0],
@@ -28,6 +29,7 @@ export async function keypadChecks(browser, base, errors) {
   page.on('request', request => requests.push(request.method()));
   const click = id => page.locator(id).evaluate(button => button.click());
   const focus = () => page.locator('#screen').focus();
+  const playerOrientation = () => page.locator('#player').getAttribute('data-orientation');
   async function setEffect(mode) {
     await page.locator('#display-effect').selectOption(mode);
     assert.equal(await page.locator('#rom-status').textContent(), 'Running');
@@ -68,8 +70,9 @@ export async function keypadChecks(browser, base, errors) {
   async function touch(id, button) {
     const ended = touches.filter(point => point.id === id);
     if (button !== null) {
-      await page.locator('#touch-controls').scrollIntoViewIfNeeded();
-      const box = await page.locator(`[data-button="${button}"]`).boundingBox();
+      const target = page.locator(`[data-button="${button}"]`);
+      await target.scrollIntoViewIfNeeded();
+      const box = await target.boundingBox();
       touches.push({id,x:box.x+box.width/2,y:box.y+box.height/2});
     } else {
       touches = touches.filter(point => point.id !== id);
@@ -83,6 +86,14 @@ export async function keypadChecks(browser, base, errors) {
     touches=[];
     await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
   }
+  const orientationSelect = page.locator('#orientation');
+  async function chooseOrientation(preference) {
+    const state = await page.locator('#rom-status').textContent();
+    await click('#settings');
+    await orientationSelect.selectOption(preference);
+    await click('#help-close');
+    await page.waitForFunction(state => document.querySelector('#rom-status').textContent === state,state);
+  }
   async function visibility(hidden) {
     await page.evaluate(hidden => {
       if (hidden) Object.defineProperty(document,'hidden',{configurable:true,value:true});
@@ -91,7 +102,7 @@ export async function keypadChecks(browser, base, errors) {
     }, hidden);
   }
   async function layout(orientation, effect = false) {
-    await page.waitForFunction(orientation => document.querySelector('#display').dataset.orientation === orientation,orientation);
+    await page.waitForFunction(orientation => document.querySelector('#player').dataset.orientation === orientation,orientation);
     // ResizeObserver runs asynchronously after model/load/fullscreen transitions.
     await page.waitForTimeout(60);
     const result = await page.locator('#screen').evaluate(canvas => {
@@ -151,10 +162,19 @@ export async function keypadChecks(browser, base, errors) {
       }
     });
     await page.waitForFunction(() => !document.querySelector('#model').disabled);
+    await click('#settings');
+    assert.equal(await page.getByRole('combobox',{name:'Orientation',exact:true}).count(),1);
+    assert.equal(await orientationSelect.isDisabled(),true);
+    assert.equal(await orientationSelect.inputValue(),'auto');
+    assert.equal(await page.locator('#player').getAttribute('data-orientation'),'horizontal');
+    assert.ok(await page.evaluate(() => !Object.keys(localStorage).some(key => key.startsWith('wonderswan:orientation:'))));
+    await click('#help-close');
     assert.equal(await page.locator('[data-button]').count(),11);
-    for (const [,mask] of vectors) {
+    const labels = ['X1 (Up arrow / W)','X2 (Right arrow / D)','X3 (Down arrow / S)','X4 (Left arrow / A)',
+      'Y1 (I)','Y2 (L)','Y3 (K)','Y4 (J)','Start (Enter)','A (Z)','B (X)'];
+    for (const [index,[,mask]] of vectors.entries()) {
       const button = page.locator(`[data-button="${mask}"]`);
-      assert.ok(await button.getAttribute('aria-label') || await button.textContent(),'named touch button');
+      assert.equal(await button.getAttribute('aria-label'),labels[index]);
     }
     // Test exported adapter metadata in a separate real Wasm instance, including
     // rejected operations. The production player's machine is never replaced.
@@ -275,7 +295,7 @@ export async function keypadChecks(browser, base, errors) {
       if (action==='invalid') {
         await page.locator('#rom').setInputFiles({name:'bad.ws',mimeType:'application/octet-stream',buffer:Buffer.from([0])});
         await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Could not load'));
-        assert.equal(await page.locator('#display').getAttribute('data-orientation'),'vertical');
+        assert.equal(await page.locator('#player').getAttribute('data-orientation'),'vertical');
         expectedError = await page.locator('#error').textContent();
         await expect(); // the retained CPU reads cleared input before restarting
         await click('#reset');
@@ -308,6 +328,106 @@ export async function keypadChecks(browser, base, errors) {
         await setEffect('clean');
       }
     }
+
+    const portrait = {width:375,height:812}, landscape = {width:812,height:375};
+    const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+    const orientationKey = bytes => `wonderswan:orientation:v1:${digest(bytes)}`;
+    const sameName = 'same-name.ws';
+    await page.setViewportSize(portrait);
+    await load(horizontal,sameName);
+    await layout('horizontal');
+    await touch(1,16);await expect(0,1);
+    await page.setViewportSize(landscape);
+    await layout('horizontal');
+    await expect(); // A responsive layout change also releases held input.
+    await touch(1,null);
+    await chooseOrientation('vertical');
+    await expect();
+    await layout('vertical');
+    await page.setViewportSize(portrait);
+    await layout('vertical');
+    await touch(1,32);await expect(0,2);
+    await chooseOrientation('auto');
+    await expect(); // A captured X2 must clear without waiting for its release.
+    await touch(1,null);await expect();
+    await chooseOrientation('vertical');
+    await page.setViewportSize(landscape);
+    if (await page.evaluate(() => document.fullscreenEnabled)) {
+      await page.locator('#fullscreen').click();
+      await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+      await layout('vertical');
+      await page.evaluate(() => document.exitFullscreen());
+      await page.waitForFunction(() => !document.fullscreenElement);
+    }
+
+    await load(vertical,sameName);
+    assert.equal(await orientationSelect.inputValue(),'auto','same filename with different bytes starts in Auto');
+    await layout('vertical');
+    await setEffect('lcd-authentic');
+    await click('#pause');
+    await click('#settings');
+    await page.locator('#debug-toggle').check();
+    const frames = await page.locator('#debug-frames').textContent();
+    assert.ok(Number(frames) > 0);
+    const pixels = await page.locator('#screen').evaluate(canvas => canvas.toDataURL());
+    await orientationSelect.selectOption('horizontal');
+    await click('#help-close');
+    await layout('horizontal',true);
+    assert.equal(await page.locator('#rom-status').textContent(),'Paused');
+    assert.equal(await page.locator('#debug-frames').textContent(),frames);
+    assert.equal(await page.locator('#screen').evaluate(canvas => canvas.toDataURL()),pixels);
+    await page.setViewportSize(portrait);
+    await layout('horizontal',true);
+    await click('#pause');
+    await setEffect('clean');
+    await touch(1,256);await expect(1);
+    await touch(1,null);await expect();
+
+    await page.reload();
+    await page.waitForFunction(() => !document.querySelector('#model').disabled);
+    await chooseRemembered(page,sameName,digest(vertical));
+    await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
+    await expect();
+    assert.equal(await orientationSelect.inputValue(),'horizontal');
+    await layout('horizontal');
+    await load(horizontal,'renamed.ws');
+    assert.equal(await orientationSelect.inputValue(),'vertical');
+    await click('#reset');await expect();
+    assert.equal(await playerOrientation(),'vertical');
+    await page.locator('#model').selectOption('color');await expect();
+    assert.equal(await playerOrientation(),'vertical');
+    await chooseOrientation('auto');
+    await layout('horizontal');
+    assert.equal(await page.evaluate(key => localStorage.getItem(key),orientationKey(horizontal)),null);
+    await load(horizontal,sameName);
+    assert.equal(await orientationSelect.inputValue(),'auto');
+
+    await page.evaluate(key => localStorage.setItem(key,'sideways'),orientationKey(vertical));
+    await load(vertical,sameName);
+    assert.equal(await orientationSelect.inputValue(),'auto','malformed override falls back to Auto');
+    assert.equal(await playerOrientation(),'vertical');
+    await click('#pause');
+    const progress = () => page.evaluate(() => Object.entries(localStorage).filter(([key]) => !key.startsWith('wonderswan:orientation:')).sort());
+    const records = await progress();
+    assert.ok(records.some(([key]) => key.startsWith('wonderswan:save:')));
+    await page.evaluate(() => {
+      for (const method of ['getItem','setItem','removeItem']) {
+        const original = Storage.prototype[method];
+        Storage.prototype[method] = function(key,...args) {
+          if (key.startsWith('wonderswan:orientation:')) throw new DOMException('test preference unavailable','SecurityError');
+          return original.call(this,key,...args);
+        };
+      }
+    });
+    await chooseOrientation('horizontal');
+    assert.equal(await playerOrientation(),'horizontal','write failure keeps the live choice');
+    assert.deepEqual(await progress(),records);
+    await load(horizontal,sameName);
+    await load(vertical,'renamed.ws');
+    assert.equal(await orientationSelect.inputValue(),'auto','read failure falls back to Auto');
+    assert.equal(await playerOrientation(),'vertical');
+    console.log('Per-ROM orientation overrides, live input clearing, paused frame, resize/fullscreen, restart/model, remembered selection, rename/reload, Auto and storage fallback passed');
+
     await load(vertical,'renamed.ws');
     await click('#pause');
     const key=`wonderswan:save:v1:${createHash('sha256').update(vertical).digest('hex')}`;

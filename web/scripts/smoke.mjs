@@ -129,13 +129,16 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop' } = {}
     const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
     return {
       image:rect('#screen'), frame:rect('#display'), effect:rect('#screen-effect'),
-      toolbar:rect('#controls'), cartridge:rect('.cartridge'), touch:rect('#touch-controls'),
-      xPad:rect('.dpad:first-child'), yPad:rect('.dpad:nth-child(2)'), actions:rect('.action-row'),
+      toolbar:rect('#controls'), cartridge:rect('.cartridge'),
+      xPad:rect('.x-pad'), yPad:rect('.y-pad'),
+      touch:[...document.querySelectorAll('#touch-controls button')].map(button => ({
+        mask:Number(button.dataset.button), ...button.getBoundingClientRect().toJSON(),
+      })),
       overflow:document.documentElement.scrollWidth > innerWidth,
       backing:[canvas.width,canvas.height], pixels:getComputedStyle(canvas).imageRendering,
     };
   });
-  const { image, frame, effect, toolbar, cartridge, touch, xPad, yPad, actions } = layout;
+  const { image, frame, effect, toolbar, cartridge, touch, xPad, yPad } = layout;
   assert.equal(layout.overflow, false, 'no horizontal overflow');
   assert.deepEqual(layout.backing, [224,144]);
   const ratio = orientation === 'vertical' ? 144/224 : 224/144;
@@ -151,10 +154,35 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop' } = {}
     assert.ok(frame.width > cartridge.width * 1.8, 'screen dominates the desktop layout');
   } else {
     assert.ok(cartridge.top >= toolbar.bottom, 'slot follows the toolbar');
-    if (kind === 'portrait') assert.ok(touch.top >= cartridge.bottom, 'controller follows the slot');
-    else {
-      assert.ok(xPad.right < frame.left && frame.right < yPad.left && frame.right < actions.left);
-      assert.ok(touch.top >= frame.top && touch.bottom <= toolbar.top, 'both keypads and actions fit beside the image');
+    const overlaps = (a,b) => a.top < b.bottom && a.bottom > b.top && a.left < b.right && a.right > b.left;
+    assert.deepEqual(touch.map(b => b.mask).sort((a,b) => a-b), [2,4,8,16,32,64,128,256,512,1024,2048]);
+    const button = mask => touch.find(b => b.mask === mask);
+    const a = button(4), b = button(8), start = button(2);
+    for (const [index,target] of touch.entries()) {
+      assert.ok(target.width >= 44 && target.height >= 44, `button ${target.mask} has a practical touch target`);
+      assert.ok(target.left >= 0 && target.right <= page.viewportSize().width && target.bottom <= toolbar.top,
+        `button ${target.mask} fits horizontally and precedes the toolbar`);
+      assert.ok(!overlaps(target,frame), `button ${target.mask} clears the screen`);
+      assert.ok(touch.slice(index+1).every(other => !overlaps(target,other)), `button ${target.mask} clears other targets`);
+    }
+    for (const masks of [[16,32,64,128],[256,512,1024,2048]]) {
+      const order = orientation === 'horizontal' ? masks : [...masks.slice(1),masks[0]];
+      const [up,right,down,left] = order.map(button);
+      assert.ok(up.top < left.top && left.top === right.top && down.top > left.top);
+      assert.ok(left.left < up.left && up.left === down.left && down.left < right.left);
+    }
+    assert.ok(a.top < b.top, 'A is above B');
+    if (orientation === 'horizontal') {
+      assert.ok(yPad.bottom < xPad.top && yPad.left === xPad.left && xPad.right < b.left && a.left > b.left);
+      if (kind === 'landscape') {
+        assert.ok(xPad.right < frame.left && frame.right < b.left && frame.right < start.left);
+      } else {
+        assert.ok(touch.every(target => target.top >= frame.bottom), 'horizontal controller follows the screen');
+      }
+    } else {
+      assert.ok(yPad.right < xPad.left && yPad.top === xPad.top && a.left < b.left);
+      assert.ok(frame.right <= a.left && frame.right <= start.left && b.bottom <= yPad.top && start.bottom <= xPad.top);
+      if (kind !== 'landscape') assert.ok(frame.bottom <= yPad.top, 'vertical keypads are below the screen');
     }
   }
   for (const selector of ['#model','#pause','#reset','#load-rom','#fullscreen','#settings','#sound','#volume','#display-effect']) {
@@ -162,14 +190,8 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop' } = {}
     const viewport = page.viewportSize();
     assert.ok(box && box.x >= 0 && box.x + box.width <= viewport.width, `${selector} fits viewport`);
     assert.ok(box.height >= 44, `${selector} has practical touch target`);
-    if (kind === 'landscape') {
+    if (kind === 'landscape' && !['#model','#load-rom'].includes(selector)) {
       assert.ok(box.y >= 0 && box.y + box.height <= viewport.height, `${selector} fits the first landscape viewport`);
-    }
-  }
-  if (kind !== 'desktop') {
-    for (const button of await page.locator('#touch-controls button').all()) {
-      const box = await button.boundingBox();
-      assert.ok(box && box.width >= 44 && box.height >= 44, `${await button.textContent()} has a practical touch target`);
     }
   }
   return frame;
@@ -557,7 +579,7 @@ try {
   await page.goto(base);
   await page.waitForFunction(() => !document.querySelector('#model').disabled);
   await checkLayout({ kind:'portrait' });
-  assert.equal(await page.locator('#touch-controls').isVisible(), true);
+  assert.equal(await page.locator('#touch-controls .dpad:visible').count(), 2);
   await screenshot('mobile-empty');
   assert.equal(await page.getByRole('slider',{name:'Volume',exact:true}).inputValue(),'70');
   await page.locator('#sound').tap();
@@ -566,7 +588,8 @@ try {
   assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false');
   await page.locator('#volume').tap();
   await load();
-  await screenshot('mobile-playing');
+  await checkLayout({ kind:'portrait' });
+  await screenshot('mobile-playing', false);
   const mobileEffect = page.locator('#display-effect');
   for (const effect of ['clean','retro-crt']) {
     await mobileEffect.selectOption(effect);
@@ -651,6 +674,9 @@ try {
     await checkLayout({ orientation:'vertical', kind:'portrait' });
     const image = await page.locator('#screen').boundingBox();
     await rejectEmptyRom();
+    await checkInViewport('#error');
+    await checkInViewport('#load-rom');
+    await page.evaluate(() => { document.fullscreenElement.scrollTop = 0; });
     await checkLayout({ orientation:'vertical', kind:'portrait' });
     assert.deepEqual(await page.locator('#screen').boundingBox(), image, 'feedback preserves portrait fullscreen picture geometry');
     await checkInViewport('#screen');
@@ -661,12 +687,12 @@ try {
     await load(verticalRom);
   }
   await page.setViewportSize({ width:680,height:340 });
-  async function checkCompactGameplayInViewport() {
+  async function checkGameplayInViewport() {
     assert.equal(await page.evaluate(() => document.activeElement.id), 'screen');
     assert.equal(await page.evaluate(() => {
       const container = document.fullscreenElement ?? document.documentElement;
       return container.scrollWidth > container.clientWidth;
-    }), false, 'no horizontal overflow during compact landscape play');
+    }), false, 'no horizontal overflow during landscape play');
     await checkInViewport('#screen');
     const buttons = await page.locator('#touch-controls button').all();
     assert.equal(buttons.length, 11);
@@ -684,14 +710,14 @@ try {
     assert.ok((await screen.boundingBox()).y < 0, `680×340 ${mode} picker opens from a clipped screen`);
     await (await chooser).setFiles(verticalRom);
     await initial();
-    await checkCompactGameplayInViewport();
+    await checkGameplayInViewport();
 
     const model = page.locator('#model');
     await model.scrollIntoViewIfNeeded();
     assert.ok((await screen.boundingBox()).y < 0, `680×340 ${mode} Console is reached from a clipped screen`);
     await model.selectOption(mode === 'windowed' ? 'color' : 'crystal');
     await initial();
-    await checkCompactGameplayInViewport();
+    await checkGameplayInViewport();
 
     const screenBox = await screen.boundingBox();
     const toolbar = await page.locator('#controls').boundingBox();
@@ -713,11 +739,11 @@ try {
   }
   await page.setViewportSize({ width:640,height:360 });
   await load(verticalRom);
-  await checkCompactGameplayInViewport();
+  await checkGameplayInViewport();
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     await page.locator('#fullscreen').tap();
     await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
-    await checkCompactGameplayInViewport();
+    await checkGameplayInViewport();
     await page.evaluate(() => document.exitFullscreen());
     await page.waitForFunction(() => !document.fullscreenElement);
   }
@@ -730,6 +756,7 @@ try {
   assert.equal(await page.evaluate(() => document.activeElement.id), 'load-rom');
   await checkInViewport('#error');
   await checkInViewport('#load-rom');
+  await page.evaluate(() => window.scrollTo(0,0));
   const points = [];
   for (const [index, button] of [16,512,4].entries()) {
     const box = await page.locator(`[data-button="${button}"]`).boundingBox();
@@ -758,8 +785,57 @@ try {
     await page.locator('#fullscreen').tap();
     await page.waitForFunction(() => !document.fullscreenElement);
   }
+  await page.setViewportSize({ width:844,height:520 });
+  await page.evaluate(() => window.scrollTo(0,0));
+  await checkGameplayInViewport();
+  await checkLayout({ kind:'landscape' });
+
+  await page.setViewportSize({ width:1024,height:768 });
+  for (const [file, orientation, minWidth, minHeight] of [
+    [verticalRom, 'vertical', 288, 448],
+    [rom, 'horizontal', 672, 432],
+  ]) {
+    async function checkTabletPicture(mode) {
+      await checkLayout({ orientation, kind:'landscape' });
+      const {width, height} = await checkInViewport('#screen');
+      assert.ok(width >= minWidth && height >= minHeight,
+        `1024×768 ${mode} ${orientation} picture is ${width}×${height}, expected at least ${minWidth}×${minHeight}`);
+    }
+    await load(file);
+    await page.evaluate(() => window.scrollTo(0,0));
+    await checkTabletPicture('windowed');
+    if (await page.evaluate(() => document.fullscreenEnabled)) {
+      await page.locator('#fullscreen').tap();
+      await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+      await checkTabletPicture('fullscreen');
+      await page.locator('#fullscreen').tap();
+      await page.waitForFunction(() => !document.fullscreenElement);
+    }
+  }
+  console.log('1024×768 landscape touch picture size and controller layout passed in both orientations');
+
+  await page.setViewportSize({ width:320,height:568 });
+  async function checkSafeArea(orientation, inset) {
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets:{top:24,bottom:24,left:inset,right:inset} });
+    await page.evaluate(() => window.scrollTo(0,0));
+    await checkLayout({ orientation, kind:'portrait' });
+    assert.deepEqual(await page.locator('main').evaluate(main => {
+      const style = getComputedStyle(main);
+      return [style.paddingTop,style.paddingRight,style.paddingBottom,style.paddingLeft];
+    }), ['24px',`${inset}px`,'24px',`${inset}px`]);
+    for (const target of await page.locator('#display, #touch-controls button').all()) {
+      const box = await target.boundingBox();
+      assert.ok(box.x >= inset && box.x + box.width <= 320 - inset,
+        `${orientation} game and touch targets respect ${inset}px side insets`);
+    }
+  }
+  await checkSafeArea('horizontal',24);
+  await load(verticalRom);
+  await checkSafeArea('vertical',30);
+  await page.locator('#load-rom').scrollIntoViewIfNeeded();
+  await checkInViewport('#load-rom');
   assert.deepEqual(errors, []);
-  console.log('375×812 portrait and 812×375 landscape layout, both cartridge orientations, fullscreen, all touch inputs and combined presses, and mobile Help/Debug passed');
+  console.log('375×812 and 320×568 portrait (including safe-area insets), 812×375 and 844×520 landscape, both cartridge orientations, fullscreen, touch inputs and mobile Help/Debug passed');
   await mobile.close();
   await romLibraryChecks(browser,base,errors);
   assert.deepEqual(errors, []);

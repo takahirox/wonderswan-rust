@@ -45,6 +45,8 @@ export class Saves {
 // Version and physical model select the console slot, never a ROM identity.
 export const consoleKey = (model: string) => `wonderswan:console:v1:${model}`;
 
+export const orientationKey = (saveKey: string) => saveKey.replace(":save:v1:", ":orientation:v1:");
+
 // Independent envelope and key namespace. Failed decoding/import blocks writes
 // for that slot for this session, preserving evidence rather than replacing it.
 export const rtcKey = (saveKey: string) => saveKey.replace(":save:v1:", ":rtc:v1:");

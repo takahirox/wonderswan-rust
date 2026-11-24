@@ -97,21 +97,27 @@ validation does not establish that deployment has happened.
    panel. Diagnostics refresh at most twice per second and provide no CPU
    registers or accuracy claims.
 
-On narrow screens, the toolbar and cartridge slot follow the game screen.
-Small and touch screens show both X and Y keypads plus A, B, and Start. On short
-landscape touch screens, the keypads flank the screen when there is room.
+Small and touch screens show both X and Y keypads plus A, B, and Start. On
+upright phones, the screen and controller come before the toolbar and cartridge
+slot. Horizontal games put Y above X on the left, beside the screen when space
+allows. Vertical games put Y at the lower left and X at the lower right.
 
-Vertical cartridges use their header orientation. The player rotates the native
-image counterclockwise into a 144:224 portrait footprint. The core framebuffer
-and Clean canvas backing stay 224×144; shader history also stays native-sized,
-with output capped at 4× resolution. Pixelated scaling keeps square pixels; controls
-keep their raw hardware identities in either orientation. X1/X2/X3/X4 remain
-Up/Right/Down/Left (or W/D/S/A); Y1/Y2/Y3/Y4 remain I/L/K/J. Keyboard and multiple
-touch presses combine, including two sources holding the same button. Releasing
-one source retains the others. Focus changes, blur and player lifecycle changes
-clear held inputs. Orientation is header metadata, without runtime rotation signaling.
+In Help, **Orientation** defaults to **Auto (ROM header)**. Choose
+**Horizontal** for 224×144 or **Vertical** for a 144×224 picture rotated 90°
+counterclockwise. The picture and touch controls update together without
+restarting. The browser remembers the choice for the ROM contents, even if the
+file is renamed. Choose Auto to clear a cartridge’s override. Turning the phone
+changes the layout to fit the viewport while keeping the game orientation.
 
-See the [player layout screenshots and production-preview results](docs/issue-136-validation.md).
+The keypads retain their hardware labels. From the top, clockwise, each keypad
+reads 1, 2, 3, 4 in Horizontal and 2, 3, 4, 1 in Vertical. X1/X2/X3/X4 use
+Up/Right/Down/Left (or W/D/S/A) in both orientations. Y1/Y2/Y3/Y4 use I/L/K/J.
+Keyboard and multiple touch presses combine. Releasing one source retains the
+others, and focus and player lifecycle changes clear held inputs. The core
+framebuffer, Clean canvas backing and shader history stay at 224×144, with
+shader output capped at 4× resolution.
+
+See the [controller screenshots and production-preview results](docs/issue-142-validation.md).
 
 Cartridge saves are automatic and **browser-local**, keyed by SHA-256 of the
 ROM contents (renaming a file keeps its save; different contents get separate
@@ -246,9 +252,10 @@ input clearing. It checks no ROM network requests or uploads, invalid-file and
 failed-read preservation, same-file reload, asynchronous read/replacement/model/
 restart/modal/visibility races, and execution errors. Dialog focus/Escape,
 conditional resume, Debug Mode, fullscreen and API failures, and initialization
-retry remain covered. Layout checks cover desktop, 375×812 portrait and 812×375
-landscape touch viewports with both cartridge orientations. Both keypads and
-A/B/Start are observed through CPU-produced bit tiles, including combined presses.
+retry remain covered. Layout checks cover desktop, 375×812 portrait, 320×568
+with simulated safe areas, and 812×375 landscape with both game orientations.
+Both keypads and A/B/Start are observed through CPU-produced bit tiles, including
+combined presses.
 Visibility, read failures and API failures are synthetic, not physical-device tests.
 Set `WS_SMOKE_SCREENSHOT=/tmp/wonderswan-playing.png` for a running-player screenshot.
 Set `WS_SMOKE_ARTIFACTS=/tmp/wonderswan-player` for desktop/mobile screenshots
