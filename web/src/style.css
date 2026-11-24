@@ -333,7 +333,8 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
     column-gap: 8px;
   }
   .brand { margin-bottom: 6px; }
-  #player .screen-frame {
+  /* Use the fixed landscape row height for both cartridge orientations. */
+  #player > #display {
     grid-area: 2 / 2;
     align-self: stretch;
     height: auto;
@@ -376,5 +377,4 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   .model-control select { grid-area: 1 / 2 / 3; align-self: center; }
   .model-control .hint { grid-column: 1; align-self: start; }
   #player:fullscreen .cartridge-area { display: contents; }
-  #player:fullscreen .screen-frame { aspect-ratio: auto; }
 }
