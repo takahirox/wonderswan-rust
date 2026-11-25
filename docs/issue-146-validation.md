@@ -157,6 +157,35 @@ safe width after cartridge selection. The two-column layout fits down to
 220 CSS pixels of safe width. At 218 CSS pixels, A/B and Start move below
 the pads and normal vertical page scrolling keeps the controls reachable.
 
+## Short landscape and narrow portrait recheck
+
+Playwright 1.64.1 used native fullscreen in headless Chromium 156.0.8078.4
+on macOS arm64 with both CC0 keypad fixtures. With emulated insets of 8 CSS
+pixels at the top and 21 at the bottom, the regression checks the complete
+rectangles of the picture, eleven game buttons and Exit fullscreen against
+the measured safe area. It resizes in both directions across the compact,
+side and stacked layouts. Every button in the cases below fits at 44×44 CSS
+pixels or larger. The picture retains its aspect ratio, and the rectangles
+stay clear of one another without scrolling.
+
+| Game | Viewport (CSS px) | Side insets (CSS px each) | Safe area (CSS px) | Picture (CSS px) |
+| --- | --- | --- | --- | --- |
+| Vertical | 400–402×214 and 401×213–216 | 44 | 312–314×185 and 313×184–187 | 54×84 |
+| Horizontal | 399–401×214 and 400×213–216 | 44 | 311–313×185 and 312×184–187 | 84×54 |
+| Horizontal | 567–569×214 and 568×213–216 | 44 | 479–481×185 and 480×184–187 | 182×117 |
+| Horizontal | 318–321×568 | 49 | 220–223×539 | 210×135 |
+| Horizontal | 322–323×568 | 49 | 224–225×539 | 224×144 |
+| Vertical | 319–322×568 | 49 | 221–224×539 | 117×182 |
+
+The measured no-scroll thresholds for the updated horizontal compact and
+side grids are 179 CSS pixels of safe height at safe widths of 312 and 480,
+respectively. The stacked horizontal layout fits at a safe width of 220
+CSS pixels at the tested height of 539. The vertical layout fits at a safe
+height of 157 CSS pixels at widths of 312 and 345, or 185 CSS pixels at a
+width of 285. At one pixel below each of these measured heights or widths,
+part of the controller is clipped at rest. Scrolling by that pixel within
+fullscreen reaches the full targets at their original sizes.
+
 ## Screenshots
 
 | Viewport | Horizontal game | Vertical game |

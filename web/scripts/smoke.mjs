@@ -243,7 +243,7 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
     if (orientation === 'horizontal') {
       assert.ok(yPad.bottom < xPad.top && yPad.left === xPad.left && a.left > b.left);
       // The tight columns can share an edge when their gaps have closed.
-      const flushColumns = fullscreen ? safe.width === 224 || (264 <= safe.width && safe.width <= 268)
+      const flushColumns = fullscreen ? safe.width <= 224 || (264 <= safe.width && safe.width <= 268)
         : player.width === 220;
       const clearsPad = left => xPad.right < left || (flushColumns && xPad.right === left);
       if (!fullscreen && player.width < 220) {
@@ -1119,36 +1119,69 @@ try {
       ['horizontal', 'compact-landscape',
         [[361,216],[360,216],[360,215],[359,215],[358,215],[357,215],[356,215],[355,215],
           [354,215],[353,215],[352,215],[352,216],[353,216],[354,216],[355,216],[355,215],[356,215]],
-        shortInsets, 84, [355,214]],
+        shortInsets, 84, [355,207]],
       ['horizontal', 'compact-landscape',
         [[352,229,undefined,112],[351,229,undefined,70],[352,229,undefined,112],
           [353,229],[354,229],[355,229],[356,229],[357,229],[358,229],[359,229],[360,229],[361,229],[360,229],[359,229],
           [359,228],[359,229],[359,230],[359,229]],
         shortInsets, 98, [351,225]],
-      // Below the compact grid's minimum height, the side grid keeps the pads visible.
+      // The side grid fits at 157px of safe height. As height grows, the
+      // compact grid can provide a larger picture with both pads still visible.
       ['vertical', 'landscape',
-        [[433,186],[433,187],[433,207],[433,208],[432,208],[433,208],[433,209],[434,209],
-          [435,209],[434,209],[433,209],[433,210],[433,209],[433,208],
-          [433,214,undefined,56],[433,215,'compact-landscape',84],[433,214,undefined,56],
+        [[433,186],[433,187],[433,195,undefined,56],[433,196,'compact-landscape',70],
+          [433,195,undefined,56],[433,196,'compact-landscape',70],
+          [433,207,'compact-landscape',70],[433,208,'compact-landscape',70],
+          [432,208,'compact-landscape',70],[433,208,'compact-landscape',70],
+          [433,209,'compact-landscape',70],[434,209,'compact-landscape',70],
+          [435,209,'compact-landscape',70],[434,209,'compact-landscape',70],
+          [433,209,'compact-landscape',70],[433,210,'compact-landscape',84],
+          [433,209,'compact-landscape',70],[433,208,'compact-landscape',70],
+          [433,214,'compact-landscape',84],[433,215,'compact-landscape',84],[433,214,'compact-landscape',84],
           [433,222,'compact-landscape',84],[433,223,'compact-landscape',84],[433,222,'compact-landscape',84]],
         shortInsets, 56, [433,185]],
-      ['vertical', 'landscape', [[401,208],[402,208],[402,209],[401,209],[401,208]], shortInsets, 14],
+      ['vertical', 'compact-landscape', [[401,208],[402,208],[402,209],[401,209],[401,208]], shortInsets, 70],
       // Widening past 400px used to force a tiny side picture at 222px of viewport height.
       ['vertical', 'compact-landscape',
         [[399,222],[400,222],[401,222],[402,222],[401,222],[401,221],[401,222],[401,223],[401,222],
-          [400,222],[400,221],[400,220],[400,219],[400,218],[400,217],[400,216],[400,215]],
-        shortInsets, 84, [400,214]],
-      // At 315px the safe width is 227px. Check both compact and stacked layouts
-      // across the old cutoff and down to the 224px minimum column width.
+          [400,222],[400,221],[400,220],[400,219],[400,218],[400,217],[400,216],[400,215],
+          [400,214,undefined,84],[399,214,undefined,84],[400,214,undefined,84],[401,214,undefined,84],
+          [402,214,undefined,84],[401,214,undefined,84],[401,213,undefined,84],[401,215,undefined,84],
+          [401,216,undefined,84],[401,215,undefined,84],[401,214,undefined,84]], shortInsets, 84, [400,185]],
+      ['vertical', 'compact-landscape',
+        [[444,214],[445,214],[446,214,'landscape'],[447,214,'landscape'],[446,214,'landscape'],
+          [446,215],[446,214,'landscape'],[445,214],[445,213],[445,214]], shortInsets, 84],
+      ['vertical', 'compact-landscape',
+        [[372,215],[372,214],[373,214],[374,214],[375,214],[374,214],
+          [374,213],[374,214],[373,214],[373,215]], shortInsets, 84, [373,213]],
+      // Both short horizontal layouts should fit at 214px without losing a picture step.
+      ['horizontal', 'compact-landscape',
+        [[400,216],[400,215],[400,214,undefined,84],[399,214],[400,214],[401,214],[400,214],
+          [400,213],[400,214],[400,215]], shortInsets, 84, [400,207]],
+      ['horizontal', 'compact-landscape',
+        [[471,214],[472,214],[473,214,'landscape'],[474,214,'landscape'],[473,214,'landscape'],
+          [473,215],[473,214,'landscape'],[472,214],[472,213,'landscape'],[472,214]], shortInsets, 84],
+      // At 315px the safe width is 227px. Check the compact layout across
+      // the former 224px minimum and down to the new 220px minimum.
       ['horizontal', 'compact-landscape',
         [[312,226],[313,226],[314,226],[315,226],[316,226],[317,226],[316,226],[315,226],[315,227]],
-        shortInsets, 70, [311,226,'width']],
+        shortInsets, 70, [307,226,'width']],
       ['horizontal', 'portrait',
         [[312,528],[313,528],[314,528],[315,528],[316,528],[317,528],[316,528],[315,528],[315,529]],
         shortInsets, 224],
       ['vertical', 'compact-landscape', [[314,270],[315,270],[316,270],[315,270],[315,271]],
         shortInsets, 84, [315,269]],
       ['vertical', 'portrait', [[314,528],[315,528],[316,528]], shortInsets, 182],
+      ['horizontal', 'portrait',
+        [[318,568,undefined,210],[319,568,undefined,210],[320,568,undefined,210],[321,568,undefined,210],
+          [322,568,undefined,224],[323,568,undefined,224],[322,568,undefined,224],[321,568,undefined,210],
+          [320,568,undefined,210],[320,567,undefined,210],[320,568,undefined,210],[320,569,undefined,210]],
+        narrowInsets, 210, [317,568,'width']],
+      ['vertical', 'portrait',
+        [[319,568],[320,568],[321,568],[322,568],[321,568],[320,568],[320,567],[320,568],[320,569]],
+        narrowInsets, 182],
+      ['horizontal', 'compact-landscape',
+        [[320,374],[320,375],[319,375],[320,375],[320,376,'portrait'],[321,376,'portrait'],
+          [320,376,'portrait'],[320,375]], narrowInsets, 84],
       // The compact vertical pads leave room for a 72×112 picture before the
       // side layout can match it. Cross the old and new switches in both directions.
       ['vertical', 'compact-landscape',
@@ -1170,10 +1203,12 @@ try {
       // 568×221 → 568×220 crosses the old 192px safe-height cutoff.
       ['horizontal', 'landscape',
         [[567,222],[568,222],[568,221],[568,220],[569,220],[568,220],
-          [568,219],[568,218],[568,217],[568,216],[568,215]], shortInsets, 182, [568,214]],
+          [568,219],[568,218],[568,217],[568,216],[568,215],[568,214,undefined,182],[567,214],[568,214],
+          [569,214],[568,214],[568,213],[568,214],[568,215]], shortInsets, 182, [568,207]],
       // At 390×226 the bottom pad targets used to extend 3px into the inset.
       ['vertical', 'compact-landscape',
-        [[389,228],[390,228],[390,227],[390,226],[391,226],[390,226],[390,225],[390,224],[390,223]],
+        [[389,228],[390,228],[390,227],[390,226],[391,226],[390,226],[390,225],[390,224],[390,223],
+          [390,214],[390,213],[390,212],[390,213],[390,214],[390,215]],
         shortInsets, 84],
       // Cross the former horizontal cutoff and the current vertical pad-width cutoff.
       ['horizontal', 'compact-landscape', [[359,329],[360,329],[361,329]], shortInsets, 126],
@@ -1200,7 +1235,8 @@ try {
       for (const [width,height,layoutKind = kind,expectedSize] of sizes) {
         await resizeFullscreen(width, height);
         const tightKeypads = orientation === 'vertical' && width - insets.left - insets.right === 264;
-        await checkLayout({ orientation, kind:layoutKind, fullscreen:true, insets, tightKeypads });
+        await checkLayout({ orientation, kind:layoutKind, fullscreen:true, insets, tightKeypads })
+          .catch(error => { throw new Error(`${orientation} fullscreen at ${width}×${height}`, {cause:error}); });
         const pictureSize = await checkCompactPicture(orientation, insets, expectedSize ?? minSize);
         if (expectedSize !== undefined) {
           assert.equal(pictureSize, expectedSize, `${orientation} picture long edge at ${width}×${height}`);
