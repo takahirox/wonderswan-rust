@@ -449,11 +449,14 @@ start at zero.
 The V30MZ runs the IPL through the normal shared device clock. The IPL sets the
 stack, establishes the existing 159-line raster, selects a linear bank of 0F
 (common) or 3F (2003) and sets ROM0/ROM1 low bits to FF. It restores the
-compatibility display and audio settings (display and channels off, 60=00 on
-Color/Crystal, 9E=03). The IPL issues internal EEPROM WEN, reads the footer's
-width, wait and protection settings through ROM0, then runs a stub in internal
-RAM. The stub writes A0 to disable its own ROM mapping and transfers control to
-FFFF:0000, which now exposes the cartridge footer.
+compatibility display and audio settings (layers and channels off, 60=00 on
+Color/Crystal, 9E=03). Like the hardware boot ROM after its splash screen, it
+leaves the LCD awake (14=01), because some cartridges never write LCD control
+([WSdev Boot ROM](https://ws.nesdev.org/wiki/Boot_ROM)). The IPL issues internal
+EEPROM WEN, reads the footer's width, wait and protection settings through ROM0,
+then runs a stub in internal RAM. The stub writes A0 to disable its own ROM
+mapping and transfers control to FFFF:0000, which now exposes the cartridge
+footer.
 
 Before the first cartridge instruction, SP=2000, DS=FF00 on Mono or FE00 on
 Color/Crystal, and FLAGS=F002. The observed SP/DS values are supported by the
