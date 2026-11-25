@@ -131,13 +131,17 @@ function waitForFullscreenExit() {
   return page.waitForFunction(() => !document.fullscreenElement
     && !document.querySelector('#controls').inert && document.activeElement.id === 'fullscreen');
 }
-async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fullscreen = false, tightKeypads = false } = {}) {
+async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fullscreen = false,
+  tightKeypads = false, insets } = {}) {
   // Let ResizeObserver snap the canvas edges after the grid reflows.
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const layout = await page.locator('#screen').evaluate(canvas => {
     const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+    const viewport = document.querySelector('.fullscreen-viewport');
     return {
       image:rect('#screen'), frame:rect('#display'), effect:rect('#screen-effect'),
+      safe:viewport.getBoundingClientRect().toJSON(), viewport:[innerWidth,innerHeight],
+      fullscreenOverflow:[viewport.scrollWidth - viewport.clientWidth, viewport.scrollHeight - viewport.clientHeight],
       game:rect('#game'), toolbar:rect('#controls'), cartridge:rect('.cartridge'),
       pause:rect('#pause'), reset:rect('#reset'), exit:rect('#exit-fullscreen'),
       fullscreen:document.fullscreenElement?.id,
@@ -153,8 +157,10 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
       backing:[canvas.width,canvas.height], pixels:getComputedStyle(canvas).imageRendering,
     };
   });
-  const { image, frame, effect, game, toolbar, cartridge, pause, reset, exit, touch, xPad, yPad } = layout;
+  const { image, frame, effect, safe, game, toolbar, cartridge, pause, reset, exit, touch, xPad, yPad } = layout;
   const overlaps = (a,b) => a.top < b.bottom && a.bottom > b.top && a.left < b.right && a.right > b.left;
+  const withinSafeArea = box => box.left >= safe.left && box.right <= safe.right
+    && box.top >= safe.top && box.bottom <= safe.bottom;
   assert.equal(layout.overflow, false, 'no horizontal overflow');
   assert.equal(layout.fullscreen, fullscreen ? 'game' : undefined);
   assert.deepEqual(layout.backing, [224,144]);
@@ -166,6 +172,13 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
   assert.ok(Math.abs(image.top + image.bottom - frame.top - frame.bottom) <= 3, 'picture is vertically centered');
   if (effect.width) assert.deepEqual(effect, image, 'shader covers the same image bounds');
   if (fullscreen) {
+    if (insets) {
+      const [width, height] = layout.viewport;
+      assert.deepEqual([safe.left,safe.top,safe.right,safe.bottom],
+        [Math.max(8,insets.left),Math.max(8,insets.top),width - Math.max(8,insets.right),height - Math.max(8,insets.bottom)],
+        'fullscreen viewport uses the simulated safe area with its 8px minimum padding');
+    }
+    assert.ok(withinSafeArea(image), 'picture fits inside the fullscreen safe area');
     assert.equal(await page.locator('#player > :not(#game):not([inert]), #debug-panel:not([inert])').count(), 0);
     // Use Chromium's accessibility tree to verify native inert semantics.
     const session = await page.context().newCDPSession(page);
@@ -175,12 +188,11 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
     const buttons = exposed.filter(node => node.role?.value === 'button').map(node => node.name.value);
     assert.equal(buttons.length, kind === 'desktop' ? 0 : 12);
     assert.equal(exposed.some(node => ['heading','combobox','link','slider'].includes(node.role?.value)), false);
-    await checkInViewport('#screen');
     if (kind === 'desktop') {
       assert.ok(touch.every(target => target.width === 0));
       assert.equal(exit.width, 0);
     } else {
-      await checkInViewport('#exit-fullscreen');
+      assert.ok(withinSafeArea(exit), 'Exit fullscreen fits inside the safe area');
       assert.ok(exit.width >= 44 && exit.height >= 44 && !overlaps(exit, frame));
     }
   } else {
@@ -196,14 +208,14 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
     const a = button(4), b = button(8), start = button(2);
     for (const [index,target] of touch.entries()) {
       assert.ok(target.width >= 44 && target.height >= 44, `button ${target.mask} has a practical touch target`);
-      assert.ok(target.left >= 0 && target.right <= page.viewportSize().width, `button ${target.mask} fits horizontally`);
       if (target.hit !== null) assert.ok(target.hit, `button ${target.mask} receives hits at its center`);
       if (fullscreen) {
-        assert.ok(target.top >= 0 && target.bottom <= page.viewportSize().height,
-          `button ${target.mask} fits vertically`);
+        assert.ok(withinSafeArea(target),
+          `button ${target.mask} fits inside the fullscreen safe area (${safe.width}×${safe.height})`);
         assert.ok(exit.bottom + 8 <= target.top || exit.right + 8 <= target.left
           || target.right + 8 <= exit.left, `exit is separated from button ${target.mask}`);
       } else {
+        assert.ok(target.left >= 0 && target.right <= page.viewportSize().width, `button ${target.mask} fits horizontally`);
         assert.ok(target.top >= Math.max(pause.bottom,reset.bottom) + 24,
           `button ${target.mask} is separated from Pause and Reset`);
       }
@@ -232,6 +244,9 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
       assert.ok(frame.right <= a.left && frame.right <= start.left && b.bottom <= yPad.top && start.bottom <= xPad.top);
       if (kind !== 'landscape') assert.ok(frame.bottom <= yPad.top, 'vertical keypads are below the screen');
     }
+  }
+  if (fullscreen) {
+    assert.deepEqual(layout.fullscreenOverflow, [0,0], 'fullscreen fits without scrolling');
   }
   const management = ['#model','#pause','#reset','#load-rom','#fullscreen','#settings','#sound','#volume','#display-effect'];
   for (const selector of fullscreen ? [] : management) {
@@ -1041,34 +1056,72 @@ try {
 
   if (await page.evaluate(() => document.fullscreenEnabled)) {
     const narrowInsets = {top:8,right:49,bottom:21,left:49};
-    for (const [orientation, kind, from, to, insets = noInsets, minSize = 210] of [
-      ['horizontal', 'compact-landscape', {width:455,height:300}, {width:456,height:300}],
-      ['vertical', 'landscape', {width:812,height:249}, {width:812,height:250}],
-      ['horizontal', 'compact-landscape', {width:358,height:300}, {width:357,height:300}, narrowInsets, 112],
-      ['horizontal', 'compact-landscape', {width:520,height:237}, {width:520,height:236}, {...noInsets, bottom:21}, 112],
+    const shortInsets = {...compactInsets, top:8};
+    async function resizeFullscreen(width, height) {
+      // Change the emulated viewport without resizing the native fullscreen window.
+      await cdp.send('Emulation.setDeviceMetricsOverride', {width,height,deviceScaleFactor:1,mobile:true});
+      await page.waitForFunction(({width, height}) => innerWidth === width && innerHeight === height, {width,height});
+    }
+    async function checkFullscreenScrolling(width, height) {
+      await resizeFullscreen(width, height);
+      const result = await page.locator('.fullscreen-viewport').evaluate(viewport => {
+        const safe = viewport.getBoundingClientRect();
+        const fits = ({left,right,top,bottom}) =>
+          left >= safe.left && right <= safe.right && top >= safe.top && bottom <= safe.bottom;
+        const targets = [...viewport.querySelectorAll('#screen, #touch-controls button, #exit-fullscreen')];
+        const clipped = targets.filter(target => !fits(target.getBoundingClientRect())).length;
+        const unreachable = targets.filter(target => {
+          target.scrollIntoView({block:'nearest',inline:'nearest'});
+          const box = target.getBoundingClientRect();
+          return !fits(box) || (target.tagName === 'BUTTON' && (box.width < 44 || box.height < 44));
+        }).map(target => target.id || target.textContent);
+        viewport.scrollTop = 0;
+        return {clipped, unreachable, overflow:viewport.scrollHeight - viewport.clientHeight};
+      });
+      assert.ok(result.clipped > 0, 'the compact grid exceeds the smaller safe height');
+      assert.equal(result.overflow, 1, 'the compact grid can scroll by the missing pixel');
+      assert.deepEqual(result.unreachable, [], 'scrolling reaches the full picture and all twelve buttons');
+    }
+    for (const [orientation, kind, sizes, insets = noInsets, minSize = 210, scrollSize] of [
+      ['horizontal', 'compact-landscape', [[455,300],[456,300]]],
+      ['vertical', 'landscape', [[812,249],[812,250]]],
+      ['horizontal', 'compact-landscape', [[358,300],[357,300]], narrowInsets, 112],
+      ['horizontal', 'compact-landscape', [[520,237],[520,236]], {...noInsets, bottom:21}, 112],
+      // 568×221 → 568×220 crosses the old 192px safe-height cutoff.
+      ['horizontal', 'compact-landscape',
+        [[567,222],[568,222],[568,221],[568,220],[569,220],[568,220],
+          [568,219],[568,218],[568,217],[568,216],[568,215]], shortInsets, 84, [568,214]],
+      // At 390×226 the bottom pad targets used to extend 3px into the inset.
+      ['vertical', 'compact-landscape',
+        [[389,228],[390,228],[390,227],[390,226],[391,226],[390,226],[390,225],[390,224],[390,223]],
+        shortInsets, 84, [390,222]],
+      // Cross the width breakpoints for the compact action and pad arrangements.
+      ['horizontal', 'compact-landscape', [[359,329],[360,329],[361,329]], shortInsets, 126],
+      ['vertical', 'compact-landscape', [[351,329],[352,329],[353,329]], shortInsets, 154],
     ]) {
-      await page.setViewportSize(from);
+      const [[initialWidth,initialHeight]] = sizes;
+      await page.setViewportSize({width:initialWidth,height:initialHeight});
       await cdp.send('Emulation.setSafeAreaInsetsOverride', {insets});
       await load(orientation === 'horizontal' ? rom : verticalRom);
       await page.locator('#fullscreen').tap();
       await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
       const pictureSizes = [];
-      for (const viewport of [from, to]) {
-        // Change the emulated viewport without resizing the native fullscreen window.
-        await cdp.send('Emulation.setDeviceMetricsOverride', { ...viewport, deviceScaleFactor:1, mobile:true });
-        await page.waitForFunction(({width, height}) => innerWidth === width && innerHeight === height, viewport);
-        await checkLayout({ orientation, kind, fullscreen:true });
+      for (const [width,height] of sizes) {
+        await resizeFullscreen(width, height);
+        const tightKeypads = orientation === 'vertical' && width - insets.left - insets.right === 264;
+        await checkLayout({ orientation, kind, fullscreen:true, insets, tightKeypads });
         pictureSizes.push(await checkCompactPicture(orientation, insets, minSize));
-        await checkInViewport('#exit-fullscreen', insets);
-        assert.equal(await page.locator('#game').evaluate(game => game.scrollHeight - game.clientHeight), 0,
-          'fullscreen remains fully visible after resizing');
-        await screenshot(`mobile-${viewport.width}x${viewport.height}-${orientation}-fullscreen`, false);
+        await screenshot(`mobile-${width}x${height}-${orientation}-fullscreen`, false);
       }
-      const [before, after] = pictureSizes;
-      const growth = Math.sign(to.width + to.height - from.width - from.height) * (after - before);
-      assert.ok(growth >= 0 && growth <= 14,
-        `${orientation} picture stays within one pixel-aligned scale step across a 1px resize (${before} to ${after})`);
-      console.log(`Native ${orientation} fullscreen picture long edge across a 1px resize: ${before} → ${after}px`);
+      for (let index = 1; index < sizes.length; index++) {
+        const [width,height] = sizes[index], [oldWidth,oldHeight] = sizes[index - 1];
+        const before = pictureSizes[index - 1], after = pictureSizes[index];
+        const growth = Math.sign(width + height - oldWidth - oldHeight) * (after - before);
+        assert.ok(growth >= 0 && growth <= 14,
+          `${orientation} picture stays within one pixel-aligned scale step across a 1px resize (${before} to ${after})`);
+      }
+      console.log(`Native ${orientation} fullscreen picture long edge across adjacent sizes: ${pictureSizes.join(' → ')}px`);
+      if (scrollSize) await checkFullscreenScrolling(...scrollSize);
       await page.locator('#exit-fullscreen').tap();
       await waitForFullscreenExit();
     }
@@ -1104,11 +1157,8 @@ try {
       await load(orientation === 'horizontal' ? rom : verticalRom);
       await page.locator('#fullscreen').tap();
       await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
-      await checkLayout({ orientation, kind, fullscreen:true, tightKeypads:insets === wideInsets });
+      await checkLayout({ orientation, kind, fullscreen:true, insets, tightKeypads:insets === wideInsets });
       await checkCompactPicture(orientation, insets, minSize);
-      await checkInViewport('#exit-fullscreen', insets);
-      assert.ok(await page.locator('#game').evaluate(game => game.scrollHeight === game.clientHeight
-        && game.scrollWidth === game.clientWidth), 'short fullscreen keeps the entire game visible without scrolling');
       const safeArea = insets === noInsets ? '' : insets === wideInsets ? '-wide-safe-area'
         : insets === narrowInsets ? '-narrow-safe-area' : '-safe-area';
       await screenshot(`mobile-${width}x${height}-${orientation}${safeArea}-fullscreen`, false);

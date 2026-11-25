@@ -41,6 +41,26 @@ A separate headless Chromium check restored both Running and Paused states
 through actual back-forward cache navigation. Switching tabs in that session
 left the document visible.
 
+## Short fullscreen resize follow-up
+
+Native fullscreen in headless Chromium 156.0.8078.4 used both CC0 keypad
+fixtures and simulated insets of 44 CSS pixels on each side, 8 at the top, and
+21 at the bottom. The horizontal picture stayed 98×63 CSS pixels across the
+568×221 to 568×220 viewport resize. The vertical picture stayed 63×98 CSS
+pixels from 390×225 through 390×228, including the 390×226 review case.
+The full rectangles of all eleven game buttons, the picture, and Exit
+fullscreen fit inside the measured safe area without overlapping or scrolling.
+The browser suite also checked adjacent widths, the 272 CSS pixel horizontal
+and 264 CSS pixel vertical safe-width breakpoints, and the previous compact
+cases.
+
+At a safe width of 480 CSS pixels, the horizontal compact grid fits down to
+186 CSS pixels of safe height. At a safe width of 302 CSS pixels, the
+vertical compact grid fits down to 194 CSS pixels of safe height. At 185 and
+193 CSS pixels of safe height respectively, the bottom targets extend one
+pixel beyond the visible safe area at rest. Scrolling inside that area
+reveals the full targets at their original size.
+
 ## Screenshots
 
 | Viewport | Horizontal game | Vertical game |
