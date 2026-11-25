@@ -40,9 +40,9 @@ fn entry(m: &mut Machine, ds: u16, a0: u8, mapper: u8, protected: bool) {
     assert_eq!(m.cpu.segments, [0, 0xffff, 0, 0]);
     m.boot_to_cartridge();
     let entry_dot = match m.model() {
-        Model::Mono => 219,
-        Model::Color => 226,
-        Model::Crystal => 218,
+        Model::Mono => 227,
+        Model::Color => 234,
+        Model::Crystal => 226,
     } + if protected { 3 } else { 0 };
     assert_eq!(m.bus.cycles, entry_dot);
     assert_eq!(m.cpu.registers, [0, 0, 0, 0, 0x2000, 0, 0, 0]);
@@ -56,7 +56,7 @@ fn entry(m: &mut Machine, ds: u16, a0: u8, mapper: u8, protected: bool) {
     assert_eq!(m.bus.input(0xbe).unwrap(), if protected { 0x82 } else { 2 });
     assert_eq!(m.bus.input_word(0xbc).unwrap(), 0);
     assert_eq!(m.bus.ports[0x60], 0);
-    assert_eq!(m.bus.ports[0x14], 0);
+    assert_eq!(m.bus.ports[0x14], 1);
     assert_eq!(m.bus.ports[0x16], 158);
     assert_eq!(
         m.bus.ports[0x17],

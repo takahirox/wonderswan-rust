@@ -26,9 +26,9 @@ to assemble and verify the committed bytes and hashes. The mono image is
 executes a far jump from FFFF0 to offset zero of the corresponding image.
 Normal native, Wasm and Pages builds embed these committed images.
 
-The IPL initializes the stack, compatibility I/O and ROM banks, issues an
-internal EEPROM WEN command, and copies an 11-byte stub to RAM. It reads the
-cartridge footer through ROM0 to set settings protection and pass the ROM
+The IPL initializes the stack, compatibility I/O and ROM banks, wakes the LCD,
+issues an internal EEPROM WEN command, and copies an 11-byte stub to RAM. It
+reads the cartridge footer through ROM0 to set settings protection and pass the ROM
 controls to the stub. The stub locks out the IPL and jumps to FFFF:0000. It occupies
 scratch space at 1FF0 below the incoming stack. See the
 [startup and reset policy](../docs/hardware-subset.md#built-in-ipl-startup-and-reset)

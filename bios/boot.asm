@@ -29,6 +29,11 @@ boot:
     mov al, 3
     out 0x9e, al
 
+    ; Leave the LCD awake like the hardware boot ROM after its splash screen.
+    ; Some cartridges never write LCD control and rely on this handoff state.
+    mov al, 1
+    out 0x14, al
+
     ; The mapper masks the linear bank to its own width. The two ROM windows
     ; also retain the extended high bits supplied by the mapper reset state.
     mov al, 0xff
