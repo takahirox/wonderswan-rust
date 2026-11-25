@@ -80,6 +80,32 @@ bottom controls are partially clipped at rest. Scrolling the fullscreen safe
 area by that pixel reaches their full targets, which remain at least 44×44 CSS
 pixels.
 
+## Fullscreen review boundary follow-up
+
+Native fullscreen in headless Chromium 156.0.8078.4 used the original CC0
+keypad fixtures and emulated insets of 44 CSS pixels on each side, 8 at the
+top, and 21 at the bottom. Measurements used the fullscreen content bounds
+after padding. At these sizes, the picture, all eleven game buttons, and
+Exit fullscreen fit without overlap or scrolling. All buttons retained at
+least 44×44 CSS pixels.
+
+| Game | Viewport (CSS px) | Safe area (CSS px) | Picture (CSS px) |
+| --- | --- | --- | --- |
+| Horizontal | 315×226 | 227×197 | 70×45 |
+| Horizontal | 315×528 | 227×499 | 224×144 |
+| Vertical | 454–455×243 and 456–457×245 | 366–367×214 and 368–369×216 | 72×112 |
+| Vertical | 463–464×243 and 463–464×245 | 375–376×214 and 375–376×216 | 72×112 |
+| Horizontal | 812×262 → 812×263 | 724×233 → 724×234 | 350×225 → 364×234 |
+| Horizontal | 568×220 → 568×221 | 480×191 → 480×192 | 182×117 at both sizes |
+
+The narrow horizontal grid fits at 224×197 CSS pixels of safe area
+(312×226 viewport). At a safe width of 223, one pixel of horizontal scrolling
+reveals the clipped edge. At a safe width of 227 and height of 196, one
+pixel of vertical scrolling reveals the bottom of B. At the same width,
+the compact vertical grid fits at a safe height of 241 (315×270 viewport)
+and needs one pixel of vertical scrolling at 240. Scrolling reaches the
+full targets at their original sizes.
+
 ## Screenshots
 
 | Viewport | Horizontal game | Vertical game |

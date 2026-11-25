@@ -138,13 +138,15 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
   const layout = await page.locator('#screen').evaluate(canvas => {
     const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
     const viewport = document.querySelector('.fullscreen-viewport');
+    const exit = rect('#exit-fullscreen');
     return {
       image:rect('#screen'), frame:rect('#display'), effect:rect('#screen-effect'),
       safe:viewport.getBoundingClientRect().toJSON(), viewport:[innerWidth,innerHeight],
       fullscreenOverflow:[viewport, document.querySelector('#game')].map(element =>
         [element.scrollWidth - element.clientWidth, element.scrollHeight - element.clientHeight]),
       game:rect('#game'), toolbar:rect('#controls'), cartridge:rect('.cartridge'),
-      pause:rect('#pause'), reset:rect('#reset'), exit:rect('#exit-fullscreen'),
+      pause:rect('#pause'), reset:rect('#reset'), exit,
+      exitHit:document.elementFromPoint(exit.left + exit.width/2, exit.top + exit.height/2)?.id === 'exit-fullscreen',
       fullscreen:document.fullscreenElement?.id,
       xPad:rect('.x-pad'), yPad:rect('.y-pad'),
       touch:[...document.querySelectorAll('#touch-controls button')].map(button => {
@@ -194,6 +196,7 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
       assert.equal(exit.width, 0);
     } else {
       assert.ok(withinSafeArea(exit), 'Exit fullscreen fits inside the safe area');
+      assert.ok(layout.exitHit, 'Exit fullscreen receives hits at its center');
       assert.ok(exit.width >= 44 && exit.height >= 44 && !overlaps(exit, frame));
     }
   } else {
@@ -231,11 +234,14 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
     }
     assert.ok(a.top < b.top, 'A is above B');
     if (orientation === 'horizontal') {
-      assert.ok(yPad.bottom < xPad.top && yPad.left === xPad.left && xPad.right < b.left && a.left > b.left);
+      assert.ok(yPad.bottom < xPad.top && yPad.left === xPad.left && a.left > b.left);
+      // At the 224px minimum, columns meet at their edges.
+      const clearsPad = left => xPad.right < left || (fullscreen && safe.width === 224 && xPad.right === left);
+      assert.ok(clearsPad(b.left), 'the action column clears the pad');
       if (kind === 'landscape') {
         assert.ok(xPad.right < frame.left && frame.right < b.left && frame.right < start.left);
       } else if (kind === 'compact-landscape') {
-        assert.ok(xPad.right < frame.left && frame.bottom <= a.top && frame.bottom <= start.top);
+        assert.ok(clearsPad(frame.left) && frame.bottom <= a.top && frame.bottom <= start.top);
       } else {
         assert.ok(touch.every(target => target.top >= frame.bottom), 'horizontal controller follows the screen');
       }
@@ -1065,7 +1071,7 @@ try {
       await cdp.send('Emulation.setDeviceMetricsOverride', {width,height,deviceScaleFactor:1,mobile:true});
       await page.waitForFunction(({width, height}) => innerWidth === width && innerHeight === height, {width,height});
     }
-    async function checkFullscreenScrolling(width, height) {
+    async function checkFullscreenScrolling(width, height, expectedOverflow) {
       await resizeFullscreen(width, height);
       const result = await page.locator('.fullscreen-viewport').evaluate(viewport => {
         const safe = viewport.getBoundingClientRect();
@@ -1078,22 +1084,53 @@ try {
           const box = target.getBoundingClientRect();
           return !fits(box) || (target.tagName === 'BUTTON' && (box.width < 44 || box.height < 44));
         }).map(target => target.id || target.textContent);
-        viewport.scrollTop = 0;
-        return {clipped, unreachable, overflow:viewport.scrollHeight - viewport.clientHeight};
+        viewport.scrollTo(0, 0);
+        return {clipped, unreachable, overflow:[
+          viewport.scrollWidth - viewport.clientWidth, viewport.scrollHeight - viewport.clientHeight,
+        ]};
       });
-      assert.ok(result.clipped > 0, 'the compact grid exceeds the smaller safe height');
-      assert.equal(result.overflow, 1, 'the compact grid can scroll by the missing pixel');
+      assert.ok(result.clipped > 0, 'the layout exceeds the smaller safe area');
+      assert.deepEqual(result.overflow, expectedOverflow, 'fullscreen can scroll by the missing pixel');
       assert.deepEqual(result.unreachable, [], 'scrolling reaches the full picture and all twelve buttons');
     }
     for (const [orientation, kind, sizes, insets = noInsets, minSize = 210, scrollSize] of [
       ['horizontal', 'compact-landscape', [[455,300],[456,300]]],
       ['vertical', 'landscape', [[812,249],[812,250]]],
       ['horizontal', 'compact-landscape', [[358,300],[357,300]], narrowInsets, 112],
-      ['horizontal', 'compact-landscape', [[520,237],[520,236]], {...noInsets, bottom:21}, 112],
-      // 568×221 → 568×220 crosses the old 192px safe-height cutoff.
+      ['horizontal', 'landscape', [[520,237],[520,236]], {...noInsets, bottom:21}, 112],
+      // At 315px the safe width is 227px. Check both compact and stacked layouts
+      // across the old cutoff and down to the 224px minimum column width.
       ['horizontal', 'compact-landscape',
+        [[312,226],[313,226],[314,226],[315,226],[316,226],[317,226],[316,226],[315,226],[315,227]],
+        shortInsets, 70, [311,226,'width']],
+      ['horizontal', 'portrait',
+        [[312,528],[313,528],[314,528],[315,528],[316,528],[317,528],[316,528],[315,528],[315,529]],
+        shortInsets, 224],
+      ['vertical', 'compact-landscape', [[314,270],[315,270],[316,270],[315,270],[315,271]],
+        shortInsets, 84, [315,269]],
+      ['vertical', 'portrait', [[314,528],[315,528],[316,528]], shortInsets, 182],
+      // The compact vertical pads leave room for a 72×112 picture before the
+      // side layout can match it. Cross the old and new switches in both directions.
+      ['vertical', 'compact-landscape',
+        [[453,243],[454,243],[455,243],[456,243],[456,244],[456,245],
+          ...Array.from({length:7}, (_, i) => [457+i,245]),
+          [464,245,'landscape'],[465,245,'landscape'],[464,245,'landscape'],
+          [463,245],[463,244],[463,243],[464,243,'landscape']],
+        shortInsets, 112],
+      // With 233px of safe height, the wide horizontal view can already use
+      // a 350×225 picture. The next pixel should gain only one scale step.
+      ['horizontal', 'landscape',
+        [[812,260],[812,261],[812,262],[813,262],[812,262],[812,263],[812,264],[812,263],[812,262]],
+        shortInsets, 350],
+      ['horizontal', 'compact-landscape',
+        [[546,262],[547,262],[548,262,'landscape'],[549,262,'landscape'],[548,262,'landscape'],
+          [548,263],[549,263,'landscape'],[548,263],[548,262,'landscape']],
+        shortInsets, 154],
+      ['vertical', 'landscape', [[812,261],[812,262],[812,263]], shortInsets, 224],
+      // 568×221 → 568×220 crosses the old 192px safe-height cutoff.
+      ['horizontal', 'landscape',
         [[567,222],[568,222],[568,221],[568,220],[569,220],[568,220],
-          [568,219],[568,218],[568,217],[568,216],[568,215]], shortInsets, 84, [568,214]],
+          [568,219],[568,218],[568,217],[568,216],[568,215]], shortInsets, 182, [568,214]],
       // At 390×226 the bottom pad targets used to extend 3px into the inset.
       ['vertical', 'compact-landscape',
         [[389,228],[390,228],[390,227],[390,226],[391,226],[390,226],[390,225],[390,224],[390,223]],
@@ -1136,9 +1173,10 @@ try {
       }
       console.log(`Native ${orientation} fullscreen picture long edge across adjacent sizes: ${pictureSizes.join(' → ')}px`);
       if (scrollSize) {
-        const [width,height] = scrollSize;
-        await checkFullscreenScrolling(width, height);
-        await resizeFullscreen(width, height + 1);
+        const [width,height,axis] = scrollSize;
+        const [extraWidth,extraHeight] = axis === 'width' ? [1,0] : [0,1];
+        await checkFullscreenScrolling(width, height, [extraWidth,extraHeight]);
+        await resizeFullscreen(width + extraWidth, height + extraHeight);
         await checkLayout({ orientation, kind, fullscreen:true, insets });
       }
       await page.locator('#exit-fullscreen').tap();
@@ -1159,7 +1197,7 @@ try {
       [375, 320, 'horizontal', 'compact-landscape'],
       [375, 320, 'vertical', 'compact-landscape'],
       [375, 320, 'horizontal', 'compact-landscape', compactInsets],
-      [520, 258, 'horizontal', 'compact-landscape', { ...noInsets, bottom:21 }],
+      [520, 258, 'horizontal', 'landscape', { ...noInsets, bottom:21 }],
       [320, 568, 'horizontal', 'portrait', {top:24,right:44,bottom:24,left:44}],
       // 272px of safe width leaves room for nine sixteenths of the horizontal picture.
       [360, 300, 'horizontal', 'compact-landscape', compactInsets, 126],
