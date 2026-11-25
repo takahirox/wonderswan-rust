@@ -144,7 +144,7 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
       safe:viewport.getBoundingClientRect().toJSON(), viewport:[innerWidth,innerHeight],
       fullscreenOverflow:[viewport, document.querySelector('#game')].map(element =>
         [element.scrollWidth - element.clientWidth, element.scrollHeight - element.clientHeight]),
-      game:rect('#game'), toolbar:rect('#controls'), cartridge:rect('.cartridge'),
+      game:rect('#game'), player:rect('#player'), toolbar:rect('#controls'), cartridge:rect('.cartridge'),
       pause:rect('#pause'), reset:rect('#reset'), exit,
       exitHit:document.elementFromPoint(exit.left + exit.width/2, exit.top + exit.height/2)?.id === 'exit-fullscreen',
       fullscreen:document.fullscreenElement?.id,
@@ -160,7 +160,7 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
       backing:[canvas.width,canvas.height], pixels:getComputedStyle(canvas).imageRendering,
     };
   });
-  const { image, frame, effect, safe, game, toolbar, cartridge, pause, reset, exit, touch, xPad, yPad } = layout;
+  const { image, frame, effect, safe, game, player, toolbar, cartridge, pause, reset, exit, touch, xPad, yPad } = layout;
   const overlaps = (a,b) => a.top < b.bottom && a.bottom > b.top && a.left < b.right && a.right > b.left;
   const withinSafeArea = box => box.left >= safe.left && box.right <= safe.right
     && box.top >= safe.top && box.bottom <= safe.bottom;
@@ -201,6 +201,12 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
     }
   } else {
     assert.ok(toolbar.bottom <= game.top, 'toolbar precedes gameplay');
+    if (insets) {
+      const [width] = layout.viewport;
+      assert.deepEqual([player.left, player.right], [insets.left, width - insets.right],
+        'windowed player uses the simulated side insets');
+      assert.ok(frame.left >= player.left && frame.right <= player.right, 'screen fits the windowed safe width');
+    }
   }
   if (kind === 'desktop' && !fullscreen) {
     assert.ok(frame.right < cartridge.left && cartridge.top === frame.top, 'slot sits beside the screen');
@@ -219,7 +225,8 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
         assert.ok(exit.bottom + 8 <= target.top || exit.right + 8 <= target.left
           || target.right + 8 <= exit.left, `exit is separated from button ${target.mask}`);
       } else {
-        assert.ok(target.left >= 0 && target.right <= page.viewportSize().width, `button ${target.mask} fits horizontally`);
+        const [left,right] = insets ? [player.left,player.right] : [0,layout.viewport[0]];
+        assert.ok(target.left >= left && target.right <= right, `button ${target.mask} fits the windowed safe width`);
         assert.ok(target.top >= Math.max(pause.bottom,reset.bottom) + 24,
           `button ${target.mask} is separated from Pause and Reset`);
       }
@@ -235,10 +242,13 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
     assert.ok(a.top < b.top, 'A is above B');
     if (orientation === 'horizontal') {
       assert.ok(yPad.bottom < xPad.top && yPad.left === xPad.left && a.left > b.left);
-      // At either compact grid's minimum width, columns meet at their edges.
-      const flushColumns = fullscreen && [224,268].includes(safe.width);
+      // The tight columns can share an edge when their gaps have closed.
+      const flushColumns = fullscreen ? safe.width === 224 || (264 <= safe.width && safe.width <= 268)
+        : player.width === 220;
       const clearsPad = left => xPad.right < left || (flushColumns && xPad.right === left);
-      assert.ok(clearsPad(b.left), 'the action column clears the pad');
+      if (!fullscreen && player.width < 220) {
+        assert.ok(a.top >= xPad.bottom && start.top >= xPad.bottom, 'actions and Start stack below the pads');
+      } else assert.ok(clearsPad(b.left), 'the action column clears the pad');
       if (kind === 'landscape') {
         assert.ok(xPad.right < frame.left && frame.right < b.left && frame.right < start.left);
       } else if (kind === 'compact-landscape') {
@@ -1074,23 +1084,29 @@ try {
     }
     async function checkFullscreenScrolling(width, height, expectedOverflow) {
       await resizeFullscreen(width, height);
-      const result = await page.locator('.fullscreen-viewport').evaluate(viewport => {
+      const result = await page.locator('.fullscreen-viewport').evaluate(async viewport => {
+        // Measure after ResizeObserver has refitted the picture to its new track.
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const safe = viewport.getBoundingClientRect();
         const fits = ({left,right,top,bottom}) =>
           left >= safe.left && right <= safe.right && top >= safe.top && bottom <= safe.bottom;
         const targets = [...viewport.querySelectorAll('#screen, #touch-controls button, #exit-fullscreen')];
-        const clipped = targets.filter(target => !fits(target.getBoundingClientRect())).length;
+        const boxes = targets.map(target => target.getBoundingClientRect());
+        const clipped = boxes.filter(box => !fits(box)).length;
+        const overlaps = boxes.some((box, i) => boxes.slice(i + 1).some(other =>
+          box.left < other.right && box.right > other.left && box.top < other.bottom && box.bottom > other.top));
         const unreachable = targets.filter(target => {
           target.scrollIntoView({block:'nearest',inline:'nearest'});
           const box = target.getBoundingClientRect();
           return !fits(box) || (target.tagName === 'BUTTON' && (box.width < 44 || box.height < 44));
         }).map(target => target.id || target.textContent);
         viewport.scrollTo(0, 0);
-        return {clipped, unreachable, overflow:[
+        return {clipped, overlaps, unreachable, overflow:[
           viewport.scrollWidth - viewport.clientWidth, viewport.scrollHeight - viewport.clientHeight,
         ]};
       });
       assert.ok(result.clipped > 0, 'the layout exceeds the smaller safe area');
+      assert.equal(result.overlaps, false, 'fullscreen targets stay separate when the layout scrolls');
       assert.deepEqual(result.overflow, expectedOverflow, 'fullscreen can scroll by the missing pixel');
       assert.deepEqual(result.unreachable, [], 'scrolling reaches the full picture and all twelve buttons');
     }
@@ -1099,23 +1115,29 @@ try {
       ['vertical', 'landscape', [[812,249],[812,250]]],
       ['horizontal', 'compact-landscape', [[358,300],[357,300]], narrowInsets, 112],
       ['horizontal', 'landscape', [[520,237],[520,236]], {...noInsets, bottom:21}, 112],
-      // Keep the three-column layout across the old 272px cutoff, down to 268px.
+      // Keep the three-column layout through 355×215 and down to 264px of safe width.
       ['horizontal', 'compact-landscape',
-        [[361,216],[360,216],[360,215],[359,215],[358,215],[357,215],[356,215],
-          [357,215],[358,215],[359,215],[360,215],[360,216],[359,216],[359,215]],
-        shortInsets, 84, [359,214]],
+        [[361,216],[360,216],[360,215],[359,215],[358,215],[357,215],[356,215],[355,215],
+          [354,215],[353,215],[352,215],[352,216],[353,216],[354,216],[355,216],[355,215],[356,215]],
+        shortInsets, 84, [355,214]],
       ['horizontal', 'compact-landscape',
-        [[356,229,undefined,112],[355,229,undefined,70],[356,229,undefined,112],
-          [357,229],[358,229],[359,229,undefined,112],[360,229],[361,229],[360,229],[359,229],
+        [[352,229,undefined,112],[351,229,undefined,70],[352,229,undefined,112],
+          [353,229],[354,229],[355,229],[356,229],[357,229],[358,229],[359,229],[360,229],[361,229],[360,229],[359,229],
           [359,228],[359,229],[359,230],[359,229]],
-        shortInsets, 98],
+        shortInsets, 98, [351,225]],
       // Below the compact grid's minimum height, the side grid keeps the pads visible.
       ['vertical', 'landscape',
         [[433,186],[433,187],[433,207],[433,208],[432,208],[433,208],[433,209],[434,209],
           [435,209],[434,209],[433,209],[433,210],[433,209],[433,208],
-          [433,222,undefined,56],[433,223,'compact-landscape',84],[433,222,undefined,56]],
+          [433,214,undefined,56],[433,215,'compact-landscape',84],[433,214,undefined,56],
+          [433,222,'compact-landscape',84],[433,223,'compact-landscape',84],[433,222,'compact-landscape',84]],
         shortInsets, 56, [433,185]],
       ['vertical', 'landscape', [[401,208],[402,208],[402,209],[401,209],[401,208]], shortInsets, 14],
+      // Widening past 400px used to force a tiny side picture at 222px of viewport height.
+      ['vertical', 'compact-landscape',
+        [[399,222],[400,222],[401,222],[402,222],[401,222],[401,221],[401,222],[401,223],[401,222],
+          [400,222],[400,221],[400,220],[400,219],[400,218],[400,217],[400,216],[400,215]],
+        shortInsets, 84, [400,214]],
       // At 315px the safe width is 227px. Check both compact and stacked layouts
       // across the old cutoff and down to the 224px minimum column width.
       ['horizontal', 'compact-landscape',
@@ -1152,7 +1174,7 @@ try {
       // At 390×226 the bottom pad targets used to extend 3px into the inset.
       ['vertical', 'compact-landscape',
         [[389,228],[390,228],[390,227],[390,226],[391,226],[390,226],[390,225],[390,224],[390,223]],
-        shortInsets, 84, [390,222]],
+        shortInsets, 84],
       // Cross the former horizontal cutoff and the current vertical pad-width cutoff.
       ['horizontal', 'compact-landscape', [[359,329],[360,329],[361,329]], shortInsets, 126],
       ['vertical', 'compact-landscape', [[351,329],[352,329],[353,329]], shortInsets, 154],
@@ -1282,20 +1304,29 @@ try {
   console.log('1024×768 landscape touch picture size and controller layout passed in both orientations');
 
   await page.setViewportSize({ width:320,height:568 });
+  const windowedInsets = {top:8,right:48,bottom:21,left:48};
+  await cdp.send('Emulation.setSafeAreaInsetsOverride', {insets:windowedInsets});
+  await load(rom, 'tap');
+  await checkLayout({ kind:'portrait', insets:windowedInsets });
+  await checkGameplayInViewport(windowedInsets);
+  await screenshot('mobile-320x568-horizontal-48px-safe-area', false);
+  for (const side of [47,46,47,48,49,50,51,50,49,48]) {
+    const insets = {...windowedInsets, right:side, left:side};
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', {insets});
+    await page.evaluate(() => window.scrollTo(0,0));
+    await checkLayout({ kind:'portrait', insets });
+  }
+  console.log('320×568 windowed horizontal gameplay respects adjacent safe widths after cartridge selection and resize');
+
   async function checkSafeArea(orientation, inset) {
     const insets = {top:24,bottom:24,left:inset,right:inset};
     await cdp.send('Emulation.setSafeAreaInsetsOverride', {insets});
     await page.evaluate(() => window.scrollTo(0,0));
-    await checkLayout({ orientation, kind:'portrait' });
+    await checkLayout({ orientation, kind:'portrait', insets });
     assert.deepEqual(await page.locator('main').evaluate(main => {
       const style = getComputedStyle(main);
       return [style.paddingTop,style.paddingRight,style.paddingBottom,style.paddingLeft];
     }), ['24px',`${inset}px`,'24px',`${inset}px`]);
-    for (const target of await page.locator('#display, #touch-controls button').all()) {
-      const box = await target.boundingBox();
-      assert.ok(box.x >= inset && box.x + box.width <= 320 - inset,
-        `${orientation} game and touch targets respect ${inset}px side insets`);
-    }
     await screenshot(`mobile-constrained-${orientation}`, false);
     for (const target of await page.locator('#touch-controls button').all()) {
       await target.scrollIntoViewIfNeeded();

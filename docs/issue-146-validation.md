@@ -130,6 +130,33 @@ controller is clipped at rest. Scrolling the fullscreen safe area by one
 pixel reaches the full targets, which retain their 44×44 CSS pixel minimum.
 The earlier compact cases remain covered in the same browser suite.
 
+## Safe-area boundary recheck
+
+Native fullscreen in headless Chromium 156.0.8078.4 used the CC0 keypad
+fixtures and emulated touch. With insets of 8 CSS pixels at the top, 21 at
+the bottom and 44 on each side, the browser checked the complete rectangles
+of the picture, all eleven game buttons and Exit fullscreen while resizing
+in both directions.
+
+| Game | Viewport (CSS px) | Safe area (CSS px) | Picture (CSS px) |
+| --- | --- | --- | --- |
+| Horizontal fullscreen | 352–356×215 | 264–268×186 | 84×54 |
+| Vertical fullscreen | 400–402×222 | 312–314×193 | 54×84 |
+| Vertical fullscreen | 401×221–223 | 313×192–194 | 54×84 |
+
+These rectangles fit without overlap or scrolling. At a safe width of
+267 CSS pixels, the horizontal grid fits down to a safe height of 186.
+At a safe width of 263, the two-column fullscreen grid needs a safe height
+of 197. At a safe width of 312, the compact vertical grid now fits down to
+a safe height of 186. One pixel below each measured height, scrolling by
+one pixel reveals the full bottom targets at their original size.
+
+In windowed horizontal play at 320×568 with 48 CSS pixel side insets, the
+224×144 picture and all eleven game buttons fit across the 224 CSS pixel
+safe width after cartridge selection. The two-column layout fits down to
+220 CSS pixels of safe width. At 218 CSS pixels, A/B and Start move below
+the pads and normal vertical page scrolling keeps the controls reachable.
+
 ## Screenshots
 
 | Viewport | Horizontal game | Vertical game |
