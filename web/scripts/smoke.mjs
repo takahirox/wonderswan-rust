@@ -141,7 +141,8 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
     return {
       image:rect('#screen'), frame:rect('#display'), effect:rect('#screen-effect'),
       safe:viewport.getBoundingClientRect().toJSON(), viewport:[innerWidth,innerHeight],
-      fullscreenOverflow:[viewport.scrollWidth - viewport.clientWidth, viewport.scrollHeight - viewport.clientHeight],
+      fullscreenOverflow:[viewport, document.querySelector('#game')].map(element =>
+        [element.scrollWidth - element.clientWidth, element.scrollHeight - element.clientHeight]),
       game:rect('#game'), toolbar:rect('#controls'), cartridge:rect('.cartridge'),
       pause:rect('#pause'), reset:rect('#reset'), exit:rect('#exit-fullscreen'),
       fullscreen:document.fullscreenElement?.id,
@@ -243,10 +244,12 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
       assert.ok(yPad.top === xPad.top && a.left < b.left);
       assert.ok(frame.right <= a.left && frame.right <= start.left && b.bottom <= yPad.top && start.bottom <= xPad.top);
       if (kind !== 'landscape') assert.ok(frame.bottom <= yPad.top, 'vertical keypads are below the screen');
+      if (fullscreen && kind === 'portrait') assert.ok(exit.bottom <= frame.top, 'stacked Exit is above the picture');
+      if (fullscreen && kind === 'compact-landscape') assert.ok(frame.right <= exit.left, 'compact Exit is beside the picture');
     }
   }
   if (fullscreen) {
-    assert.deepEqual(layout.fullscreenOverflow, [0,0], 'fullscreen fits without scrolling');
+    assert.deepEqual(layout.fullscreenOverflow, [[0,0],[0,0]], 'fullscreen fits without scrolling');
   }
   const management = ['#model','#pause','#reset','#load-rom','#fullscreen','#settings','#sound','#volume','#display-effect'];
   for (const selector of fullscreen ? [] : management) {
@@ -1098,6 +1101,17 @@ try {
       // Cross the width breakpoints for the compact action and pad arrangements.
       ['horizontal', 'compact-landscape', [[359,329],[360,329],[361,329]], shortInsets, 126],
       ['vertical', 'compact-landscape', [[351,329],[352,329],[353,329]], shortInsets, 154],
+      // At 320×377 and 320×350 respectively, the old stacked grids clipped the bottom buttons.
+      // Cross those boundaries, then resize both ways through the replacement transitions.
+      ['horizontal', 'compact-landscape',
+        [[319,375],[320,375],[320,376],[319,376,'portrait'],[320,376],[320,377],[321,377],[320,377],
+          ...Array.from({length:7}, (_, i) => [320,378+i]),
+          [320,385,'portrait'],[321,385,'portrait'],[320,385,'portrait'],[320,384]],
+        shortInsets, 84, [320,225]],
+      ['vertical', 'compact-landscape',
+        [[319,348],[320,348],[320,349],[320,350],[321,350],[320,350],
+          [320,351,'portrait'],[321,351],[320,351,'portrait'],[320,350]],
+        shortInsets, 112, [320,269]],
     ]) {
       const [[initialWidth,initialHeight]] = sizes;
       await page.setViewportSize({width:initialWidth,height:initialHeight});
@@ -1106,10 +1120,10 @@ try {
       await page.locator('#fullscreen').tap();
       await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
       const pictureSizes = [];
-      for (const [width,height] of sizes) {
+      for (const [width,height,layoutKind = kind] of sizes) {
         await resizeFullscreen(width, height);
         const tightKeypads = orientation === 'vertical' && width - insets.left - insets.right === 264;
-        await checkLayout({ orientation, kind, fullscreen:true, insets, tightKeypads });
+        await checkLayout({ orientation, kind:layoutKind, fullscreen:true, insets, tightKeypads });
         pictureSizes.push(await checkCompactPicture(orientation, insets, minSize));
         await screenshot(`mobile-${width}x${height}-${orientation}-fullscreen`, false);
       }
@@ -1121,7 +1135,12 @@ try {
           `${orientation} picture stays within one pixel-aligned scale step across a 1px resize (${before} to ${after})`);
       }
       console.log(`Native ${orientation} fullscreen picture long edge across adjacent sizes: ${pictureSizes.join(' → ')}px`);
-      if (scrollSize) await checkFullscreenScrolling(...scrollSize);
+      if (scrollSize) {
+        const [width,height] = scrollSize;
+        await checkFullscreenScrolling(width, height);
+        await resizeFullscreen(width, height + 1);
+        await checkLayout({ orientation, kind, fullscreen:true, insets });
+      }
       await page.locator('#exit-fullscreen').tap();
       await waitForFullscreenExit();
     }

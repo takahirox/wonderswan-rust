@@ -61,6 +61,25 @@ vertical compact grid fits down to 194 CSS pixels of safe height. At 185 and
 pixel beyond the visible safe area at rest. Scrolling inside that area
 reveals the full targets at their original size.
 
+## Narrow portrait fullscreen resize follow-up
+
+With the same emulated insets, a 320 CSS pixel viewport has 232 CSS pixels of
+safe width. In native Chromium fullscreen with the CC0 keypad fixtures, the
+horizontal game stays compact from 320×376 to 320×377, keeping a 98×63 picture.
+The vertical game stays compact from 320×349 to 320×350, keeping a 72×112
+picture. At 320×385 the horizontal game stacks and grows to 112×72. At 320×351
+the vertical game stacks and grows to 81×126. The browser regression checks
+resizes in both directions and at adjacent widths. The picture, all eleven
+game buttons and Exit fullscreen stay inside the measured safe area without
+clipping, overlap or scrolling at both transitions.
+
+At 232 CSS pixels of safe width, the compact horizontal grid fits down to
+197 CSS pixels of safe height and the compact vertical grid fits down to
+241 CSS pixels (320×226 and 320×270 viewports). One pixel below either limit,
+bottom controls are partially clipped at rest. Scrolling the fullscreen safe
+area by that pixel reaches their full targets, which remain at least 44×44 CSS
+pixels.
+
 ## Screenshots
 
 | Viewport | Horizontal game | Vertical game |
