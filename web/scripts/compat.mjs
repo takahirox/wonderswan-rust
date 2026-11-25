@@ -278,8 +278,15 @@ try {
   assert.equal(audio.contexts,1,'reuse one context across toggles and resets');assert.ok(audio.peak <= 32,'bounded sources');assert.ok(audio.suspends>0 && audio.resumes>0);
   await page.evaluate(() => {Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
   assert.equal(await page.evaluate(() => window.audioProbe.active),0);
+  const hiddenBuffers = await page.evaluate(() => window.audioProbe.buffers);
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => window.audioProbe.buffers),hiddenBuffers);
   await page.evaluate(() => {delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
-  assert.equal(await page.locator('#pause').textContent(),'Resume');
+  await page.waitForFunction(before => window.audioProbe.buffers > before,hiddenBuffers);
+  assert.equal(await page.locator('#pause').textContent(),'Pause');
+  assert.equal(await page.evaluate(() => window.audioProbe.contexts),1);
+  await level(42);
+  await pause();
   await page.locator('#sound').click();
   await page.locator('#sound').click(); // Unmute while paused.
   await page.waitForFunction(() => window.audioContext.state === 'suspended');
@@ -345,11 +352,15 @@ try {
     assert.doesNotMatch(await page.locator('#sound-status').textContent(),/Audio ready|Sound playing/);
     if (mode === 'reject') {
       await page.waitForFunction(() => /Enable audio/.test(document.querySelector('#sound-status').textContent));
-      assert.equal(await page.evaluate(() => window.scrollY),0);
+      const game = await page.locator('#game').boundingBox();
+      assert.ok(game.y >= 0 && game.y + game.height <= 375, 'focus reveals the landscape picture and controls');
+      // The toolbar now takes the first row. Recovery follows gameplay and is
+      // reached by normal page scrolling on short phones.
+      await page.locator('#enable-audio').scrollIntoViewIfNeeded();
       for (const selector of ['#sound-status','#enable-audio']) {
         const box = await page.locator(selector).boundingBox();
         assert.ok(box && box.height > 0 && box.width > 0 && box.y >= 0 && box.y + box.height <= 375
-          && box.x >= 0 && box.x + box.width <= 812,`${selector} fits in the first landscape viewport`);
+          && box.x >= 0 && box.x + box.width <= 812,`${selector} is reachable in landscape`);
       }
     }
     if (mode === 'pending') {
@@ -530,10 +541,10 @@ try {
       await page.locator('#reset').click();await greenSound();await soundBuffer(path,restarted);
       await page.evaluate(() => {Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
       assert.equal(await page.evaluate(() => window.audioProbe.active),0);
-      await page.evaluate(() => {delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
-      assert.equal(await page.locator('#pause').textContent(),'Resume');
       const hidden = await page.evaluate(() => window.audioProbe.buffers);
-      await page.locator('#pause').click();await soundBuffer(path,hidden);
+      await page.evaluate(() => {delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
+      await soundBuffer(path,hidden);
+      assert.equal(await page.locator('#pause').textContent(),'Pause');
       const state = await page.evaluate(() => window.audioProbe);
       assert.equal(state.contexts,1);assert.ok(state.peak<=32);
       await pause();

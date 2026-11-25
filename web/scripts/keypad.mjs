@@ -29,7 +29,7 @@ export async function keypadChecks(browser, base, errors) {
   page.on('request', request => requests.push(request.method()));
   const click = id => page.locator(id).evaluate(button => button.click());
   const focus = () => page.locator('#screen').focus();
-  const playerOrientation = () => page.locator('#player').getAttribute('data-orientation');
+  const playerOrientation = () => page.locator('#game').getAttribute('data-orientation');
   async function setEffect(mode) {
     await page.locator('#display-effect').selectOption(mode);
     assert.equal(await page.locator('#rom-status').textContent(), 'Running');
@@ -102,7 +102,7 @@ export async function keypadChecks(browser, base, errors) {
     }, hidden);
   }
   async function layout(orientation, effect = false) {
-    await page.waitForFunction(orientation => document.querySelector('#player').dataset.orientation === orientation,orientation);
+    await page.waitForFunction(orientation => document.querySelector('#game').dataset.orientation === orientation,orientation);
     // ResizeObserver runs asynchronously after model/load/fullscreen transitions.
     await page.waitForTimeout(60);
     const result = await page.locator('#screen').evaluate(canvas => {
@@ -112,7 +112,7 @@ export async function keypadChecks(browser, base, errors) {
       };
       return {canvas:rect(canvas),frame:rect(document.querySelector('#display')),
         wrapper:rect(document.querySelector('#screen-presentation')),controls:rect(document.querySelector('#controls')),
-        backing:[canvas.width,canvas.height],pixels:getComputedStyle(canvas).imageRendering,
+        fullscreen:document.fullscreenElement?.id,backing:[canvas.width,canvas.height],pixels:getComputedStyle(canvas).imageRendering,
         overflow:document.documentElement.scrollWidth>innerWidth};
     });
     assert.deepEqual(result.backing,[224,144]);
@@ -123,7 +123,8 @@ export async function keypadChecks(browser, base, errors) {
     for (const side of ['width','height']) assert.ok(Math.abs(result.wrapper[side]-result.canvas[side])<0.1);
     assert.ok(result.canvas.x >= result.frame.x-0.1 && result.canvas.right <= result.frame.right+0.1);
     assert.ok(result.canvas.y >= result.frame.y-0.1 && result.canvas.bottom <= result.frame.bottom+0.1,JSON.stringify(result));
-    assert.ok(result.canvas.bottom <= result.controls.y,'screen does not overlap toolbar');
+    if (result.fullscreen) assert.equal(result.fullscreen,'game');
+    else assert.ok(result.controls.bottom <= result.frame.y,'toolbar precedes the screen');
     // Inspect composited screenshot pixels as well as the native canvas. This
     // catches missing/clockwise rotation, cropping, and smoothed corner markers.
     const png = await page.locator('#screen-presentation').screenshot();
@@ -166,7 +167,7 @@ export async function keypadChecks(browser, base, errors) {
     assert.equal(await page.getByRole('combobox',{name:'Orientation',exact:true}).count(),1);
     assert.equal(await orientationSelect.isDisabled(),true);
     assert.equal(await orientationSelect.inputValue(),'auto');
-    assert.equal(await page.locator('#player').getAttribute('data-orientation'),'horizontal');
+    assert.equal(await page.locator('#game').getAttribute('data-orientation'),'horizontal');
     assert.ok(await page.evaluate(() => !Object.keys(localStorage).some(key => key.startsWith('wonderswan:orientation:'))));
     await click('#help-close');
     assert.equal(await page.locator('[data-button]').count(),11);
@@ -287,15 +288,18 @@ export async function keypadChecks(browser, base, errors) {
         await page.keyboard.press('Escape');
         await page.waitForFunction(() => document.querySelector('#rom-status').textContent === 'Running');
       }
-      if (action==='background') {await visibility(true);await visibility(false);await click('#pause');}
-      if (action==='pagehide') {await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));await click('#pause');}
+      if (action==='background') {await visibility(true);await visibility(false);}
+      if (action==='pagehide') await page.evaluate(() => {
+        window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
+        window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
+      });
       if (action==='restart') await click('#reset');
       if (action==='model') await page.locator('#model').selectOption('color');
       if (action==='load') await load(replacement,'replacement.ws');
       if (action==='invalid') {
         await page.locator('#rom').setInputFiles({name:'bad.ws',mimeType:'application/octet-stream',buffer:Buffer.from([0])});
         await page.waitForFunction(() => document.querySelector('#error').textContent.includes('Could not load'));
-        assert.equal(await page.locator('#player').getAttribute('data-orientation'),'vertical');
+        assert.equal(await page.locator('#game').getAttribute('data-orientation'),'vertical');
         expectedError = await page.locator('#error').textContent();
         await expect(); // the retained CPU reads cleared input before restarting
         await click('#reset');
@@ -309,21 +313,21 @@ export async function keypadChecks(browser, base, errors) {
     for (const viewport of [{width:375,height:812},{width:1440,height:1000}]) {
       await page.setViewportSize(viewport);
       for (const [bytes,orientation] of [[vertical,'vertical'],[horizontal,'horizontal']]) {
-        await load(bytes);await layout(orientation);
-        await setEffect('lcd-authentic');
-        await layout(orientation,true);
-        if (await page.evaluate(() => document.fullscreenEnabled)) {
-          await page.locator('#fullscreen').click();
-          // Wait for the player's fullscreenchange handler to restore focus.
-          await page.waitForFunction(() => document.fullscreenElement?.id === 'player'
-            && document.querySelector('#fullscreen').textContent === 'Exit fullscreen');
-          await setEffect('clean');
-          await layout(orientation); // retain exact composited Clean assertions in fullscreen
-          await setEffect('lcd-authentic');
-          await layout(orientation,true);
-          await page.locator('#fullscreen').click();
-          await page.waitForFunction(() => !document.fullscreenElement
-            && document.querySelector('#fullscreen').textContent === 'Fullscreen');
+        await load(bytes);
+        for (const effect of ['clean','lcd-authentic']) {
+          await setEffect(effect);
+          const lcd = effect !== 'clean';
+          await layout(orientation,lcd);
+          if (await page.evaluate(() => document.fullscreenEnabled)) {
+            await page.locator('#fullscreen').click();
+            await page.waitForFunction(() => document.fullscreenElement?.id === 'game'
+              && document.activeElement.id === 'screen');
+            await layout(orientation,lcd);
+            await page.locator('#exit-fullscreen').click();
+            await page.waitForFunction(() => !document.fullscreenElement
+              && document.activeElement.id === 'fullscreen');
+            await focus();
+          }
         }
         await setEffect('clean');
       }
@@ -354,10 +358,11 @@ export async function keypadChecks(browser, base, errors) {
     await page.setViewportSize(landscape);
     if (await page.evaluate(() => document.fullscreenEnabled)) {
       await page.locator('#fullscreen').click();
-      await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+      await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
       await layout('vertical');
       await page.evaluate(() => document.exitFullscreen());
-      await page.waitForFunction(() => !document.fullscreenElement);
+      await page.waitForFunction(() => !document.fullscreenElement
+        && document.activeElement.id === 'fullscreen');
     }
 
     await load(vertical,sameName);

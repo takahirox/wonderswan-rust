@@ -134,9 +134,18 @@ export async function consoleChecks(browser, base, errors) {
     await pause();await saved('crystal',34);
     assert.deepEqual(requests,[],'console data and selected cartridges stay local');
     await page.reload();await ready();await saved('crystal',34);
-    await load(probes[0],'crystal');await pause();await saved('crystal',35);
+    await load(probes[0],'crystal');
+    await page.evaluate(() => {
+      Object.defineProperty(document,'hidden',{configurable:true,value:true});
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await saved('crystal',35);
+    await page.evaluate(() => {
+      delete document.hidden;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await success('crystal');
     // pagehide must flush without relying on the periodic timer or pause button.
-    await page.locator('#pause').click();await success('crystal');
     await page.locator('#reset').click();await success('crystal');
     await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
     await saved('crystal',36);

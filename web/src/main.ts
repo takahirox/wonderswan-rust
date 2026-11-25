@@ -15,6 +15,8 @@ const romStatus = element<HTMLParagraphElement>("rom-status");
 const errorStatus = element<HTMLParagraphElement>("error");
 const canvas = element<HTMLCanvasElement>("screen");
 const player = element<HTMLElement>("player");
+const toolbar = element("controls");
+const game = element("game");
 const screenFrame = element("display");
 const orientationSelect = element<HTMLSelectElement>("orientation");
 const help = element<HTMLDialogElement>("help");
@@ -22,6 +24,7 @@ const settingsButton = element<HTMLButtonElement>("settings");
 const debugToggle = element<HTMLInputElement>("debug-toggle");
 const debugPanel = element<HTMLElement>("debug-panel");
 const fullscreenButton = element<HTMLButtonElement>("fullscreen");
+const exitFullscreenButton = element<HTMLButtonElement>("exit-fullscreen");
 const retryButton = element<HTMLButtonElement>("retry");
 const touchButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-button]")];
 
@@ -93,9 +96,10 @@ async function main() {
   }
   let readRevision = 0;
   let loading = false;
+  let wantsPlayback = false;
   let running = false;
   let faulted = false;
-  let resumeAfterDialog = false;
+  let pageAway = false;
   let visibilityRevision = 0;
   let animation: number | null = null;
   let production: number | null = null;
@@ -170,11 +174,15 @@ async function main() {
     updateDiagnostics();
     sizeScreen();
   }
-  function setRunning(value: boolean) {
-    const wasRunning = running;
+  function syncPlayback() {
+    const canRun = wantsPlayback && loaded !== null && !loading && !faulted
+      && !pageAway && !document.hidden && !help.open;
+    if (running === canRun) {
+      refresh();
+      return;
+    }
     if (framePending) captureFrame();
-    running = value && loaded !== null && !faulted && !document.hidden && !help.open;
-    if (running && !wasRunning) display.resetHistory();
+    running = canRun;
     if (animation !== null) cancelAnimationFrame(animation);
     if (production !== null) clearTimeout(production);
     animation = null;
@@ -184,6 +192,7 @@ async function main() {
     dirty = false;
     clearKeys();
     if (running) {
+      display.resetHistory();
       sound.resume();
       production = window.setTimeout(tick, 0);
       animation = requestAnimationFrame(present);
@@ -194,8 +203,9 @@ async function main() {
   function failed(error: unknown) {
     framePending = false;
     faulted = true;
-    errorStatus.textContent = `Execution stopped: ${message(error)} Try Restart or load another ROM.`;
-    setRunning(false);
+    wantsPlayback = false;
+    errorStatus.textContent = `Execution stopped: ${message(error)} Try Reset or load another ROM.`;
+    syncPlayback();
   }
   function present() {
     animation = null;
@@ -239,8 +249,15 @@ async function main() {
   }
   function focusGame() {
     canvas.focus({ preventScroll: true });
-    // Reveal the whole screen row, including the adjacent keypads in landscape.
-    screenFrame.scrollIntoView({ block: "center", inline: "nearest" });
+    const bounds = game.getBoundingClientRect();
+    const toolbarTop = toolbar.getBoundingClientRect().top;
+    const scrollMargins = getComputedStyle(game);
+    const safeTop = parseFloat(scrollMargins.scrollMarginTop);
+    const height = window.innerHeight - safeTop - parseFloat(scrollMargins.scrollMarginBottom);
+    // Match scrollIntoView's safe-area margins when deciding what fits together.
+    const revealToolbar = toolbarTop < safeTop && bounds.bottom - toolbarTop <= height;
+    const target = bounds.height <= height ? game : screenFrame;
+    target.scrollIntoView({ block: revealToolbar ? "end" : "nearest", inline: "nearest" });
   }
   function applyOrientation() {
     const preference = orientationSelect.value;
@@ -249,12 +266,11 @@ async function main() {
     if (orientation === next) return;
     clearKeys();
     orientation = next;
-    player.dataset.orientation = orientation;
+    game.dataset.orientation = orientation;
   }
-  function load(name: string, bytes: Uint8Array, key: string, autoplay: boolean) {
+  function load(name: string, bytes: Uint8Array, key: string) {
     persist();
     machine.load_rom(bytes); // Validation errors preserve the previous machine.
-    sound.pause();
     display.resetHistory();
     machine.configure_rtc(rtcMode.value);
     loaded = { name, key };
@@ -268,18 +284,17 @@ async function main() {
     element("notice").textContent = "";
     const restored = saves.restore(key, machine.save_data().length);
     if (restored) machine.load_save(restored);
-    loading = false;
     faulted = false;
     errorStatus.textContent = "";
     draw();
-    // An asynchronous load must not run behind an open modal or steal its focus.
-    resumeAfterDialog = autoplay && help.open && !document.hidden;
-    setRunning(autoplay);
+    wantsPlayback = true;
   }
   function restart(model: string) {
     readRevision++; // Invalidate any in-flight file read.
     loading = false;
-    setRunning(false);
+    wantsPlayback = false;
+    if (!running) persist();
+    syncPlayback();
     errorStatus.textContent = "";
     try {
       machine.change_model(model);
@@ -288,10 +303,11 @@ async function main() {
       draw();
       restoreConsole();
       faulted = false;
-      setRunning(loaded !== null);
-      if (running && !help.open) focusGame();
+      wantsPlayback = loaded !== null;
+      syncPlayback();
+      if (running && !picker.open) focusGame();
     } catch (error) {
-      errorStatus.textContent = `Could not restart: ${message(error)} Choose a compatible model or load another ROM.`;
+      errorStatus.textContent = `Could not reset: ${message(error)} Choose a compatible model or load another ROM.`;
     }
     display.present();
     refresh();
@@ -304,7 +320,7 @@ async function main() {
     clearKeys();
     loading = true;
     if (!faulted) errorStatus.textContent = "";
-    refresh();
+    syncPlayback();
     try {
       const bytes = await read();
       if (revision !== readRevision) return;
@@ -312,18 +328,17 @@ async function main() {
       if (revision !== readRevision) return;
       if (entry && key !== entry.key) throw new Error("Saved ROM identity mismatch.");
       verified = true;
-      const visible = visibleRevision === visibilityRevision && !document.hidden;
       // An identical cartridge keeps its frame, playback state, and inserted name.
-      if (key !== loaded?.key) load(name, bytes, key, visible);
+      if (key !== loaded?.key) load(name, bytes, key);
       if (entry) picker.clearProblem(entry.key);
       else void picker.remember(key, name, bytes);
-      if (visible && !help.open && !picker.open && document.activeElement === sourceFocus) focusGame();
+      if (visibleRevision === visibilityRevision && canFocusGame() && document.activeElement === sourceFocus) focusGame();
     } catch (error) {
       if (revision === readRevision) {
         if (entry && !verified) picker.readFailed(entry.key);
         else {
           errorStatus.textContent = `Could not load “${name}”: ${message(error)} Choose another ROM.`;
-          if (document.activeElement === loadButton) {
+          if (visibleRevision === visibilityRevision && canFocusGame() && document.activeElement === loadButton) {
             loadButton.scrollIntoView({ block: "nearest", inline: "nearest" });
           }
         }
@@ -331,7 +346,7 @@ async function main() {
     } finally {
       if (revision === readRevision) {
         loading = false;
-        refresh();
+        syncPlayback();
       }
     }
   }
@@ -362,13 +377,43 @@ async function main() {
     if (framePending) captureFrame();
     sizeScreen();
   });
-  window.setInterval(persist, 1000);
-  window.addEventListener("pagehide", () => { resumeAfterDialog = false; visibilityRevision++; setRunning(false); });
+  window.setInterval(() => { if (!pageAway && !document.hidden) persist(); }, 1000);
+  function suspendForDeparture() {
+    visibilityRevision++;
+    if (!running) {
+      clearKeys();
+      persist();
+    }
+    syncPlayback();
+  }
+  window.addEventListener("pagehide", event => {
+    pageAway = true;
+    if (!event.persisted) {
+      readRevision++;
+      loading = false;
+      wantsPlayback = false;
+    }
+    suspendForDeparture();
+  });
+  window.addEventListener("pageshow", event => {
+    if (!event.persisted || !pageAway) return;
+    pageAway = false;
+    syncPlayback();
+    restoreWindowedView();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) suspendForDeparture();
+    else {
+      syncPlayback();
+      restoreWindowedView();
+    }
+  });
   modelSelect.addEventListener("change", () => restart(modelSelect.value));
   resetButton.addEventListener("click", () => restart(machine.model()));
   pauseButton.addEventListener("click", () => {
-    if (!running) sound.unlock();
-    setRunning(!running);
+    wantsPlayback = !wantsPlayback;
+    if (wantsPlayback) sound.unlock();
+    syncPlayback();
     if (running) canvas.focus({ preventScroll: true });
   });
   const picker = cartridgePicker(loadButton, () => {
@@ -376,7 +421,7 @@ async function main() {
     if (loading) {
       readRevision++;
       loading = false;
-      refresh();
+      syncPlayback();
     }
   }, () => {
     sound.unlock();
@@ -395,17 +440,17 @@ async function main() {
     });
   });
 
+  function canFocusGame() {
+    return !pageAway && !document.hidden && !help.open && !picker.open;
+  }
   settingsButton.addEventListener("click", () => {
-    resumeAfterDialog = running;
-    setRunning(false);
     help.showModal();
+    syncPlayback();
   });
   element("help-close").addEventListener("click", () => help.close());
   help.addEventListener("close", () => {
-    const resume = resumeAfterDialog;
-    resumeAfterDialog = false;
-    setRunning(resume);
-    (running ? canvas : settingsButton).focus({ preventScroll: true });
+    syncPlayback();
+    if (canFocusGame()) (running ? canvas : settingsButton).focus({ preventScroll: true });
   });
   function toggleDebug(enabled: boolean) {
     debugToggle.checked = enabled;
@@ -422,25 +467,56 @@ async function main() {
     if (!document.hidden && debugPanel.querySelector("details")!.open) updateDiagnostics();
   }, 500);
 
+  let windowedScroll: ScrollToOptions | undefined;
+  let fullscreenExitPending = false;
+  function restoreWindowedView() {
+    if (!fullscreenExitPending || pageAway || document.hidden) return;
+    fullscreenExitPending = false;
+    if (canFocusGame()) fullscreenButton.focus({ preventScroll: true });
+    if (windowedScroll) window.scrollTo(windowedScroll);
+    windowedScroll = undefined;
+  }
   fullscreenButton.addEventListener("click", async () => {
     clearKeys();
-    const notice = element("notice");
+    const notice = element("fullscreen-status");
     notice.textContent = "";
-    if (!document.fullscreenEnabled || !player.requestFullscreen) {
-      notice.textContent = "Fullscreen is unavailable in this browser. You can keep playing here.";
+    if (!document.fullscreenEnabled || !game.requestFullscreen) {
+      notice.textContent = "Fullscreen is unavailable.";
       return;
     }
+    windowedScroll = { left: window.scrollX, top: window.scrollY };
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await player.requestFullscreen();
+      await game.requestFullscreen();
     } catch {
-      notice.textContent = "Fullscreen could not open. Try again, or keep playing here.";
+      windowedScroll = undefined;
+      notice.textContent = "Could not enter fullscreen.";
     }
   });
+  function exitFullscreen() {
+    if (document.fullscreenElement === game) {
+      void document.exitFullscreen().catch(() => {});
+    }
+  }
+  exitFullscreenButton.addEventListener("click", exitFullscreen);
+  const playerChrome = [...player.querySelectorAll<HTMLElement>(":scope > :not(#game)"), debugPanel];
+  let gameplayFullscreen = false;
   document.addEventListener("fullscreenchange", () => {
-    fullscreenButton.textContent = document.fullscreenElement === player ? "Exit fullscreen" : "Fullscreen";
+    const active = document.fullscreenElement === game;
+    if (active === gameplayFullscreen) return;
+    gameplayFullscreen = active;
+    const modalOpen = help.open || picker.open;
+    // A dialog opened during the request takes precedence and must remain usable.
+    if (active && modalOpen) exitFullscreen();
+    for (const item of playerChrome) item.inert = active && !modalOpen;
     clearKeys();
-    if (!help.open && !picker.open) canvas.focus({ preventScroll: true });
+    if (framePending) captureFrame();
+    sizeScreen();
+    if (active) {
+      if (canFocusGame()) canvas.focus({ preventScroll: true });
+    } else {
+      fullscreenExitPending = true;
+      restoreWindowedView();
+    }
   });
   // Integer scaling where space allows; fractional nearest-neighbor scaling on narrow screens.
   function sizeScreen() {
@@ -467,6 +543,10 @@ async function main() {
   window.addEventListener("resize", clearKeys);
 
   window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && gameplayFullscreen && !help.open && !picker.open) {
+      exitFullscreen();
+      return;
+    }
     if (!running || help.open || picker.open || document.activeElement !== canvas || !(event.code in bindings)
       || event.ctrlKey || event.metaKey || event.altKey) return;
     event.preventDefault();
@@ -515,13 +595,6 @@ async function main() {
     button.addEventListener("blur", clearKeys);
   }
   window.addEventListener("blur", clearKeys);
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      visibilityRevision++;
-      resumeAfterDialog = false;
-      setRunning(false);
-    }
-  });
   draw();
   toggleDebug(false);
   for (const control of [modelSelect, effectSelect, loadButton, settingsButton, fullscreenButton, soundButton, volume, enableAudio]) control.disabled = false;
