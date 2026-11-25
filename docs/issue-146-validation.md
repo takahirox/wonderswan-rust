@@ -106,6 +106,30 @@ the compact vertical grid fits at a safe height of 241 (315×270 viewport)
 and needs one pixel of vertical scrolling at 240. Scrolling reaches the
 full targets at their original sizes.
 
+## Horizontal and vertical fullscreen grid switches
+
+Playwright 1.64.1 ran native fullscreen in headless Chromium 156.0.8078.4
+on macOS arm64 with emulated touch and the original CC0 keypad fixtures.
+Simulated insets were 44 CSS pixels on each side, 8 at the top, and 21 at
+the bottom. The regression measures the fullscreen content bounds and checks
+the picture, all eleven game buttons, and Exit fullscreen for clipping and
+overlap during resizes in both directions.
+
+| Game | Viewport (CSS px) | Safe area (CSS px) | Picture (CSS px) |
+| --- | --- | --- | --- |
+| Horizontal | 356–361×215 | 268–273×186 | 84×54 |
+| Horizontal | 356–361×229 | 268–273×200 | 112×72 |
+| Vertical | 433×208–210 and 434×209 | 345×179–181 and 346×180 | 36×56 |
+| Vertical | 433×222 → 433×223 | 345×193 → 345×194 | 36×56 → 54×84 |
+
+At 359 CSS pixels of viewport width, the horizontal grid fits down to a
+safe height of 186 CSS pixels. At 433 CSS pixels of viewport width, the
+vertical side grid fits down to a safe height of 157 CSS pixels. One pixel
+below each limit (359×214 and 433×185 respectively), the bottom of the
+controller is clipped at rest. Scrolling the fullscreen safe area by one
+pixel reaches the full targets, which retain their 44×44 CSS pixel minimum.
+The earlier compact cases remain covered in the same browser suite.
+
 ## Screenshots
 
 | Viewport | Horizontal game | Vertical game |

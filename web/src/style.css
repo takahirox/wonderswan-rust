@@ -637,7 +637,8 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
         "y screen screen" minmax(calc(var(--keypad-height) - 52px), 1fr)
         "x screen screen" minmax(calc(var(--keypad-height) - 76px), 1fr)
         "x start  actions" 68px / 132px minmax(44px, 1fr) 92px;
-      column-gap: clamp(0px, 100cqw - 224px, 2px);
+      /* Pad, Start and A/B need 268px before the two column gaps. */
+      column-gap: clamp(0px, (100cqw - 268px) / 2, 2px);
     }
     #game:fullscreen[data-orientation="horizontal"] .dpad {
       grid-template-rows: 44px calc(var(--keypad-height) - 88px) 44px;
@@ -653,6 +654,15 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
       width: min(52px, 100%);
     }
     @container fullscreen-viewport (width < 272px) {
+      /* Keep 8px between Exit and the Y pad even when the column gap shrinks. */
+      #game:fullscreen[data-orientation="horizontal"] #exit-fullscreen {
+        justify-self: end;
+        max-width: calc(100% - 8px);
+        padding: 4px;
+        line-height: 1.2;
+      }
+    }
+    @container fullscreen-viewport (width < 268px) {
       /* Start shares the top row of A/B. The 92px action row plus the gap
          already supply 100px of the X pad's height. */
       #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
@@ -663,6 +673,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
           "y screen"  minmax(calc(var(--keypad-height) - 52px), 1fr)
           "x screen"  minmax(calc(var(--keypad-height) - 100px), 1fr)
           "x actions" 92px / 132px minmax(92px, 1fr);
+        column-gap: clamp(0px, 100cqw - 224px, 2px);
       }
       #game:fullscreen[data-orientation="horizontal"] .action-buttons {
         grid-template-rows: 44px 44px;
@@ -674,12 +685,6 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
         align-self: start;
         justify-self: start;
         width: 44px;
-      }
-      #game:fullscreen[data-orientation="horizontal"] #exit-fullscreen {
-        justify-self: end;
-        max-width: calc(100% - 8px);
-        padding: 4px;
-        line-height: 1.2;
       }
     }
   }
@@ -767,19 +772,26 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   }
 
   @container fullscreen-viewport
-      ((176px <= height < 194px) and (width >= calc(304px + (100cqh - 116px) * 9 / 14)))
+      ((height < 194px) and (width >= 313px))
       or ((height >= 194px)
         and (width >= calc(304px + min(100cqh - 97px, max(112px, 100cqh - 116px)) * 9 / 14))) {
-    /* The side layout fits from 176px high and needs 304px outside the picture.
-       Once the compact grid fits, compare with its picture height. The pad
-       row grows from 89px to 108px and takes another 8px for the gap, so the
-       compact picture grows to 112px, holds there, then grows again. */
+    /* Below 194px the compact grid clips the pads. Use the side grid if
+       its 304px of tracks and gaps leave at least one 9px picture step.
+       Once the compact grid fits, compare with its picture height. Its
+       pad row grows from 89px to 108px, so the picture grows to 112px,
+       holds there, then grows again once the pad row stops growing. */
     #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
-      min-height: 0;
+      /* The top row and gap take 68px. Tighten the pads in the room left
+         below, keeping the two 44px rows and the 1px directional offset. */
+      --keypad-height: clamp(89px, 100cqh - 68px, 108px);
+      min-height: 157px;
       grid-template:
         "exit screen actions start" 60px
-        "y    screen x       x" minmax(108px, 1fr) / 136px minmax(0, 1fr) 92px 52px;
+        "y    screen x       x" minmax(var(--keypad-height), 1fr) / 136px minmax(0, 1fr) 92px 52px;
       gap: 8px;
+    }
+    #game:fullscreen[data-orientation="vertical"] .dpad {
+      grid-template-rows: 44px calc(var(--keypad-height) - 88px) 44px;
     }
     #game:fullscreen[data-orientation="vertical"] .action-buttons {
       grid-template-rows: 16px 44px;

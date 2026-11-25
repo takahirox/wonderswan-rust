@@ -235,8 +235,9 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
     assert.ok(a.top < b.top, 'A is above B');
     if (orientation === 'horizontal') {
       assert.ok(yPad.bottom < xPad.top && yPad.left === xPad.left && a.left > b.left);
-      // At the 224px minimum, columns meet at their edges.
-      const clearsPad = left => xPad.right < left || (fullscreen && safe.width === 224 && xPad.right === left);
+      // At either compact grid's minimum width, columns meet at their edges.
+      const flushColumns = fullscreen && [224,268].includes(safe.width);
+      const clearsPad = left => xPad.right < left || (flushColumns && xPad.right === left);
       assert.ok(clearsPad(b.left), 'the action column clears the pad');
       if (kind === 'landscape') {
         assert.ok(xPad.right < frame.left && frame.right < b.left && frame.right < start.left);
@@ -1098,6 +1099,23 @@ try {
       ['vertical', 'landscape', [[812,249],[812,250]]],
       ['horizontal', 'compact-landscape', [[358,300],[357,300]], narrowInsets, 112],
       ['horizontal', 'landscape', [[520,237],[520,236]], {...noInsets, bottom:21}, 112],
+      // Keep the three-column layout across the old 272px cutoff, down to 268px.
+      ['horizontal', 'compact-landscape',
+        [[361,216],[360,216],[360,215],[359,215],[358,215],[357,215],[356,215],
+          [357,215],[358,215],[359,215],[360,215],[360,216],[359,216],[359,215]],
+        shortInsets, 84, [359,214]],
+      ['horizontal', 'compact-landscape',
+        [[356,229,undefined,112],[355,229,undefined,70],[356,229,undefined,112],
+          [357,229],[358,229],[359,229,undefined,112],[360,229],[361,229],[360,229],[359,229],
+          [359,228],[359,229],[359,230],[359,229]],
+        shortInsets, 98],
+      // Below the compact grid's minimum height, the side grid keeps the pads visible.
+      ['vertical', 'landscape',
+        [[433,186],[433,187],[433,207],[433,208],[432,208],[433,208],[433,209],[434,209],
+          [435,209],[434,209],[433,209],[433,210],[433,209],[433,208],
+          [433,222,undefined,56],[433,223,'compact-landscape',84],[433,222,undefined,56]],
+        shortInsets, 56, [433,185]],
+      ['vertical', 'landscape', [[401,208],[402,208],[402,209],[401,209],[401,208]], shortInsets, 14],
       // At 315px the safe width is 227px. Check both compact and stacked layouts
       // across the old cutoff and down to the 224px minimum column width.
       ['horizontal', 'compact-landscape',
@@ -1135,7 +1153,7 @@ try {
       ['vertical', 'compact-landscape',
         [[389,228],[390,228],[390,227],[390,226],[391,226],[390,226],[390,225],[390,224],[390,223]],
         shortInsets, 84, [390,222]],
-      // Cross the width breakpoints for the compact action and pad arrangements.
+      // Cross the former horizontal cutoff and the current vertical pad-width cutoff.
       ['horizontal', 'compact-landscape', [[359,329],[360,329],[361,329]], shortInsets, 126],
       ['vertical', 'compact-landscape', [[351,329],[352,329],[353,329]], shortInsets, 154],
       // At 320×377 and 320×350 respectively, the old stacked grids clipped the bottom buttons.
@@ -1157,15 +1175,21 @@ try {
       await page.locator('#fullscreen').tap();
       await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
       const pictureSizes = [];
-      for (const [width,height,layoutKind = kind] of sizes) {
+      for (const [width,height,layoutKind = kind,expectedSize] of sizes) {
         await resizeFullscreen(width, height);
         const tightKeypads = orientation === 'vertical' && width - insets.left - insets.right === 264;
         await checkLayout({ orientation, kind:layoutKind, fullscreen:true, insets, tightKeypads });
-        pictureSizes.push(await checkCompactPicture(orientation, insets, minSize));
+        const pictureSize = await checkCompactPicture(orientation, insets, expectedSize ?? minSize);
+        if (expectedSize !== undefined) {
+          assert.equal(pictureSize, expectedSize, `${orientation} picture long edge at ${width}×${height}`);
+        }
+        pictureSizes.push(pictureSize);
         await screenshot(`mobile-${width}x${height}-${orientation}-fullscreen`, false);
       }
       for (let index = 1; index < sizes.length; index++) {
-        const [width,height] = sizes[index], [oldWidth,oldHeight] = sizes[index - 1];
+        // The switches between two measured picture sizes were checked above.
+        const [width,height,,expectedSize] = sizes[index], [oldWidth,oldHeight,,oldExpectedSize] = sizes[index - 1];
+        if (expectedSize !== undefined && oldExpectedSize !== undefined) continue;
         const before = pictureSizes[index - 1], after = pictureSizes[index];
         const growth = Math.sign(width + height - oldWidth - oldHeight) * (after - before);
         assert.ok(growth >= 0 && growth <= 14,
