@@ -6,29 +6,39 @@ use crate::{
     sdma::SoundDma,
     Error, Model,
 };
+use serde_big_array::BigArray;
 
 const ROM_PREFETCH_WORDS: u32 = 8;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) struct Bus {
+    #[serde(with = "serde_bytes")]
     pub ram: Vec<u8>,
+    #[serde(with = "BigArray")]
     pub ports: [u8; 256],
+    #[serde(skip)]
     pub cartridge: Option<Cartridge>,
     pub buttons: u16,
     pub cycles: u64,
     pub raster_line: u8,
     pub completed_frames: u64,
+    #[serde(skip)]
     pub model: Model,
+    #[serde(skip)]
     boot_rom: &'static [u8],
     pub audio: Audio,
+    #[serde(with = "BigArray")]
     pub sprites: [u8; 512],
     pub sprite_first: u8,
     pub sprite_count: u8,
+    #[serde(skip)]
     pub accesses: std::cell::Cell<u32>,
     rom_prefetch: std::cell::Cell<u8>,
     prefetch_next: std::cell::Cell<u32>,
     prefetch_limit: std::cell::Cell<u32>,
     rom_fetch_high: std::cell::Cell<u32>,
     eeprom: Eeprom,
+    #[serde(skip)]
     pub console_data: [Vec<u8>; 3],
     internal_eeprom: InternalEeprom,
     timer: [u16; 2],
@@ -44,13 +54,120 @@ pub(crate) struct Bus {
     pending_cycles: u32,
     pub screen_scroll: [u8; 4],
     pub sprite_window: [u8; 4],
+    #[serde(skip, default = "initial_generation")]
     pub video_generation: u64,
+    #[serde(skip, default = "initial_generation")]
     pub palette_generation: u64,
+    #[serde(skip, default = "initial_row_generations")]
     pub video_row_generations: [u64; crate::FRAME_HEIGHT],
+    #[serde(skip, default = "empty_tile_usage")]
     used_tile_blocks: [std::cell::Cell<bool>; 2048],
+    #[serde(skip)]
     fault: Option<Error>,
 }
+
+fn initial_generation() -> u64 {
+    1
+}
+fn initial_row_generations() -> [u64; crate::FRAME_HEIGHT] {
+    [1; crate::FRAME_HEIGHT]
+}
+fn empty_tile_usage() -> [std::cell::Cell<bool>; 2048] {
+    std::array::from_fn(|_| std::cell::Cell::new(false))
+}
+
+fn rtc_command_len(command: u8) -> Option<usize> {
+    match command {
+        0x10..=0x13 => Some(1),
+        0x14 | 0x15 => Some(7),
+        0x16 | 0x17 => Some(3),
+        0x18..=0x1b => Some(2),
+        _ => None,
+    }
+}
+
 impl Bus {
+    pub(crate) fn valid_snapshot(
+        &self,
+        model: Model,
+        cart: &Cartridge,
+        console_len: usize,
+    ) -> bool {
+        let port = &self.ports;
+        let identity_bits = 0x80 | if model == Model::Mono { 0 } else { 2 };
+        let extended = cart.header.mapper == Mapper::Bandai2003;
+        self.ram.len() == 65536
+            && port[0xa0] & !0x0d == identity_bits
+            && port[0xc0] == port[0xcf]
+            && port[0xc0] < if extended { 64 } else { 16 }
+            && port[0xc1..=0xc3] == [port[0xd0], port[0xd2], port[0xd4]]
+            && (port[0xd1] | port[0xd3] | port[0xd5]) < 4
+            && (port[0xcc] | port[0xcd]) < 16
+            && port[0xce] < 2
+            && match model {
+                Model::Mono => port[0x60] == 0 && !self.gdma_started && self.sound_stall == 0,
+                _ => {
+                    (port[0x60] & 0x60 == 0 || port[0x60] & 0x80 != 0)
+                        && (port[0x60] & 0x20 == 0 || port[0x60] & 0x40 != 0)
+                        && (model != Model::Crystal || port[0x17] == 0)
+                        && port[0x42] < 16
+                        && (port[0x40] | port[0x44] | port[0x46]) & 1 == 0
+                        && port[0x48] & !0xc0 == 0
+                        && (!self.gdma_started || port[0x48] & 0x80 != 0)
+                        && (port[0x4c] | port[0x50]) < 16
+                        && port[0x52] & 0x20 == 0
+                }
+            }
+            && self.buttons & !0xffe == 0
+            && self.cycles <= u64::MAX / 2
+            && self.completed_frames <= self.cycles / 256
+            && self.sprite_first < 128
+            && self.sprite_count <= 128
+            && u32::from(self.rom_prefetch.get()) <= ROM_PREFETCH_WORDS
+            && self.prefetch_limit.get() <= ROM_PREFETCH_WORDS
+            && self.prefetch_next.get() <= 0xfffff
+            && (self.rom_fetch_high.get() == 0
+                || (0x20001..=0xfffff).contains(&self.rom_fetch_high.get())
+                    && self.rom_fetch_high.get() & 1 != 0)
+            && self.eeprom.valid_snapshot(cart.header.save)
+            && self.internal_eeprom.valid_snapshot(console_len)
+            && self.audio.valid_snapshot()
+            && self.sdma.valid_snapshot()
+            && self.sound_stall <= 4096
+            && self.pending_cycles == 0
+            && self.valid_rtc_transport(cart.header.mapper)
+    }
+
+    fn valid_rtc_transport(&self, mapper: Mapper) -> bool {
+        let remaining = usize::from(self.rtc_remaining);
+        if self.rtc_command == 0 {
+            return remaining == 0 && self.rtc_wait == 0 && self.rtc_index == 0 && !self.rtc_ready;
+        }
+        mapper == Mapper::Bandai2003
+            && rtc_command_len(self.rtc_command).is_some_and(|len| {
+                self.rtc_wait <= 64
+                    && (!self.rtc_ready || self.rtc_wait == 0)
+                    && if self.rtc_command & 1 != 0 {
+                        self.rtc_index <= len.min(6)
+                            && remaining <= len
+                            && (self.rtc_wait == 0 || remaining > 0)
+                    } else {
+                        (1..=len).contains(&self.rtc_index) && remaining == len - self.rtc_index
+                    }
+            })
+    }
+
+    pub(crate) fn inherit_snapshot_environment(&mut self, previous: &mut Self) {
+        self.model = previous.model;
+        self.boot_rom = previous.boot_rom;
+        self.cartridge = previous.cartridge.take();
+        self.console_data = std::mem::take(&mut previous.console_data);
+    }
+
+    pub(crate) fn cancel_cartridge_eeprom_transfer(&mut self) {
+        self.eeprom = Eeprom::default();
+    }
+
     pub fn new(model: Model) -> Self {
         let mut ports = [0; 256];
         ports[0xc0] = 15;
@@ -110,10 +227,10 @@ impl Bus {
             pending_cycles: 0,
             screen_scroll: [0; 4],
             sprite_window: [0; 4],
-            video_generation: 1,
-            palette_generation: 1,
-            video_row_generations: [1; crate::FRAME_HEIGHT],
-            used_tile_blocks: std::array::from_fn(|_| std::cell::Cell::new(false)),
+            video_generation: initial_generation(),
+            palette_generation: initial_generation(),
+            video_row_generations: initial_row_generations(),
+            used_tile_blocks: empty_tile_usage(),
             fault: None,
         }
     }
@@ -900,17 +1017,9 @@ impl Bus {
                     // READY is read-only; preserve explicit rejection of all
                     // unsupported command/control bits other than READY.
                     let command = value & !0x80;
-                    let length = match command {
-                        0x10..=0x13 => 1,
-                        0x14 | 0x15 => 7,
-                        0x16 | 0x17 => 3,
-                        0x18..=0x1b => 2,
-                        _ => {
-                            return Err(Error::new(format!(
-                                "Unsupported RTC command {value:#04x}."
-                            )))
-                        }
-                    };
+                    let length = rtc_command_len(command).ok_or_else(|| {
+                        Error::new(format!("Unsupported RTC command {value:#04x}."))
+                    })? as u8;
                     self.rtc_data = self
                         .cartridge
                         .as_ref()

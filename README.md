@@ -124,6 +124,29 @@ shader output capped at 4× resolution.
 
 See the [controller screenshots and production-preview results](docs/issue-142-validation.md).
 
+### Save states
+
+Choose **New state** in the **Save state** picker and press **Save** to capture
+the current game, whether it is playing or paused. Saving again replaces the
+selected entry. Choose another screenshot to change the target, then press
+**Load** to restore it. The player stays playing or paused according to your
+current playback choice. Use **Import**, **Export**, or **Delete** in the same
+picker. Imports create separate entries, and deleting a state or remembered
+ROM leaves ordinary cartridge and console saves intact.
+
+Before Load replaces ordinary cartridge or console progress, it saves the
+outgoing progress as **Recovery** entries in the picker. Select a Recovery
+entry and press **Load** to use it, or **Export** it to keep a copy. If the
+backup cannot be saved or existing progress cannot be read, Load stops before
+changing the game.
+
+States and their screenshots stay in IndexedDB on this browser and site.
+Keep exports of important states before clearing site data or moving to another
+browser. Use one player tab at a time. To import or load, use the exact same
+raw ROM, physical console, and cartridge clock setting. The [save-state
+format and recovery notes](docs/save-states.md) explain compatibility,
+local storage, and how the cartridge clock resumes.
+
 Cartridge saves are automatic and **browser-local**, keyed by SHA-256 of the
 ROM contents (renaming a file keeps its save; different contents get separate
 slots). Reset, pause and compatible model changes preserve saves. Reload or

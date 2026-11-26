@@ -1,4 +1,6 @@
 use crate::Error;
+use sha2::{Digest, Sha256};
+use std::cell::OnceCell;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SaveKind {
@@ -56,6 +58,7 @@ pub struct Header {
 #[derive(Clone, Debug)]
 pub struct Cartridge {
     pub bytes: Box<[u8]>,
+    rom_hash: OnceCell<[u8; 32]>,
     rom_mask: usize,
     rom_gap: usize,
     pub header: Header,
@@ -63,12 +66,19 @@ pub struct Cartridge {
     pub rtc: Option<crate::rtc::Rtc>,
 }
 impl Cartridge {
+    pub fn rom_hash(&self) -> [u8; 32] {
+        *self
+            .rom_hash
+            .get_or_init(|| Sha256::digest(&self.bytes).into())
+    }
+
     #[cfg(test)]
     pub fn replace_fixture_bytes(&mut self, bytes: Box<[u8]>) {
         let capacity = bytes.len().next_power_of_two();
         self.rom_mask = capacity - 1;
         self.rom_gap = capacity - bytes.len();
         self.bytes = bytes;
+        self.rom_hash.take();
     }
 
     pub fn parse(bytes: &[u8]) -> Result<Self, Error> {
@@ -149,6 +159,7 @@ impl Cartridge {
         let capacity = bytes.len().next_power_of_two();
         Ok(Self {
             bytes: bytes.into(),
+            rom_hash: OnceCell::new(),
             rom_mask: capacity - 1,
             rom_gap: capacity - bytes.len(),
             rtc: (h[13] == 1).then(crate::rtc::Rtc::default),

@@ -114,7 +114,7 @@ fn mapped_fetch_clocks(addresses: &[u32], control: u8) -> u32 {
 }
 
 /// Intel register order: AX CX DX BX SP BP SI DI; segments ES CS SS DS.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Cpu {
     pub registers: [u16; 8],
     pub segments: [u16; 4],
@@ -125,6 +125,12 @@ pub struct Cpu {
     // Successful byte DIV restores CF/OF from the last explicit multiplication.
     // This is independent of architectural FLAGS; see docs/byte-div-flags.md.
     multiplication_overflow: bool,
+}
+
+impl Cpu {
+    pub(crate) fn valid_snapshot(&self) -> bool {
+        self.interrupt_shadow <= 1 && self.flags == normalize_flags(self.flags)
+    }
 }
 
 #[derive(Clone, Copy)]
