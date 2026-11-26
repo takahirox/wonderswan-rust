@@ -18,6 +18,7 @@ import { wordTimingChecks } from './word-timing.mjs';
 import { keypadChecks } from './keypad.mjs';
 import { sweepChecks } from './sweep.mjs';
 import { startupChecks } from './startup.mjs';
+import { saveStateWasmChecks } from './save-state-wasm.mjs';
 import { shiftRotateChecks } from './shift-rotate.mjs';
 import { divisionChecks } from './divide.mjs';
 import { trapChecks } from './trap.mjs';
@@ -561,6 +562,7 @@ try {
   console.log('Original SDMA Channel 2, SDMA Hyper Voice and direct CPU Hyper Voice: exact real Wasm PCM on Color/Crystal, mono silence, measured gain, mute/pause/restart/visibility and bounded single-context playback passed');
   await sweepChecks(browser,base,errors,observeAudio);
   await startupChecks(browser,base,errors);
+  await saveStateWasmChecks(browser,base);
   await buslockChecks(browser,base,errors);
   await pushSpChecks(browser,base,errors);
   await rtcChecks(browser,base,errors);

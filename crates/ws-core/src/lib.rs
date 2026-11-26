@@ -23,6 +23,7 @@ mod rtc;
 #[cfg(test)]
 mod rtc_tests;
 mod sdma;
+mod snapshot;
 #[cfg(test)]
 mod sound_tests;
 #[cfg(test)]
@@ -34,6 +35,7 @@ mod video;
 pub use audio::SAMPLE_RATE;
 pub use cartridge::{HardwareModel, Header, Mapper, Orientation, SaveKind};
 pub use cpu::Cpu;
+pub use snapshot::{PreparedSnapshot, MAX_SNAPSHOT_BYTES};
 use std::fmt;
 
 pub const FRAME_WIDTH: usize = 224;
@@ -220,6 +222,10 @@ impl Machine {
             .as_ref()
             .and_then(|c| c.rtc.as_ref())
             .map_or_else(Vec::new, rtc::Rtc::export)
+    }
+    /// Check a native clock record without importing it or changing the bus.
+    pub fn validate_rtc_data(data: &[u8]) -> Result<(), Error> {
+        rtc::Rtc::import(data).map(|_| ())
     }
     /// Validate completely before mutation. Success cancels pending transport.
     pub fn load_rtc_data(&mut self, data: &[u8]) -> Result<(), Error> {

@@ -159,6 +159,8 @@ export class Sound {
     this.reserve = normalReserve;
     this.clearQueue();
   }
+  flush() { this.resetQueue(); }
+
   private stop() {
     this.resetQueue();
     if (this.context?.state === "running") void this.context.suspend().catch(() => {});

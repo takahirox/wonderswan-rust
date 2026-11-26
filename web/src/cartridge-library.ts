@@ -1,8 +1,9 @@
+import { database } from "./database";
+
 const databaseName = "wonderswan-rust:cartridges";
 const metadata = "cartridges";
 const roms = "roms";
 const stores = [metadata, roms];
-const openTimeoutMs = 2000;
 const unnamedCartridge = "Unnamed cartridge";
 export const maxRomBytes = 64 * 1024 * 1024;
 
@@ -22,64 +23,10 @@ function filename(record: unknown): string | undefined {
   if (typeof name === "string" && name.length <= 1024 && /[^\s\p{C}]/u.test(name)) return name;
 }
 
-function openLibrary(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 1);
-    let expired = false;
-    const fail = (error: unknown) => {
-      expired = true;
-      window.clearTimeout(timeout);
-      reject(error);
-    };
-    // An open queued behind a blocked deletion may never receive a blocked event.
-    const timeout = window.setTimeout(() => fail(new Error("Cartridge storage timed out.")), openTimeoutMs);
-    request.onblocked = () => fail(new Error("Cartridge storage is busy."));
-    request.onupgradeneeded = () => {
-      if (expired) {
-        request.transaction!.abort();
-        return;
-      }
-      try {
-        request.result.createObjectStore(metadata);
-        request.result.createObjectStore(roms);
-      } catch (error) {
-        request.transaction!.abort();
-        fail(error);
-      }
-    };
-    request.onerror = () => fail(request.error);
-    request.onsuccess = () => {
-      window.clearTimeout(timeout);
-      const db = request.result;
-      if (expired) db.close();
-      else {
-        db.onversionchange = () => db.close();
-        resolve(db);
-      }
-    };
-  });
-}
-
-async function transaction<T>(
-  storeNames: string | string[], mode: IDBTransactionMode, run: (tx: IDBTransaction) => T,
-): Promise<T> {
-  const db = await openLibrary();
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const tx = db.transaction(storeNames, mode);
-      tx.onabort = () => reject(tx.error ?? new Error("Cartridge storage transaction aborted."));
-      try {
-        const requests = run(tx);
-        tx.oncomplete = () => resolve(requests);
-      } catch (error) {
-        tx.abort();
-        reject(error);
-      }
-    });
-  } finally {
-    db.close();
-  }
-}
+const transaction = database(databaseName, "Cartridge", db => {
+  db.createObjectStore(metadata);
+  db.createObjectStore(roms);
+});
 
 export async function listCartridges(): Promise<CartridgeEntry[]> {
   const [metadataKeys, records, romKeys] = await transaction(stores, "readonly", tx => {

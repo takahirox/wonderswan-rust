@@ -177,6 +177,22 @@ canvas {
   gap: 6px;
 }
 .toolbar { grid-area: toolbar; position: relative; gap: 8px 12px; margin-bottom: 24px; }
+.state-controls, .state-picker-actions { display: flex; align-items: center; gap: 4px; }
+.state-controls { max-width: 100%; }
+#select-state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 245px;
+  white-space: nowrap;
+}
+#state-selection { overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+#state-status { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+#state-status:empty, #state-picker-status:empty { display: none; }
+@media (max-width: 640px) {
+  .state-controls { flex-basis: 100%; margin-top: 4px; }
+}
 .display-control, .sound-controls { color: var(--muted); font-size: 13px; }
 .display-control select, #sound { color: #252c2a; }
 #pause { width: 82px; }
@@ -281,6 +297,36 @@ dialog h2 { font-size: 20px; }
 dialog h3 { font-size: 15px; margin: 16px 0 4px; }
 dialog p, dialog label { font-size: 14px; }
 dialog p { margin-top: 6px; color: var(--muted); }
+#state-picker {
+  width: min(508px, calc(100% - 2 * max(12px, env(safe-area-inset-left), env(safe-area-inset-right))));
+  padding-inline: 12px;
+  overscroll-behavior: contain;
+}
+#state-list { list-style: none; padding: 0; margin: 8px 0; }
+#state-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.state-choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.state-choice img { width: 64px; height: 48px; object-fit: contain; image-rendering: pixelated; }
+.state-choice[aria-pressed="true"], #state-new[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+#state-picker button[aria-disabled="true"] { opacity: .55; cursor: default; }
+@media (max-width: 400px) {
+  #state-list button { padding-inline: 8px; }
+  .state-choice img { width: 48px; height: 40px; }
+  .state-choice span { font-size: 13px; }
+}
 .orientation-control {
   display: flex;
   flex-wrap: wrap;

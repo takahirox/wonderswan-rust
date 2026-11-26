@@ -1,12 +1,16 @@
 //! Color sound DMA. Register bytes live in the shared port array; only writes
 //! update the repeat shadow. Clock/stall scheduling belongs to the common bus.
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SoundDma {
     shadow: [u8; 6],
     rate_clock: u8,
 }
 
 impl SoundDma {
+    pub fn valid_snapshot(&self) -> bool {
+        self.rate_clock < 6 && self.shadow[2] < 16 && self.shadow[5] < 16
+    }
+
     pub fn counter(ports: &[u8; 256], base: usize) -> u32 {
         u32::from_le_bytes([ports[base], ports[base + 1], ports[base + 2] & 15, 0])
     }

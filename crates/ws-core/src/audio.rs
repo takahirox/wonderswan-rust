@@ -2,7 +2,7 @@
 use std::collections::VecDeque;
 pub const SAMPLE_RATE: u32 = 24000;
 const MAX_SAMPLES: usize = 4800 * 2;
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub(crate) struct Audio {
     phases: [usize; 4],
@@ -14,9 +14,20 @@ pub(crate) struct Audio {
     pub mix: [u16; 2],
     hyper_right: bool,
     hyper_clock: u8,
+    #[serde(skip)]
     samples: VecDeque<f32>,
 }
 impl Audio {
+    pub fn valid_snapshot(&self) -> bool {
+        self.phases.iter().all(|&phase| phase < 32)
+            && self.clocks.iter().all(|&clock| clock < 2048)
+            && self.sample_clock < 128
+            && self.sweep_clock < 8192
+            && self.sweep_ticks < 32
+            && self.lfsr < 0x8000
+            && self.hyper_clock < 12
+    }
+
     pub fn hyper_control(&mut self, value: u8) {
         if value & 0x10 != 0 {
             self.hyper_right = false;

@@ -4,7 +4,7 @@ use crate::{
     cartridge::{Cartridge, Mapper, SaveKind},
     Error,
 };
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Eeprom {
     pub data: u16,
     pub command: u16,
@@ -14,6 +14,36 @@ pub(crate) struct Eeprom {
     pending: Option<(u32, u16, u16, u8)>,
 }
 impl Eeprom {
+    fn command_mode(command: u16, size: usize) -> Option<u8> {
+        let bits = if size == 128 { 6 } else { 10 };
+        let op = (command >> bits) & 3;
+        let sub = (command >> (bits - 2)) & 3;
+        (command >> (bits + 2) == 1).then_some(match op {
+            2 => 0x10,
+            1 => 0x20,
+            3 => 0x40,
+            _ if sub == 1 => 0x20,
+            _ => 0x40,
+        })
+    }
+
+    pub fn valid_snapshot(&self, kind: SaveKind) -> bool {
+        match kind {
+            SaveKind::Eeprom(size) => self.pending.is_none_or(|(remaining, command, _, mode)| {
+                Self::command_mode(command, size) == Some(mode)
+                    && (1..=if mode == 0x10 { 32 } else { 3072 }).contains(&remaining)
+            }),
+            _ => {
+                self.data == 0
+                    && self.command == 0
+                    && self.read_data == 0
+                    && !self.enabled
+                    && !self.done
+                    && self.pending.is_none()
+            }
+        }
+    }
+
     pub fn read(&self, port: u16) -> u8 {
         match port {
             0xc4 => self.read_data as u8,
@@ -44,22 +74,7 @@ impl Eeprom {
                 if self.pending.is_some() {
                     return Err(Error::new("Cartridge EEPROM controller is busy."));
                 }
-                let bits = if cart.save.len() == 128 { 6 } else { 10 };
-                let op = (self.command >> bits) & 3;
-                let sub = (self.command >> (bits - 2)) & 3;
-                let expected = match op {
-                    2 => 0x10,
-                    1 => 0x20,
-                    3 => 0x40,
-                    _ => {
-                        if sub == 1 {
-                            0x20
-                        } else {
-                            0x40
-                        }
-                    }
-                };
-                if self.command >> (bits + 2) != 1 || mode != expected {
+                if Self::command_mode(self.command, cart.save.len()) != Some(mode) {
                     return Err(Error::new(format!(
                         "Unsupported EEPROM command {:#06x} / control {value:#04x} for {} bytes.",
                         self.command,
