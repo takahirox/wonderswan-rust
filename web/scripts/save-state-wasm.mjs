@@ -28,10 +28,14 @@ export async function saveStateWasmChecks(browser, base) {
         return await Promise.all(probes.map(async ({model, name, bytes}, probe) => {
           const m = new WebMachine();
           const other = new WebMachine();
+          const inputs = [32, 260, 512, 0];
+          const clockStep = 371;
+          const initialAnchor = 1000;
+          const restoredAnchor = 200000;
           function drive(machine, anchor) {
             const pcm = [];
-            for (const [index, mask] of [32, 260, 512, 0].entries()) {
-              machine.sync_rtc(anchor + (index + 1) * 371);
+            for (const [index, mask] of inputs.entries()) {
+              machine.sync_rtc(anchor + (index + 1) * clockStep);
               machine.set_buttons(mask);
               machine.run_frame();
               pcm.push(...machine.audio_samples());
@@ -43,16 +47,17 @@ export async function saveStateWasmChecks(browser, base) {
               machine.reset(model);
               machine.load_rom(Uint8Array.from(bytes));
             }
-            m.sync_rtc(1000);
-            const boot = m.capture_snapshot();
-            drive(m, 1000);
-            const active = m.capture_snapshot();
-            for (const [index, state] of [boot, active].entries()) {
+            m.sync_rtc(initialAnchor);
+            const snapshots = [];
+            // The reference runs straight through power-on and the active boundary.
+            for (const frame of [0, inputs.length]) {
+              const state = m.capture_snapshot();
+              snapshots.push(state);
               const prepared = other.prepare_snapshot(state);
               const pixels = prepared.framebuffer();
-              m.apply_snapshot(m.prepare_snapshot(state), 1000);
-              other.apply_snapshot(prepared, 200000);
-              if (m.frame_number() !== index * 4 || other.frame_number() !== m.frame_number()) {
+              other.run_frame(); // Leave generated PCM in the restore target.
+              other.apply_snapshot(prepared, restoredAnchor);
+              if (m.frame_number() !== frame || other.frame_number() !== frame) {
                 throw new Error(`${name}: wrong frame boundary`);
               }
               equal(other.audio_samples(), [], 'old generated PCM leaked');
@@ -60,12 +65,13 @@ export async function saveStateWasmChecks(browser, base) {
               equal(other.framebuffer(), m.framebuffer(), 'restored framebuffer');
               equal(other.save_data(), m.save_data(), 'restored SRAM/EEPROM');
               equal(other.console_data(), m.console_data(), 'restored console data');
-              const pcm = drive(m, 1000);
+              const pcm = drive(m, initialAnchor + frame * clockStep);
               if (probe === 3 && !pcm.some(sample => sample !== 0)) throw new Error('no Hyper Voice PCM');
-              equal(drive(other, 200000), pcm, `${name}: resumed PCM`);
+              equal(drive(other, restoredAnchor), pcm, `${name}: resumed PCM`);
               equal(other.capture_snapshot(), m.capture_snapshot(), `${name}: machine replay`);
               equal(other.rtc_data().slice(0, 16), m.rtc_data().slice(0, 16), 'clock anchor rebase');
             }
+            const [boot, active] = snapshots;
             const baseline = m.capture_snapshot();
             const version = active.slice();
             version[8] = 2;
