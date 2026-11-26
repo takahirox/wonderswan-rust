@@ -20,8 +20,7 @@ raster row is still available to the delayed palette stage. Per-instruction bus
 access accounting is reset at the next CPU step. Generated PCM, host input
 sources, playback and display settings, and execution error messages are
 omitted. The browser clears held input and queued sound and resets presentation
-history and pacing on Load. A recovery copy can also retain the native bytes
-of a stopped cartridge.
+history and pacing on Load.
 
 ## File format version 1
 
@@ -55,7 +54,7 @@ current time, so time spent since capture does not advance the restored clock.
 Future samples advance it as they normally would. The current RTC attachment
 must match the captured configuration.
 
-## Browser storage and recovery
+## Browser storage
 
 The version 1 `wonderswan-rust:save-states` IndexedDB database scopes history by
 the existing full ROM identity and the physical console model. It commits
@@ -64,22 +63,16 @@ The picker reads pages of 20 metadata records without fetching state payloads.
 Ordinary save, clock, and physical-console keys and records retain their
 existing formats in localStorage.
 
-For a Load that displaces native progress, the player first validates the
-candidate and reads the affected native records. It commits a **Recovery ·
-live progress** snapshot and, if necessary, a second **Recovery · stored
-progress** snapshot containing distinct stored values that would be replaced.
-The second copy uses the outgoing machine and cancels transfers for the
-substituted records. Select a recovery entry and press **Load**, or export it
-like any other state. Loading a recovery entry protects the outgoing progress
-in the same way.
+**Load** reads the selected state from IndexedDB, validates it and installs it
+in the running machine. History grows when you choose **New state** and press
+**Save**, or when you **Import** a state. Saving to a selected entry replaces
+it in place.
 
-IndexedDB and localStorage have separate transactions. After recovery entries
-commit, the player writes the ordinary records and then installs the validated
-machine within one browser turn. If a write fails, it rolls back earlier
-localStorage writes and keeps the machine. Unreadable or previously blocked
-records refuse the restore. After a native storage or recovery failure,
-autosave for the affected keys waits until a successful Load or page reload.
-Any recovery entries already committed remain available.
+The ordinary persistence path saves the restored cartridge data, RTC and
+console EEPROM. Loading an older state can therefore replace newer native
+progress. To keep your current progress, choose **New state** and press
+**Save** before loading. Native storage errors still appear in the player, and
+records found unreadable during ordinary native loading are protected from writes.
 
 Data stays in this browser and site origin. One tab at a time is the supported
 workflow. Quota failures, storage eviction, clearing site data, or abrupt

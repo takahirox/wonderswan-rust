@@ -40,6 +40,12 @@ async function clickSave(page) {
   await stateIdle(page);
 }
 
+async function clickLoad(page) {
+  await page.locator('#load-state').click();
+  await status(page, '#state-status', 'Save state loaded.');
+  await stateIdle(page);
+}
+
 async function importState(page, bytes) {
   const chooser = page.waitForEvent('filechooser');
   await page.locator('#state-import').click();
@@ -129,6 +135,7 @@ function observeStorage() {
     write.call(this, key, value);
   };
   window.stateReads = 0;
+  window.stateWrites = 0;
   const read = IDBObjectStore.prototype.get;
   IDBObjectStore.prototype.get = function (...args) {
     if (this.name === 'snapshots') window.stateReads++;
@@ -137,9 +144,12 @@ function observeStorage() {
   const put = IDBObjectStore.prototype.put;
   IDBObjectStore.prototype.put = function (...args) {
     const request = put.apply(this, args);
-    if (this.name === 'snapshots' && window.failStateWrite) {
-      window.failStateWrite = false;
-      request.addEventListener('success', () => this.transaction.abort(), { once: true });
+    if (this.name === 'snapshots') {
+      window.stateWrites++;
+      if (window.failStateWrite) {
+        window.failStateWrite = false;
+        request.addEventListener('success', () => this.transaction.abort(), { once: true });
+      }
     }
     return request;
   };
@@ -215,28 +225,25 @@ async function pickerChecks(page, horizontal, vertical) {
   await page.locator('#save-state').click();
   await status(page, '#state-status', 'aborted');
   assert.deepEqual(await history(page, 'list', scope), initial);
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Previous progress is in the picker');
+  await clickLoad(page);
   assert.equal(await frame(), firstFrame);
-  // The keypad probe also mirrors its input to SRAM. Remove this one
-  // recovery entry before testing the regular state count and import flow.
-  await picker(page);
-  page.once('dialog', dialog => dialog.accept());
-  await page.getByRole('button', { name: /^Delete Recovery/ }).click();
-  await status(page, '#state-picker-status', 'Save state deleted.');
-  await page.locator('#state-close').click();
+  assert.deepEqual(await history(page, 'list', scope), initial);
   await page.locator('#pause').click();
+  await page.keyboard.down('ArrowUp');
   await page.evaluate(stepPlayerClock, 0);
-  await page.evaluate(stepPlayerClock, 40);
+  await page.evaluate(stepPlayerClock, 70);
+  await page.keyboard.up('ArrowUp');
   await page.locator('#pause').click();
   await clickSave(page);
   const overwrittenFrame = await frame();
+  assert.notEqual(overwrittenFrame, firstFrame);
   const overwritten = await history(page, 'list', scope);
   assert.equal(overwritten.length, 1);
   assert.equal(overwritten[0].id, initial[0].id);
   assert.ok(overwritten[0].timestamp > initial[0].timestamp);
 
   await picker(page);
+  await checkThumbnail(page, false);
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', { name: /^Export / }).click();
   const exported = await readFile(await (await downloading).path());
@@ -244,6 +251,7 @@ async function pickerChecks(page, horizontal, vertical) {
   await importState(page, exported);
   await status(page, '#state-picker-status', 'Save state imported.');
   assert.equal(await choices(page).count(), 2);
+  const importedHistory = await history(page, 'list', scope);
   assert.equal(await page.locator('#state-list [aria-pressed="true"]').count(), 1);
   const selected = await page.locator('#state-selection').textContent();
   await importState(page, Buffer.from('bad snapshot'));
@@ -272,8 +280,7 @@ async function pickerChecks(page, horizontal, vertical) {
   await picker(page);
   await choices(page).filter({ hasText: 'Imported state' }).click();
   assert.equal(await frame(), resetFrame, 'selection alone leaves the reset frame intact');
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Save state loaded.');
+  await clickLoad(page);
   await status(page, '#rom-status', 'Running');
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
@@ -289,10 +296,10 @@ async function pickerChecks(page, horizontal, vertical) {
   await page.evaluate(stepPlayerClock, 40);
   await page.locator('#pause').click();
   await status(page, '#rom-status', 'Paused');
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Save state loaded.');
+  await clickLoad(page);
   assert.equal(await page.locator('#pause').textContent(), 'Resume');
   assert.equal(await frame(), overwrittenFrame);
+  assert.deepEqual(await history(page, 'list', scope), importedHistory);
 
   await picker(page);
   page.once('dialog', dialog => dialog.dismiss());
@@ -307,10 +314,12 @@ async function pickerChecks(page, horizontal, vertical) {
   assert.equal(await page.locator('#load-state').isDisabled(), true);
 
   await localRom(page, vertical);
+  assert.deepEqual(await history(page, 'list', scope), overwritten);
   await picker(page);
   assert.equal(await choices(page).count(), 0);
-  await page.locator('#state-close').click();
+  await page.locator('#state-new').click();
   await clickSave(page);
+  assert.equal((await history(page, 'list', `${saveSlot(vertical)}:crystal`)).length, 1);
   await picker(page);
   await checkThumbnail(page, true);
   await page.locator('#state-close').click();
@@ -322,9 +331,12 @@ async function pickerChecks(page, horizontal, vertical) {
   assert.equal(await choices(page).count(), 1);
   await choices(page).click();
   await history(page, 'corrupt', scope);
+  const beforeInvalidLoad = await frame();
   await page.locator('#load-state').click();
   await status(page, '#state-status', 'Invalid save-state file');
   assert.equal(await page.locator('#pause').textContent(), 'Resume');
+  assert.equal(await frame(), beforeInvalidLoad);
+  assert.deepEqual(await history(page, 'list', scope), overwritten);
 
   await history(page, 'seed', scope);
   const before = await page.evaluate(() => window.stateReads);
@@ -339,162 +351,89 @@ async function pickerChecks(page, horizontal, vertical) {
   assert.equal(await page.evaluate(() => window.stateReads), before);
 }
 
-async function recoveryChecks(page, file) {
+async function rtcLoadChecks(page, file) {
   const romKey = saveSlot(file);
   const scope = `${romKey}:crystal`;
   const rtcKey = romKey.replace(':save:', ':rtc:');
-  const consoleKey = 'wonderswan:console:v1:crystal';
-  const keys = [romKey, rtcKey, consoleKey];
-  const read = () => page.evaluate(keys => keys.map(key => localStorage.getItem(key)), keys);
-  const write = values => page.evaluate(
-    ({ keys, values }) => keys.forEach((key, i) => localStorage.setItem(key, values[i])),
-    { keys, values },
-  );
-  function native(save, second, console) {
-    const clock = Buffer.from([82, 84, 67, 1, 0, 1, 1, 0, 0, 0, second, 0x82, 0x80, 0, 0, 0, 1,
-      0x10, 0x27, 0, 0, 0, 0, 0, 0]);
-    const data = Buffer.alloc(2048);
-    data.fill(255, 0, 0x60);
-    data[0x61] = console;
-    return [
-      Buffer.alloc(131072, save).toString('base64'),
-      JSON.stringify({ version: 1, data: clock.toString('base64') }),
-      data.toString('base64'),
-    ];
-  }
-  await write(native(0x10, 7, 0x19));
-  await page.reload(); // Load existing v1 console data during initialization.
-  await localRom(page, file);
-  await page.locator('#pause').click();
-  const oldProgress = await read();
-  await clickSave(page);
-  await write(native(0x40, 0x40, 0x45));
-  await page.reload();
-  await chooseRemembered(page, file.name);
-  await status(page, '#rom-status', 'Running');
-  await page.evaluate(stepPlayerClock, 0);
-  await page.evaluate(stepPlayerClock, 70);
-  await page.locator('#pause').click();
-  const live = await read();
-  assert.equal(Buffer.from(live[0], 'base64')[0], 0x41);
-  assert.equal(Buffer.from(live[2], 'base64')[0x61], 0x45);
-  const stored = native(0x66, 0x59, 0x67);
-  await write(stored);
-  const before = await page.locator('#screen').evaluate(canvas => canvas.toDataURL());
-  await picker(page);
-  await choices(page).click();
-
-  await page.evaluate(() => { window.failStateWrite = true; });
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Could not save recovery progress');
-  await page.evaluate(() => window.stateAutosave());
-  assert.deepEqual(await read(), stored);
-  assert.equal(await page.locator('#screen').evaluate(canvas => canvas.toDataURL()), before);
-  assert.equal((await history(page, 'list', scope)).length, 1);
-
-  await page.evaluate(key => { window.failNativeKey = key; }, consoleKey);
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Injected native write failure');
-  await page.evaluate(() => window.stateAutosave());
-  assert.deepEqual(await read(), stored);
-  assert.equal((await history(page, 'list', scope)).length, 3);
-  assert.equal(await page.locator('#screen').evaluate(canvas => canvas.toDataURL()), before);
-
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Previous progress is in the picker');
-  assert.deepEqual(await read(), oldProgress);
-  assert.equal(await page.locator('#pause').textContent(), 'Resume');
-  await picker(page);
-  await choices(page).filter({ hasText: 'Recovery · live progress' }).first().click();
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Previous progress is in the picker');
-  assert.deepEqual(await read(), live);
-  await picker(page);
-  await choices(page).filter({ hasText: 'Recovery · stored progress' }).first().click();
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Previous progress is in the picker');
-  assert.deepEqual(await read(), stored);
-
-  const retained = await history(page, 'list', scope);
-  const corruptClock = [stored[0], 'unreadable native clock', stored[2]];
-  await write(corruptClock);
-  const recoveredFrame = await page.locator('#screen').evaluate(canvas => canvas.toDataURL());
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'local clock record is unreadable');
-  await page.evaluate(() => window.stateAutosave());
-  assert.deepEqual(await read(), corruptClock);
-  assert.equal(await page.locator('#screen').evaluate(canvas => canvas.toDataURL()), recoveredFrame);
-  await write(stored);
-
-  const cartridges = await openCartridges(page);
-  page.once('dialog', dialog => dialog.accept());
-  await cartridges.getByRole('button', { name: `Remove ${file.name}` }).click();
-  await cartridges.locator('#cartridge-list li').waitFor({ state: 'detached' });
-  assert.deepEqual(await read(), stored);
-  assert.deepEqual(await history(page, 'list', scope), retained);
-}
-
-async function elapsedClockRecovery(page, file) {
-  const rtcKey = saveSlot(file).replace(':save:', ':rtc:');
+  const storedSave = () => page.evaluate(key => localStorage.getItem(key), romKey);
   const storedClock = () => page.evaluate(key => {
     const data = atob(JSON.parse(localStorage.getItem(key)).data);
     return Array.from(data, byte => byte.charCodeAt(0));
   }, rtcKey);
-  const time = async () => (await storedClock()).slice(8, 11);
   const liveClock = () => page.evaluate(() => window.readLiveRtc());
+  const autosave = () => page.evaluate(() => window.stateAutosave());
+
   await localRom(page, file);
   await page.locator('#pause').click();
   await clickSave(page);
-  assert.deepEqual(await time(), [0, 0, 0]);
+  const initial = await history(page, 'list', scope);
+  const capturedSave = await storedSave();
+  const capturedClock = await storedClock();
+  assert.deepEqual(capturedClock.slice(8, 11), [0, 0, 0]);
 
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
     document.dispatchEvent(new Event('visibilitychange'));
-    window.stateNow += 60_000;
+    window.stateNow += 60_500;
     delete document.hidden;
     document.dispatchEvent(new Event('visibilitychange'));
+    window.failStateWrite = true;
   });
-  const before = await liveClock();
-  assert.deepEqual(before, await storedClock(), 'autosave has not sampled the elapsed minute');
-  await page.evaluate(() => { window.failStateWrite = true; });
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Could not save recovery progress');
-  assert.deepEqual(await liveClock(), before, 'failed Load preserves live RTC registers and host anchor');
-  assert.deepEqual(await storedClock(), before, 'failed Load preserves the stored RTC record');
-
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Save state loaded.');
-  assert.match(await page.locator('#state-status').textContent(), /Previous progress is in the picker/);
-  assert.deepEqual(await time(), [0, 0, 0], 'load restores the captured clock');
-
-  await picker(page);
-  await choices(page).filter({ hasText: 'Recovery · live progress' }).click();
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Save state loaded.');
-  assert.deepEqual(await time(), [0, 1, 0], 'recovery restores the elapsed minute');
+  assert.deepEqual(await liveClock(), capturedClock, 'the paused clock has yet to sample the elapsed time');
+  await clickLoad(page);
+  const rebasedClock = await liveClock();
+  assert.deepEqual(rebasedClock.slice(0, 16), capturedClock.slice(0, 16), 'Load restores the guest clock');
+  assert.notDeepEqual(rebasedClock.slice(16), capturedClock.slice(16), 'Load rebases the host anchor');
   assert.equal(await page.locator('#pause').textContent(), 'Resume');
+  assert.deepEqual(await storedClock(), capturedClock);
+  await page.evaluate(() => { window.stateNow += 2_000; });
+  await autosave();
+  assert.deepEqual((await storedClock()).slice(8, 11), [0, 0, 2], 'only elapsed time since Load advances the clock');
+
+  // Reset and play until the original fixture writes a newer boot count to SRAM.
+  await page.locator('#reset').click();
+  await page.evaluate(stepPlayerClock, 0);
+  await page.evaluate(stepPlayerClock, 70);
+  await autosave();
+  const newerSave = await storedSave();
+  assert.equal(Buffer.from(newerSave, 'base64')[0], Buffer.from(capturedSave, 'base64')[0] + 1);
+  await page.evaluate(key => { window.failNativeKey = key; }, romKey);
+  await clickLoad(page);
+  assert.equal(await page.locator('#pause').textContent(), 'Pause');
+  assert.deepEqual((await liveClock()).slice(0, 16), capturedClock.slice(0, 16));
+  assert.equal(await storedSave(), newerSave);
+  await autosave();
+  await status(page, '#notice', 'Local save storage is unavailable or full.');
+  assert.equal(await storedSave(), newerSave);
+  await autosave();
+  assert.equal(await storedSave(), capturedSave);
+  assert.deepEqual(await storedClock(), await liveClock());
+  assert.deepEqual(await history(page, 'list', scope), initial);
+  assert.deepEqual(await page.evaluate(() => [window.stateWrites, window.failStateWrite]), [1, true]);
 }
 
-async function consoleRecovery(page, file) {
-  const key = 'wonderswan:console:v1:crystal';
-  const count = () => page.evaluate(key => atob(localStorage.getItem(key)).charCodeAt(2), key);
+async function eepromLoadChecks(page, file, key, offset) {
+  const scope = `${saveSlot(file)}:crystal`;
+  const data = () => page.evaluate(key => localStorage.getItem(key), key);
+  const count = record => Buffer.from(record, 'base64')[offset];
   await localRom(page, file);
   await page.locator('#pause').click();
-  assert.equal(await count(), 1);
   await clickSave(page);
+  const initial = await history(page, 'list', scope);
+  const captured = await data();
+  assert.equal(count(captured), 1);
   await page.locator('#reset').click();
   await page.evaluate(stepPlayerClock, 0);
   await page.evaluate(stepPlayerClock, 70);
   await page.locator('#pause').click();
-  assert.equal(await count(), 2);
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Previous progress is in the picker');
-  assert.equal(await count(), 1);
-  await picker(page);
-  await choices(page).filter({ hasText: 'Recovery · live progress' }).click();
-  await page.locator('#load-state').click();
-  await status(page, '#state-status', 'Previous progress is in the picker');
-  assert.equal(await count(), 2);
+  const newer = await data();
+  assert.equal(count(newer), 2);
+  await clickLoad(page);
+  assert.equal(await data(), newer);
+  await page.evaluate(() => window.stateAutosave());
+  assert.equal(await data(), captured);
+  assert.deepEqual(await history(page, 'list', scope), initial);
+  assert.equal(await page.evaluate(() => window.stateWrites), 1);
 }
 
 async function touchChecks(page, horizontal, vertical) {
@@ -525,14 +464,15 @@ async function touchChecks(page, horizontal, vertical) {
 }
 
 export async function saveStateChecks(browser, base, errors) {
-  const [horizontal, vertical, rtc, internalEeprom] = await Promise.all([
-    fixture('keypad-horizontal'), fixture('keypad-vertical'), fixture('sram128-2003'), fixture('internal-eeprom'),
+  const [horizontal, vertical, rtc, cartridgeEeprom, internalEeprom] = await Promise.all([
+    fixture('keypad-horizontal'), fixture('keypad-vertical'), fixture('sram128-2003'),
+    fixture('eeprom128'), fixture('internal-eeprom'),
   ]);
   await withPlayer(browser, base, errors, page => pickerChecks(page, horizontal, vertical));
-  await withPlayer(browser, base, errors, page => recoveryChecks(page, rtc));
-  await withPlayer(browser, base, errors, page => elapsedClockRecovery(page, rtc));
-  await withPlayer(browser, base, errors, page => consoleRecovery(page, internalEeprom));
+  await withPlayer(browser, base, errors, page => rtcLoadChecks(page, rtc));
+  await withPlayer(browser, base, errors, page => eepromLoadChecks(page, cartridgeEeprom, saveSlot(cartridgeEeprom), 0));
+  await withPlayer(browser, base, errors, page => eepromLoadChecks(page, internalEeprom, 'wonderswan:console:v1:crystal', 2));
   await withPlayer(browser, base, errors, page => touchChecks(page, horizontal, vertical),
     { isMobile: true, hasTouch: true, viewport: { width: 375, height: 812 } });
-  console.log('Save states: selector, explicit Save/Load, atomic overwrite, rotated screenshots, import/export, paging, identity, native backups and rollback, keyboard and touch passed');
+  console.log('Save states: selector, explicit Save/Load, atomic overwrite, rotated screenshots, import/export, paging, identity, direct Load with no history growth, native SRAM/EEPROM/RTC persistence, keyboard and touch passed');
 }

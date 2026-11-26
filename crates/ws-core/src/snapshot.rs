@@ -79,18 +79,8 @@ impl Machine {
         Ok(())
     }
 
-    /// Capture at power-on or between calls to run_frame. After a fault this
-    /// also permits recovery of native progress from the stopped hardware.
+    /// Capture at power-on or between calls to run_frame.
     pub fn capture_snapshot(&self) -> Result<Vec<u8>, Error> {
-        self.capture_with_rtc(self.rtc())
-    }
-
-    /// Include time since the last RTC sample without changing the live clock.
-    pub fn capture_snapshot_at(&self, now_ms: u64) -> Result<Vec<u8>, Error> {
-        self.capture_with_rtc(self.rtc_at(now_ms).as_ref())
-    }
-
-    fn capture_with_rtc(&self, rtc: Option<&Rtc>) -> Result<Vec<u8>, Error> {
         let identity = self.snapshot_identity()?;
         let cart = self.bus.cartridge.as_ref().unwrap();
         encode(
@@ -101,7 +91,7 @@ impl Machine {
                 framebuffer: &self.framebuffer,
                 pending_line: &self.video.pending,
                 save: &cart.save,
-                rtc,
+                rtc: self.rtc(),
                 console: self.console_data(),
             },
         )
@@ -188,53 +178,8 @@ impl PreparedSnapshot {
     pub fn framebuffer(&self) -> &[u8] {
         &self.state.framebuffer
     }
-    pub fn save_data(&self) -> &[u8] {
-        &self.state.save
-    }
-    pub fn console_data(&self) -> &[u8] {
-        &self.state.console
-    }
-    /// Encode the native RTC record as it will be when installed.
-    pub fn rtc_data(&self, now_ms: u64) -> Vec<u8> {
-        self.state.rtc.clone().map_or_else(Vec::new, |mut rtc| {
-            rtc.rebase(now_ms);
-            rtc.export()
-        })
-    }
-
-    /// Make a recovery export containing any distinct, previously persisted
-    /// records. Clear transfers for replaced records, as with native imports.
-    pub fn replace_native_records(
-        &mut self,
-        save: Option<&[u8]>,
-        rtc: Option<&[u8]>,
-        console: Option<&[u8]>,
-    ) -> Result<(), Error> {
-        if save.is_some_and(|data| data.len() != self.state.save.len())
-            || console.is_some_and(|data| data.len() != self.state.console.len())
-            || (rtc.is_some() && self.state.rtc.is_none())
-        {
-            return Err(Error::new(
-                "Native recovery records do not match this save state.",
-            ));
-        }
-        let rtc = rtc.map(Rtc::import).transpose()?;
-        if let Some(data) = save {
-            self.state.save.copy_from_slice(data);
-            self.state.bus.cancel_cartridge_eeprom_transfer();
-        }
-        if let Some(rtc) = rtc {
-            self.state.rtc = Some(rtc);
-            self.state.bus.cancel_rtc();
-        }
-        if let Some(data) = console {
-            self.state.console.copy_from_slice(data);
-            self.state.bus.cancel_internal_eeprom_transfer();
-        }
-        Ok(())
-    }
-
-    pub fn encode(&self) -> Result<Vec<u8>, Error> {
+    #[cfg(test)]
+    fn encode(&self) -> Result<Vec<u8>, Error> {
         let state = &self.state;
         encode(
             self.identity,
@@ -374,22 +319,17 @@ mod tests {
             let mut other = Machine::new(model);
             other.load_rom(rom).unwrap();
             for (bytes, is_locked) in [(&at_power_on, false), (&locked, true)] {
-                let mut candidate = other.prepare_snapshot(bytes).unwrap();
+                let candidate = other.prepare_snapshot(bytes).unwrap();
                 assert_eq!(candidate.encode().unwrap(), *bytes);
-                let original_console = candidate.console_data().to_vec();
-                candidate
-                    .replace_native_records(None, None, Some(&vec![42; original_console.len()]))
-                    .unwrap();
-                other.apply_snapshot(candidate, 12_000).unwrap();
-                assert!(other.console_data().iter().all(|&byte| byte == 42));
                 m.apply_snapshot(m.prepare_snapshot(bytes).unwrap(), 1000)
                     .unwrap();
                 other
-                    .apply_snapshot(other.prepare_snapshot(bytes).unwrap(), 12_000)
+                    .load_console_data(&vec![42; other.console_data().len()])
                     .unwrap();
+                other.apply_snapshot(candidate, 12_000).unwrap();
                 assert_eq!(other.bus.ports[0xa0] & 1 != 0, is_locked);
                 assert_eq!(other.frame_number(), if is_locked { 4 } else { 0 });
-                assert_eq!(other.console_data(), original_console);
+                assert_eq!(other.console_data(), m.console_data());
                 assert_eq!(other.framebuffer(), m.framebuffer());
                 assert!(m.audio_samples().is_empty());
                 let pcm = drive(&mut m, 1000);

@@ -1,4 +1,4 @@
-import { deleteState, readState, statePage, writeStates, type StateEntry } from "./state-history";
+import { deleteState, readState, statePage, writeState, type StateEntry } from "./state-history";
 
 const element = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
 const formatTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
@@ -12,7 +12,7 @@ interface StateControls {
   onOpen: () => void;
   capture: () => Promise<{ bytes: Uint8Array; thumbnail: Blob; timestamp: number }>;
   inspect: (bytes: Uint8Array) => Promise<Blob>;
-  restore: (scope: string, bytes: Uint8Array) => Promise<boolean>;
+  restore: (bytes: Uint8Array) => void;
   maxBytes: number;
 }
 
@@ -195,7 +195,7 @@ export function statePicker(controls: StateControls) {
   save.addEventListener("click", () => void run(async scope => {
     const { bytes, timestamp, thumbnail } = await controls.capture();
     const entry = { scope, id: selections.get(scope)?.id ?? crypto.randomUUID(), timestamp, thumbnail };
-    await writeStates({ entry, bytes });
+    await writeState(entry, bytes);
     selections.set(scope, entry);
     feedback("Save state saved.", true);
   }));
@@ -203,8 +203,8 @@ export function statePicker(controls: StateControls) {
     const entry = selections.get(scope);
     if (!entry) return;
     const bytes = await readState(scope, entry.id);
-    const recovered = await controls.restore(scope, bytes);
-    feedback(recovered ? "Save state loaded. Previous progress is in the picker." : "Save state loaded.", !recovered);
+    controls.restore(bytes);
+    feedback("Save state loaded.", true);
   }));
   importButton.addEventListener("click", () => { if (!busy) fileInput.click(); });
   fileInput.addEventListener("change", () => {
@@ -216,7 +216,7 @@ export function statePicker(controls: StateControls) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const thumbnail = await controls.inspect(bytes);
       const entry = { scope, id: crypto.randomUUID(), timestamp: Date.now(), thumbnail, label: "Imported state" };
-      await writeStates({ entry, bytes });
+      await writeState(entry, bytes);
       await showPage(scope, []);
       feedback("Save state imported.", true);
     });
