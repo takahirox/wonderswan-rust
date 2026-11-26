@@ -408,6 +408,38 @@ async function recoveryChecks(page, file) {
   assert.deepEqual(await history(page, 'list', scope), retained);
 }
 
+async function elapsedClockRecovery(page, file) {
+  const rtcKey = saveSlot(file).replace(':save:', ':rtc:');
+  const time = () => page.evaluate(key => {
+    const data = atob(JSON.parse(localStorage.getItem(key)).data);
+    return Array.from(data.slice(8, 11), byte => byte.charCodeAt(0));
+  }, rtcKey);
+  await localRom(page, file);
+  await page.locator('#pause').click();
+  await clickSave(page);
+  assert.deepEqual(await time(), [0, 0, 0]);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.stateNow += 60_000;
+    delete document.hidden;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  assert.deepEqual(await time(), [0, 0, 0], 'autosave has not sampled the elapsed minute');
+  await page.locator('#load-state').click();
+  await status(page, '#state-status', 'Save state loaded.');
+  assert.match(await page.locator('#state-status').textContent(), /Previous progress is in the picker/);
+  assert.deepEqual(await time(), [0, 0, 0], 'load restores the captured clock');
+
+  await picker(page);
+  await choices(page).filter({ hasText: 'Recovery · live progress' }).click();
+  await page.locator('#load-state').click();
+  await status(page, '#state-status', 'Save state loaded.');
+  assert.deepEqual(await time(), [0, 1, 0], 'recovery restores the elapsed minute');
+  assert.equal(await page.locator('#pause').textContent(), 'Resume');
+}
+
 async function consoleRecovery(page, file) {
   const key = 'wonderswan:console:v1:crystal';
   const count = () => page.evaluate(key => atob(localStorage.getItem(key)).charCodeAt(2), key);
@@ -463,6 +495,7 @@ export async function saveStateChecks(browser, base, errors) {
   ]);
   await withPlayer(browser, base, errors, page => pickerChecks(page, horizontal, vertical));
   await withPlayer(browser, base, errors, page => recoveryChecks(page, rtc));
+  await withPlayer(browser, base, errors, page => elapsedClockRecovery(page, rtc));
   await withPlayer(browser, base, errors, page => consoleRecovery(page, internalEeprom));
   await withPlayer(browser, base, errors, page => touchChecks(page, horizontal, vertical),
     { isMobile: true, hasTouch: true, viewport: { width: 375, height: 812 } });

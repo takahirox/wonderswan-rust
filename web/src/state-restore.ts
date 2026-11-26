@@ -23,6 +23,9 @@ export async function restoreState(
   let consumed = false;
   const consoleSlot = consoleKey(machine.model());
   const clockSlot = rtcKey(romKey);
+  const timestamp = Date.now();
+  // A paused or hidden player may not have sampled the outgoing clock recently.
+  machine.sync_rtc(timestamp);
   const live = [
     { type: "save" as const, key: romKey, bytes: machine.save_data() },
     { type: "rtc" as const, key: clockSlot, bytes: machine.rtc_data() },
@@ -48,7 +51,6 @@ export async function restoreState(
     });
     const recovery: StateRecord[] = [];
     if (records.some(record => record.liveChanges || record.storedChanges)) {
-      const timestamp = Date.now();
       const outgoing = machine.capture_snapshot();
       const thumbnail = await stateThumbnail(machine.framebuffer(), vertical);
       const backup = (bytes: Uint8Array, label: string) => ({
