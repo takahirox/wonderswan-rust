@@ -18,11 +18,6 @@ export interface StateEntry {
   label?: string;
 }
 
-export interface StateRecord {
-  entry: StateEntry;
-  bytes: Uint8Array;
-}
-
 export async function statePage(scope: string, before?: IDBValidKey) {
   return transaction(metadata, "readonly", tx => {
     const page = { entries: [] as StateEntry[], before: undefined as IDBValidKey | undefined };
@@ -50,12 +45,10 @@ export async function readState(scope: string, id: string): Promise<Uint8Array> 
   return request.result;
 }
 
-export async function writeStates(...records: StateRecord[]) {
+export async function writeState(entry: StateEntry, bytes: Uint8Array) {
   await transaction([metadata, snapshots], "readwrite", tx => {
-    for (const { entry, bytes } of records) {
-      tx.objectStore(metadata).put(entry);
-      tx.objectStore(snapshots).put(bytes, [entry.scope, entry.id]);
-    }
+    tx.objectStore(metadata).put(entry);
+    tx.objectStore(snapshots).put(bytes, [entry.scope, entry.id]);
   });
 }
 

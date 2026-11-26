@@ -164,10 +164,6 @@ impl Bus {
         self.console_data = std::mem::take(&mut previous.console_data);
     }
 
-    pub(crate) fn cancel_cartridge_eeprom_transfer(&mut self) {
-        self.eeprom = Eeprom::default();
-    }
-
     pub fn new(model: Model) -> Self {
         let mut ports = [0; 256];
         ports[0xc0] = 15;
