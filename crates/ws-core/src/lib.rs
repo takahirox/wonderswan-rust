@@ -216,11 +216,21 @@ impl Machine {
         self.bus.cancel_rtc();
         Ok(())
     }
+    fn rtc(&self) -> Option<&rtc::Rtc> {
+        self.bus.cartridge.as_ref().and_then(|c| c.rtc.as_ref())
+    }
+    fn rtc_at(&self, now_ms: u64) -> Option<rtc::Rtc> {
+        let mut rtc = self.rtc()?.clone();
+        rtc.sync(now_ms);
+        Some(rtc)
+    }
     pub fn rtc_data(&self) -> Vec<u8> {
-        self.bus
-            .cartridge
+        self.rtc().map_or_else(Vec::new, rtc::Rtc::export)
+    }
+    /// Sample an RTC record without changing the live clock or its anchor.
+    pub fn rtc_data_at(&self, now_ms: u64) -> Vec<u8> {
+        self.rtc_at(now_ms)
             .as_ref()
-            .and_then(|c| c.rtc.as_ref())
             .map_or_else(Vec::new, rtc::Rtc::export)
     }
     /// Check a native clock record without importing it or changing the bus.

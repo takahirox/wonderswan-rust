@@ -145,6 +145,9 @@ impl WebMachine {
     pub fn rtc_data(&self) -> Vec<u8> {
         self.machine.rtc_data()
     }
+    pub fn rtc_data_at(&self, now_ms: f64) -> Result<Vec<u8>, JsError> {
+        Ok(self.machine.rtc_data_at(timestamp(now_ms)?))
+    }
     pub fn validate_rtc_data(&self, data: &[u8]) -> Result<(), JsError> {
         Machine::validate_rtc_data(data).map_err(js_error)
     }
@@ -159,6 +162,11 @@ impl WebMachine {
     }
     pub fn capture_snapshot(&self) -> Result<Vec<u8>, JsError> {
         self.machine.capture_snapshot().map_err(js_error)
+    }
+    pub fn capture_snapshot_at(&self, now_ms: f64) -> Result<Vec<u8>, JsError> {
+        self.machine
+            .capture_snapshot_at(timestamp(now_ms)?)
+            .map_err(js_error)
     }
     pub fn prepare_snapshot(&self, bytes: &js_sys::Uint8Array) -> Result<WebSnapshot, JsError> {
         if bytes.length() as usize > MAX_SNAPSHOT_BYTES {

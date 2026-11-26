@@ -21,7 +21,7 @@ struct StateRef<'a> {
     pending_line: &'a Option<PendingLine>,
     #[serde(with = "serde_bytes")]
     save: &'a [u8],
-    rtc: &'a Option<Rtc>,
+    rtc: Option<&'a Rtc>,
     #[serde(with = "serde_bytes")]
     console: &'a [u8],
 }
@@ -81,8 +81,16 @@ impl Machine {
 
     /// Capture at power-on or between calls to run_frame. After a fault this
     /// also permits recovery of native progress from the stopped hardware.
-    /// Call sync_rtc first to include time since the last host clock sample.
     pub fn capture_snapshot(&self) -> Result<Vec<u8>, Error> {
+        self.capture_with_rtc(self.rtc())
+    }
+
+    /// Include time since the last RTC sample without changing the live clock.
+    pub fn capture_snapshot_at(&self, now_ms: u64) -> Result<Vec<u8>, Error> {
+        self.capture_with_rtc(self.rtc_at(now_ms).as_ref())
+    }
+
+    fn capture_with_rtc(&self, rtc: Option<&Rtc>) -> Result<Vec<u8>, Error> {
         let identity = self.snapshot_identity()?;
         let cart = self.bus.cartridge.as_ref().unwrap();
         encode(
@@ -93,7 +101,7 @@ impl Machine {
                 framebuffer: &self.framebuffer,
                 pending_line: &self.video.pending,
                 save: &cart.save,
-                rtc: &cart.rtc,
+                rtc,
                 console: self.console_data(),
             },
         )
@@ -236,7 +244,7 @@ impl PreparedSnapshot {
                 framebuffer: &state.framebuffer,
                 pending_line: &state.pending_line,
                 save: &state.save,
-                rtc: &state.rtc,
+                rtc: state.rtc.as_ref(),
                 console: &state.console,
             },
         )

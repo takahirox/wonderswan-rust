@@ -19,16 +19,16 @@ export async function restoreState(
   machine: WebMachine, bytes: Uint8Array, scope: string, romKey: string, vertical: boolean,
   { saves, clocks, consoles, heldWrites }: NativeRecords,
 ): Promise<boolean> {
+  const timestamp = Date.now();
+  // Account for unsampled elapsed time in the recovery copy.
+  const outgoingClock = machine.rtc_data_at(timestamp);
   const candidate = machine.prepare_snapshot(bytes);
   let consumed = false;
   const consoleSlot = consoleKey(machine.model());
   const clockSlot = rtcKey(romKey);
-  const timestamp = Date.now();
-  // A paused or hidden player may not have sampled the outgoing clock recently.
-  machine.sync_rtc(timestamp);
   const live = [
     { type: "save" as const, key: romKey, bytes: machine.save_data() },
-    { type: "rtc" as const, key: clockSlot, bytes: machine.rtc_data() },
+    { type: "rtc" as const, key: clockSlot, bytes: outgoingClock },
     { type: "console" as const, key: consoleSlot, bytes: machine.console_data() },
   ].filter(record => record.bytes.length);
 
@@ -51,7 +51,7 @@ export async function restoreState(
     });
     const recovery: StateRecord[] = [];
     if (records.some(record => record.liveChanges || record.storedChanges)) {
-      const outgoing = machine.capture_snapshot();
+      const outgoing = machine.capture_snapshot_at(timestamp);
       const thumbnail = await stateThumbnail(machine.framebuffer(), vertical);
       const backup = (bytes: Uint8Array, label: string) => ({
         entry: { scope, id: crypto.randomUUID(), timestamp, thumbnail, label }, bytes,
