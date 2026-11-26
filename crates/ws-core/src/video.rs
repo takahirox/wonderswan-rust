@@ -38,7 +38,7 @@ fn tile_pixel(bus: &Bus, entry: u16, x: usize, y: usize, sprite: bool) -> Option
     }
 }
 // Identity type latches the composition mode; translation never reinterprets it.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(Debug, Eq, PartialEq))]
 enum Pixel {
     Shade(u8),
@@ -388,8 +388,28 @@ mod row_tests {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct PendingLine {
+    y: usize,
+    #[serde(with = "serde_big_array::BigArray")]
+    pixels: [Pixel; FRAME_WIDTH],
+    #[serde(skip)]
+    generation: (u64, u64),
+}
+
+impl PendingLine {
+    pub(crate) fn valid_snapshot(&self, raster_line: u8) -> bool {
+        self.y < FRAME_HEIGHT
+            && self.y + 1 == usize::from(raster_line)
+            && self
+                .pixels
+                .iter()
+                .all(|pixel| !matches!(pixel, Pixel::Shade(shade) if *shade >= 8))
+    }
+}
+
 pub(crate) struct Pipeline {
-    pending: Option<(usize, [Pixel; FRAME_WIDTH], (u64, u64))>,
+    pub(crate) pending: Option<PendingLine>,
     rows: Vec<[Pixel; FRAME_WIDTH]>,
     generations: [(u64, u64); FRAME_HEIGHT],
     translated_generations: [(u64, u64, u64); FRAME_HEIGHT],
@@ -406,7 +426,12 @@ impl Default for Pipeline {
 }
 impl Pipeline {
     pub(crate) fn line_end(&mut self, bus: &Bus, pixels: &mut [u8], line: usize) {
-        if let Some((y, row, generation)) = self.pending.take() {
+        if let Some(PendingLine {
+            y,
+            pixels: row,
+            generation,
+        }) = self.pending.take()
+        {
             if line == y + 1 {
                 let key = (generation.0, generation.1, bus.palette_generation);
                 // A Pipeline belongs to exactly one Machine framebuffer, which
@@ -424,7 +449,11 @@ impl Pipeline {
                 self.rows[line] = compose_line(bus, line, bus.screen_scroll, &bus.sprite_window);
                 self.generations[line] = key;
             }
-            self.pending = Some((line, self.rows[line], self.generations[line]));
+            self.pending = Some(PendingLine {
+                y: line,
+                pixels: self.rows[line],
+                generation: self.generations[line],
+            });
         }
     }
     pub(crate) fn frame_wrap(&mut self) {

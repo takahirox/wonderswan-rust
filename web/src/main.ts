@@ -1,9 +1,11 @@
 import { Saves, romIdentity, consoleKey, RtcRecords, rtcKey, orientationKey } from "./saves";
 import { Sound } from "./audio";
-import { Display, type DisplayEffect } from "./display";
+import { Display, stateThumbnail, type DisplayEffect } from "./display";
 import { isRomIdentity, maxRomBytes, readCartridge, type CartridgeEntry } from "./cartridge-library";
 import { cartridgePicker } from "./cartridge-picker";
-import init, { WebMachine } from "../pkg/ws_web.js";
+import { statePicker } from "./state-picker";
+import { restoreState } from "./state-restore";
+import init, { max_snapshot_bytes, WebMachine } from "../pkg/ws_web.js";
 
 const element = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
 const modelSelect = element<HTMLSelectElement>("model");
@@ -64,6 +66,7 @@ async function main() {
     syncClock();
   }
   const consoles = new Saves(message => { element("console-notice").textContent = `${machine.model_name()}: ${message}`; }, true);
+  const heldWrites = new Set<string>();
   const restoredConsoles = new Set<string>();
   function restoreConsole() {
     const model = machine.model();
@@ -87,15 +90,19 @@ async function main() {
     enableAudio.hidden = !sound.needsUnlock;
   }
   function persist() {
+    if (restoring) return;
     syncClock();
     if (loaded) {
-      saves.store(loaded.key, machine.save_data());
-      clocks.store(rtcKey(loaded.key), machine.rtc_data());
+      if (!heldWrites.has(loaded.key)) saves.store(loaded.key, machine.save_data());
+      const clockSlot = rtcKey(loaded.key);
+      if (!heldWrites.has(clockSlot)) clocks.store(clockSlot, machine.rtc_data());
     }
-    consoles.store(consoleKey(machine.model()), machine.console_data());
+    const consoleSlot = consoleKey(machine.model());
+    if (!heldWrites.has(consoleSlot)) consoles.store(consoleSlot, machine.console_data());
   }
   let readRevision = 0;
   let loading = false;
+  let restoring = false;
   let wantsPlayback = false;
   let running = false;
   let faulted = false;
@@ -158,7 +165,10 @@ async function main() {
     element("debug-error").textContent = errorStatus.textContent || element("notice").textContent || "None";
   }
   function refresh() {
-    orientationSelect.disabled = !loaded || loading;
+    orientationSelect.disabled = !loaded || loading || states.busy;
+    modelSelect.disabled = states.busy;
+    loadButton.disabled = states.busy;
+    rtcMode.disabled = states.busy;
     modelSelect.value = machine.model();
     const title = element("rom-title");
     title.textContent = loaded?.name ?? "No ROM loaded";
@@ -168,9 +178,10 @@ async function main() {
     element("empty-state").hidden = loaded !== null;
     element("controls").setAttribute("aria-busy", String(loading));
     pauseButton.disabled = loaded === null || faulted || loading;
-    resetButton.disabled = loaded === null;
+    resetButton.disabled = loaded === null || states.busy;
     pauseButton.textContent = running ? "Pause" : loaded ? "Resume" : "Play";
     for (const button of touchButtons) button.disabled = !running;
+    states.refresh();
     updateDiagnostics();
     sizeScreen();
   }
@@ -221,7 +232,7 @@ async function main() {
   }
   function tick() {
     production = null;
-    if (!running) return;
+    if (!running || restoring) return;
     const time = performance.now();
     // Presentation cadence must not determine how much PCM is produced. Bound
     // both backlog and work per turn after stalls; a suspended page is paused.
@@ -290,6 +301,7 @@ async function main() {
     wantsPlayback = true;
   }
   function restart(model: string) {
+    if (states.busy) return;
     readRevision++; // Invalidate any in-flight file read.
     loading = false;
     wantsPlayback = false;
@@ -313,6 +325,7 @@ async function main() {
     refresh();
   }
   async function readROM(name: string, read: () => Promise<Uint8Array>, entry?: CartridgeEntry) {
+    if (states.busy) return;
     const revision = ++readRevision;
     const visibleRevision = visibilityRevision;
     const sourceFocus = document.activeElement;
@@ -361,13 +374,13 @@ async function main() {
     if (sound.volume > 0 && sound.needsUnlock) sound.unlock();
   });
   rtcMode.addEventListener("change", () => {
-    if (!loaded) return;
+    if (!loaded || states.busy) return;
     persist();
     machine.configure_rtc(rtcMode.value);
     restoreClock();
   });
   orientationSelect.addEventListener("change", () => {
-    if (!loaded || loading) return;
+    if (!loaded || loading || states.busy) return;
     const key = orientationKey(loaded.key);
     try {
       if (orientationSelect.value === "auto") localStorage.removeItem(key);
@@ -430,6 +443,52 @@ async function main() {
     if (isRomIdentity(entry.key)) sound.unlock();
     void readROM(entry.name, () => readCartridge(entry.key), entry);
   });
+  const states = statePicker({
+    scope: () => loaded && !loading ? `${loaded.key}:${machine.model()}` : null,
+    canSave: () => !faulted,
+    onOpen: clearKeys,
+    onBusy: refresh,
+    maxBytes: max_snapshot_bytes(),
+    async capture() {
+      syncClock();
+      const timestamp = Date.now();
+      const bytes = machine.capture_snapshot();
+      const thumbnail = await stateThumbnail(machine.framebuffer(), orientation === "vertical");
+      return { bytes, thumbnail, timestamp };
+    },
+    async inspect(bytes) {
+      const candidate = machine.prepare_snapshot(bytes);
+      try {
+        return await stateThumbnail(candidate.framebuffer(), orientation === "vertical");
+      } finally {
+        candidate.free();
+      }
+    },
+    async restore(scope, bytes) {
+      restoring = true;
+      if (production !== null) clearTimeout(production);
+      production = null;
+      try {
+        const recovered = await restoreState(machine, bytes, scope, loaded!.key, orientation === "vertical",
+          { saves, clocks, consoles, heldWrites });
+        clearKeys();
+        sound.flush();
+        display.resetHistory();
+        faulted = false;
+        errorStatus.textContent = "";
+        dirty = false;
+        draw();
+        if (running && canFocusGame()) canvas.focus({ preventScroll: true });
+        return recovered;
+      } finally {
+        restoring = false;
+        lastTime = performance.now();
+        elapsed = 0;
+        syncPlayback();
+        if (running && production === null) production = window.setTimeout(tick, 0);
+      }
+    },
+  });
   romInput.addEventListener("change", () => {
     const file = romInput.files?.[0];
     romInput.value = "";
@@ -441,7 +500,7 @@ async function main() {
   });
 
   function canFocusGame() {
-    return !pageAway && !document.hidden && !help.open && !picker.open;
+    return !pageAway && !document.hidden && !help.open && !picker.open && !states.open;
   }
   settingsButton.addEventListener("click", () => {
     help.showModal();
@@ -504,7 +563,7 @@ async function main() {
     const active = document.fullscreenElement === game;
     if (active === gameplayFullscreen) return;
     gameplayFullscreen = active;
-    const modalOpen = help.open || picker.open;
+    const modalOpen = help.open || picker.open || states.open;
     // A dialog opened during the request takes precedence and must remain usable.
     if (active && modalOpen) exitFullscreen();
     for (const item of playerChrome) item.inert = active && !modalOpen;
@@ -543,11 +602,11 @@ async function main() {
   window.addEventListener("resize", clearKeys);
 
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && gameplayFullscreen && !help.open && !picker.open) {
+    if (event.key === "Escape" && gameplayFullscreen && !help.open && !picker.open && !states.open) {
       exitFullscreen();
       return;
     }
-    if (!running || help.open || picker.open || document.activeElement !== canvas || !(event.code in bindings)
+    if (!running || restoring || help.open || picker.open || states.open || document.activeElement !== canvas || !(event.code in bindings)
       || event.ctrlKey || event.metaKey || event.altKey) return;
     event.preventDefault();
     pressed.add(event.code);
@@ -561,7 +620,7 @@ async function main() {
   canvas.addEventListener("blur", clearKeys);
   for (const button of touchButtons) {
     button.addEventListener("pointerdown", (event) => {
-      if (!running || help.open || (event.pointerType === "mouse" && event.button !== 0)) return;
+      if (!running || restoring || help.open || states.open || (event.pointerType === "mouse" && event.button !== 0)) return;
       event.preventDefault();
       canvas.focus({ preventScroll: true });
       button.setPointerCapture(event.pointerId);
@@ -579,7 +638,7 @@ async function main() {
     button.addEventListener("lostpointercapture", release);
     // Also make the on-screen controls usable with keyboard activation.
     button.addEventListener("keydown", (event) => {
-      if (running && !help.open && (event.code === "Space" || event.code === "Enter")) {
+      if (running && !restoring && !help.open && !states.open && (event.code === "Space" || event.code === "Enter")) {
         event.preventDefault();
         activated.set(event.code, button);
         updateButtons();

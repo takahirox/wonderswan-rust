@@ -287,3 +287,23 @@ export class Display {
     this.clean.dataset.effect = this.output.hidden ? "clean" : this.effect;
   }
 }
+
+export async function stateThumbnail(pixels: Uint8Array, vertical: boolean): Promise<Blob> {
+  const frame = document.createElement("canvas");
+  frame.width = width;
+  frame.height = height;
+  frame.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(pixels), frame.width, frame.height), 0, 0);
+  let screenshot = frame;
+  if (vertical) {
+    screenshot = document.createElement("canvas");
+    screenshot.width = frame.height;
+    screenshot.height = frame.width;
+    const context = screenshot.getContext("2d")!;
+    context.translate(0, frame.width);
+    context.rotate(-Math.PI / 2);
+    context.drawImage(frame, 0, 0);
+  }
+  return new Promise((resolve, reject) => {
+    screenshot.toBlob(blob => blob ? resolve(blob) : reject(new Error("Could not capture the game picture.")));
+  });
+}

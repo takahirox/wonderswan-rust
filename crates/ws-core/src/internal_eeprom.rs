@@ -11,7 +11,7 @@ pub(crate) fn initial_data(model: Model) -> Vec<u8> {
     bytes
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum Operation {
     Read(usize),
     Write(usize, u16),
@@ -19,7 +19,7 @@ enum Operation {
     Enable(bool),
     Locked,
 }
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct InternalEeprom {
     data: u16,
     command: u16,
@@ -30,6 +30,20 @@ pub(crate) struct InternalEeprom {
     pending: Option<(u32, Operation)>,
 }
 impl InternalEeprom {
+    pub fn valid_snapshot(&self, len: usize) -> bool {
+        self.pending.is_none_or(|(remaining, op)| {
+            let aligned_word = |offset: usize| offset < len && offset.is_multiple_of(2);
+            remaining > 0
+                && match op {
+                    Operation::Read(offset) => remaining <= 32 && aligned_word(offset),
+                    Operation::Write(offset, _) => remaining <= 3072 && aligned_word(offset),
+                    Operation::Erase(offset) => remaining <= 3072 && offset == 0,
+                    Operation::Enable(_) => remaining <= 16,
+                    Operation::Locked => remaining <= 3072,
+                }
+        })
+    }
+
     /// Importing persistent bytes aborts the transfer and clears its buffers.
     /// Write-enable and protection are controller latches, cleared by reset.
     pub fn clear_transfer(&mut self) {

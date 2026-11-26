@@ -6,6 +6,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { romLibraryChecks } from './rom-library.mjs';
+import { saveStateChecks } from './save-states.mjs';
 
 const base = process.env.WS_PREVIEW_URL ?? 'http://127.0.0.1:4173/wonderswan-rust/';
 const rom = fileURLToPath(new URL('../../fixtures/generated/keypad-horizontal.ws', import.meta.url));
@@ -1425,6 +1426,7 @@ try {
   console.log('375×812 and 320×568 portrait (including safe-area insets), 812×375 and 844×520 landscape, both cartridge orientations, fullscreen, touch inputs and mobile Help/Debug passed');
   await mobile.close();
   await romLibraryChecks(browser,base,errors);
+  await saveStateChecks(browser,base,errors);
   assert.deepEqual(errors, []);
 
 } finally {

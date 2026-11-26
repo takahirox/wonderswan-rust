@@ -1,7 +1,7 @@
 //! S-3511A retained registers. Transport and CPU clocks are deliberately separate.
 use crate::Error;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Rtc {
     // Binary fields except seconds, which may temporarily contain invalid BCD.
     date: [u8; 6], // year, month, day, weekday, hour (0..23), minute
@@ -9,6 +9,7 @@ pub(crate) struct Rtc {
     status: u8,
     alarm: [u8; 2],
     fraction: u16,
+    #[serde(skip)]
     anchor: Option<u64>,
 }
 impl Default for Rtc {
@@ -48,6 +49,14 @@ fn days(year: u8, month: u8) -> u8 {
     }
 }
 impl Rtc {
+    pub fn rebase(&mut self, now: u64) {
+        self.anchor = Some(now);
+    }
+
+    pub fn valid_snapshot(&self) -> bool {
+        Self::import(&self.export()).is_ok()
+    }
+
     pub fn reset(&mut self) {
         let anchor = self.anchor;
         *self = Self {

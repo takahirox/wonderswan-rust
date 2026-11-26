@@ -18,6 +18,13 @@
             <button id="settings" type="button" aria-haspopup="dialog" disabled>Help</button>
             <a href="https://github.com/takahirox/wonderswan-rust">GitHub</a>
           </nav>
+          <div class="state-controls" role="group" aria-label="Save state">
+            <button id="select-state" type="button" aria-haspopup="dialog" aria-controls="state-picker" disabled>
+              Save state <span id="state-selection">New state</span> <span aria-hidden="true">▾</span>
+            </button>
+            <button id="save-state" type="button" disabled>Save</button>
+            <button id="load-state" type="button" disabled>Load</button>
+          </div>
         </header>
         <div id="controls" class="toolbar" role="group" aria-label="Player controls" aria-busy="true">
           <div class="playback">
@@ -42,6 +49,7 @@
           </div>
           <button id="fullscreen" type="button" disabled>Fullscreen</button>
           <p id="fullscreen-status" role="status"></p>
+          <p id="state-status" role="status"></p>
         </div>
         <div id="game" data-orientation="horizontal">
           <div class="fullscreen-viewport">
@@ -138,6 +146,23 @@
             <button id="open-local-rom" class="primary" type="button">Open local ROM…</button>
           </div>
         </dialog>
+        <dialog id="state-picker" aria-labelledby="state-picker-title">
+          <div class="dialog-heading">
+            <h2 id="state-picker-title">Save state</h2>
+            <button id="state-close" type="button" autofocus>Close</button>
+          </div>
+          <div class="state-picker-actions">
+            <button id="state-new" type="button" aria-pressed="true">New state</button>
+            <button id="state-import" type="button">Import…</button>
+            <input id="state-file" type="file" accept=".wsstate" aria-label="Local save state file" hidden />
+          </div>
+          <p id="state-picker-status" role="status"></p>
+          <ul id="state-list" role="list" aria-label="Saved states"></ul>
+          <div class="state-picker-actions">
+            <button id="state-newer" type="button" hidden>Newer states</button>
+            <button id="state-older" type="button" hidden>Older states</button>
+          </div>
+        </dialog>
         <dialog id="help" aria-labelledby="help-title">
           <div class="dialog-heading"><h2 id="help-title">Help</h2><button id="help-close" type="button" autofocus>Close</button></div>
           <p>Choose Insert cartridge → Open local ROM… to open a .ws or .wsc file.
@@ -155,6 +180,13 @@
           <p>Touch controls appear on small or touch screens. When you leave the tab, gameplay pauses.
             A game that was playing resumes automatically when you return, once Help is closed.
             If you chose Pause, use Resume to play again. Reset reboots the loaded cartridge and keeps saved progress.</p>
+          <h3>Save states</h3>
+          <p>Choose New state, then Save to capture the game. Save again to replace the selected state.
+            Choose a screenshot and press Load to resume from it. Use Import and Export in the picker to move files
+            between browsers. Open the same ROM and select the same console and cartridge clock setting.</p>
+          <p>If Load replaces ordinary saved progress, the picker keeps Recovery entries. Select one and press Load
+            to recover its progress, or export it for safekeeping. Use one tab per game. States are stored in this browser
+            and can be lost when site data is cleared or evicted.</p>
           <div class="orientation-control">
             <label for="orientation">Orientation</label>
             <select id="orientation" aria-describedby="orientation-help" disabled>

@@ -1,7 +1,60 @@
 //! Thin WebAssembly adapter; all machine state lives in ws-core.
 
 use wasm_bindgen::prelude::*;
-use ws_core::{Machine, Model, Orientation, FRAME_HEIGHT, FRAME_WIDTH};
+use ws_core::{
+    Error, Machine, Model, Orientation, PreparedSnapshot, FRAME_HEIGHT, FRAME_WIDTH,
+    MAX_SNAPSHOT_BYTES,
+};
+
+fn js_error(error: Error) -> JsError {
+    JsError::new(&error.to_string())
+}
+
+fn timestamp(now_ms: f64) -> Result<u64, JsError> {
+    if !(0.0..=9_007_199_254_740_991.0).contains(&now_ms) || now_ms.fract() != 0.0 {
+        return Err(JsError::new(
+            "RTC time must be a nonnegative safe integer of milliseconds.",
+        ));
+    }
+    Ok(now_ms as u64)
+}
+
+#[wasm_bindgen]
+pub fn max_snapshot_bytes() -> usize {
+    MAX_SNAPSHOT_BYTES
+}
+
+#[wasm_bindgen]
+pub struct WebSnapshot(PreparedSnapshot);
+
+#[wasm_bindgen]
+impl WebSnapshot {
+    pub fn framebuffer(&self) -> Vec<u8> {
+        self.0.framebuffer().to_vec()
+    }
+    pub fn save_data(&self) -> Vec<u8> {
+        self.0.save_data().to_vec()
+    }
+    pub fn console_data(&self) -> Vec<u8> {
+        self.0.console_data().to_vec()
+    }
+    pub fn rtc_data(&self, now_ms: f64) -> Result<Vec<u8>, JsError> {
+        Ok(self.0.rtc_data(timestamp(now_ms)?))
+    }
+    pub fn replace_native_records(
+        &mut self,
+        save: Option<Vec<u8>>,
+        rtc: Option<Vec<u8>>,
+        console: Option<Vec<u8>>,
+    ) -> Result<(), JsError> {
+        self.0
+            .replace_native_records(save.as_deref(), rtc.as_deref(), console.as_deref())
+            .map_err(js_error)
+    }
+    pub fn encode(&self) -> Result<Vec<u8>, JsError> {
+        self.0.encode().map_err(js_error)
+    }
+}
 
 #[wasm_bindgen]
 #[derive(Default)]
@@ -92,22 +145,44 @@ impl WebMachine {
     pub fn rtc_data(&self) -> Vec<u8> {
         self.machine.rtc_data()
     }
+    pub fn rtc_data_at(&self, now_ms: f64) -> Result<Vec<u8>, JsError> {
+        Ok(self.machine.rtc_data_at(timestamp(now_ms)?))
+    }
+    pub fn validate_rtc_data(&self, data: &[u8]) -> Result<(), JsError> {
+        Machine::validate_rtc_data(data).map_err(js_error)
+    }
     pub fn load_rtc_data(&mut self, data: &[u8]) -> Result<(), JsError> {
         self.machine
             .load_rtc_data(data)
             .map_err(|e| JsError::new(&e.to_string()))
     }
     pub fn sync_rtc(&mut self, now_ms: f64) -> Result<(), JsError> {
-        if !now_ms.is_finite()
-            || !(0.0..=9_007_199_254_740_991.0).contains(&now_ms)
-            || now_ms.fract() != 0.0
-        {
+        self.machine.sync_rtc(timestamp(now_ms)?);
+        Ok(())
+    }
+    pub fn capture_snapshot(&self) -> Result<Vec<u8>, JsError> {
+        self.machine.capture_snapshot().map_err(js_error)
+    }
+    pub fn capture_snapshot_at(&self, now_ms: f64) -> Result<Vec<u8>, JsError> {
+        self.machine
+            .capture_snapshot_at(timestamp(now_ms)?)
+            .map_err(js_error)
+    }
+    pub fn prepare_snapshot(&self, bytes: &js_sys::Uint8Array) -> Result<WebSnapshot, JsError> {
+        if bytes.length() as usize > MAX_SNAPSHOT_BYTES {
             return Err(JsError::new(
-                "RTC time must be a nonnegative safe integer of milliseconds.",
+                "Save-state file exceeds the format size limit.",
             ));
         }
-        self.machine.sync_rtc(now_ms as u64);
-        Ok(())
+        self.machine
+            .prepare_snapshot(&bytes.to_vec())
+            .map(WebSnapshot)
+            .map_err(js_error)
+    }
+    pub fn apply_snapshot(&mut self, snapshot: WebSnapshot, now_ms: f64) -> Result<(), JsError> {
+        self.machine
+            .apply_snapshot(snapshot.0, timestamp(now_ms)?)
+            .map_err(js_error)
     }
     pub fn audio_samples(&mut self) -> Vec<f32> {
         self.machine.audio_samples()
