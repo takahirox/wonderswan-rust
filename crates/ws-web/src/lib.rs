@@ -32,28 +32,6 @@ impl WebSnapshot {
     pub fn framebuffer(&self) -> Vec<u8> {
         self.0.framebuffer().to_vec()
     }
-    pub fn save_data(&self) -> Vec<u8> {
-        self.0.save_data().to_vec()
-    }
-    pub fn console_data(&self) -> Vec<u8> {
-        self.0.console_data().to_vec()
-    }
-    pub fn rtc_data(&self, now_ms: f64) -> Result<Vec<u8>, JsError> {
-        Ok(self.0.rtc_data(timestamp(now_ms)?))
-    }
-    pub fn replace_native_records(
-        &mut self,
-        save: Option<Vec<u8>>,
-        rtc: Option<Vec<u8>>,
-        console: Option<Vec<u8>>,
-    ) -> Result<(), JsError> {
-        self.0
-            .replace_native_records(save.as_deref(), rtc.as_deref(), console.as_deref())
-            .map_err(js_error)
-    }
-    pub fn encode(&self) -> Result<Vec<u8>, JsError> {
-        self.0.encode().map_err(js_error)
-    }
 }
 
 #[wasm_bindgen]
@@ -145,12 +123,6 @@ impl WebMachine {
     pub fn rtc_data(&self) -> Vec<u8> {
         self.machine.rtc_data()
     }
-    pub fn rtc_data_at(&self, now_ms: f64) -> Result<Vec<u8>, JsError> {
-        Ok(self.machine.rtc_data_at(timestamp(now_ms)?))
-    }
-    pub fn validate_rtc_data(&self, data: &[u8]) -> Result<(), JsError> {
-        Machine::validate_rtc_data(data).map_err(js_error)
-    }
     pub fn load_rtc_data(&mut self, data: &[u8]) -> Result<(), JsError> {
         self.machine
             .load_rtc_data(data)
@@ -162,11 +134,6 @@ impl WebMachine {
     }
     pub fn capture_snapshot(&self) -> Result<Vec<u8>, JsError> {
         self.machine.capture_snapshot().map_err(js_error)
-    }
-    pub fn capture_snapshot_at(&self, now_ms: f64) -> Result<Vec<u8>, JsError> {
-        self.machine
-            .capture_snapshot_at(timestamp(now_ms)?)
-            .map_err(js_error)
     }
     pub fn prepare_snapshot(&self, bytes: &js_sys::Uint8Array) -> Result<WebSnapshot, JsError> {
         if bytes.length() as usize > MAX_SNAPSHOT_BYTES {

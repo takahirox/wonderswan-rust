@@ -219,23 +219,8 @@ impl Machine {
     fn rtc(&self) -> Option<&rtc::Rtc> {
         self.bus.cartridge.as_ref().and_then(|c| c.rtc.as_ref())
     }
-    fn rtc_at(&self, now_ms: u64) -> Option<rtc::Rtc> {
-        let mut rtc = self.rtc()?.clone();
-        rtc.sync(now_ms);
-        Some(rtc)
-    }
     pub fn rtc_data(&self) -> Vec<u8> {
         self.rtc().map_or_else(Vec::new, rtc::Rtc::export)
-    }
-    /// Sample an RTC record without changing the live clock or its anchor.
-    pub fn rtc_data_at(&self, now_ms: u64) -> Vec<u8> {
-        self.rtc_at(now_ms)
-            .as_ref()
-            .map_or_else(Vec::new, rtc::Rtc::export)
-    }
-    /// Check a native clock record without importing it or changing the bus.
-    pub fn validate_rtc_data(data: &[u8]) -> Result<(), Error> {
-        rtc::Rtc::import(data).map(|_| ())
     }
     /// Validate completely before mutation. Success cancels pending transport.
     pub fn load_rtc_data(&mut self, data: &[u8]) -> Result<(), Error> {

@@ -134,17 +134,16 @@ current playback choice. Use **Import**, **Export**, or **Delete** in the same
 picker. Imports create separate entries, and deleting a state or remembered
 ROM leaves ordinary cartridge and console saves intact.
 
-Before Load replaces ordinary cartridge or console progress, it saves the
-outgoing progress as **Recovery** entries in the picker. Select a Recovery
-entry and press **Load** to use it, or **Export** it to keep a copy. If the
-backup cannot be saved or existing progress cannot be read, Load stops before
-changing the game.
+**Load** restores the selected state, including its cartridge save data, clock,
+and console EEPROM. The ordinary autosave can then replace newer saved progress
+with the restored data. To keep your current progress, choose **New state** and
+press **Save** before loading the older state.
 
 States and their screenshots stay in IndexedDB on this browser and site.
 Keep exports of important states before clearing site data or moving to another
 browser. Use one player tab at a time. To import or load, use the exact same
 raw ROM, physical console, and cartridge clock setting. The [save-state
-format and recovery notes](docs/save-states.md) explain compatibility,
+format and storage notes](docs/save-states.md) explain compatibility,
 local storage, and how the cartridge clock resumes.
 
 Cartridge saves are automatic and **browser-local**, keyed by SHA-256 of the

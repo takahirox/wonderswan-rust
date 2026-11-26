@@ -4,7 +4,6 @@ import { Display, stateThumbnail, type DisplayEffect } from "./display";
 import { isRomIdentity, maxRomBytes, readCartridge, type CartridgeEntry } from "./cartridge-library";
 import { cartridgePicker } from "./cartridge-picker";
 import { statePicker } from "./state-picker";
-import { restoreState } from "./state-restore";
 import init, { max_snapshot_bytes, WebMachine } from "../pkg/ws_web.js";
 
 const element = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
@@ -66,7 +65,6 @@ async function main() {
     syncClock();
   }
   const consoles = new Saves(message => { element("console-notice").textContent = `${machine.model_name()}: ${message}`; }, true);
-  const heldWrites = new Set<string>();
   const restoredConsoles = new Set<string>();
   function restoreConsole() {
     const model = machine.model();
@@ -90,19 +88,15 @@ async function main() {
     enableAudio.hidden = !sound.needsUnlock;
   }
   function persist() {
-    if (restoring) return;
     syncClock();
     if (loaded) {
-      if (!heldWrites.has(loaded.key)) saves.store(loaded.key, machine.save_data());
-      const clockSlot = rtcKey(loaded.key);
-      if (!heldWrites.has(clockSlot)) clocks.store(clockSlot, machine.rtc_data());
+      saves.store(loaded.key, machine.save_data());
+      clocks.store(rtcKey(loaded.key), machine.rtc_data());
     }
-    const consoleSlot = consoleKey(machine.model());
-    if (!heldWrites.has(consoleSlot)) consoles.store(consoleSlot, machine.console_data());
+    consoles.store(consoleKey(machine.model()), machine.console_data());
   }
   let readRevision = 0;
   let loading = false;
-  let restoring = false;
   let wantsPlayback = false;
   let running = false;
   let faulted = false;
@@ -232,7 +226,7 @@ async function main() {
   }
   function tick() {
     production = null;
-    if (!running || restoring) return;
+    if (!running) return;
     const time = performance.now();
     // Presentation cadence must not determine how much PCM is produced. Bound
     // both backlog and work per turn after stalls; a suspended page is paused.
@@ -464,29 +458,24 @@ async function main() {
         candidate.free();
       }
     },
-    async restore(scope, bytes) {
-      restoring = true;
+    restore(bytes) {
+      // Prepare and apply in the same turn, before updating the player or scheduler.
+      const candidate = machine.prepare_snapshot(bytes);
+      machine.apply_snapshot(candidate, Date.now());
+      clearKeys();
+      sound.flush();
+      display.resetHistory();
+      faulted = false;
+      errorStatus.textContent = "";
+      dirty = false;
+      draw();
       if (production !== null) clearTimeout(production);
       production = null;
-      try {
-        const recovered = await restoreState(machine, bytes, scope, loaded!.key, orientation === "vertical",
-          { saves, clocks, consoles, heldWrites });
-        clearKeys();
-        sound.flush();
-        display.resetHistory();
-        faulted = false;
-        errorStatus.textContent = "";
-        dirty = false;
-        draw();
-        if (running && canFocusGame()) canvas.focus({ preventScroll: true });
-        return recovered;
-      } finally {
-        restoring = false;
-        lastTime = performance.now();
-        elapsed = 0;
-        syncPlayback();
-        if (running && production === null) production = window.setTimeout(tick, 0);
-      }
+      lastTime = performance.now();
+      elapsed = 0;
+      syncPlayback();
+      if (running && production === null) production = window.setTimeout(tick, 0);
+      if (running && canFocusGame()) canvas.focus({ preventScroll: true });
     },
   });
   romInput.addEventListener("change", () => {
@@ -606,7 +595,7 @@ async function main() {
       exitFullscreen();
       return;
     }
-    if (!running || restoring || help.open || picker.open || states.open || document.activeElement !== canvas || !(event.code in bindings)
+    if (!running || help.open || picker.open || states.open || document.activeElement !== canvas || !(event.code in bindings)
       || event.ctrlKey || event.metaKey || event.altKey) return;
     event.preventDefault();
     pressed.add(event.code);
@@ -620,7 +609,7 @@ async function main() {
   canvas.addEventListener("blur", clearKeys);
   for (const button of touchButtons) {
     button.addEventListener("pointerdown", (event) => {
-      if (!running || restoring || help.open || states.open || (event.pointerType === "mouse" && event.button !== 0)) return;
+      if (!running || help.open || states.open || (event.pointerType === "mouse" && event.button !== 0)) return;
       event.preventDefault();
       canvas.focus({ preventScroll: true });
       button.setPointerCapture(event.pointerId);
@@ -638,7 +627,7 @@ async function main() {
     button.addEventListener("lostpointercapture", release);
     // Also make the on-screen controls usable with keyboard activation.
     button.addEventListener("keydown", (event) => {
-      if (running && !restoring && !help.open && !states.open && (event.code === "Space" || event.code === "Enter")) {
+      if (running && !help.open && !states.open && (event.code === "Space" || event.code === "Enter")) {
         event.preventDefault();
         activated.set(event.code, button);
         updateButtons();
