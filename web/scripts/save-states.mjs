@@ -145,10 +145,36 @@ function observeStorage() {
   };
 }
 
+function observeLiveRtc() {
+  // Read the actual player clock without sampling wall time or triggering autosave.
+  const wrap = result => {
+    const exports = { ...result.instance.exports };
+    const read = exports.webmachine_rtc_data;
+    exports.webmachine_rtc_data = machine => {
+      window.readLiveRtc = () => {
+        const [ptr, length] = read(machine);
+        const bytes = Array.from(new Uint8Array(exports.memory.buffer, ptr, length));
+        exports.__wbindgen_free(ptr, length, 1);
+        return bytes;
+      };
+      return read(machine);
+    };
+    return { ...result, instance: { exports } };
+  };
+  const streaming = WebAssembly.instantiateStreaming.bind(WebAssembly);
+  WebAssembly.instantiateStreaming = async (...args) => wrap(await streaming(...args));
+  const instantiate = WebAssembly.instantiate.bind(WebAssembly);
+  WebAssembly.instantiate = async (...args) => {
+    const result = await instantiate(...args);
+    return result.instance ? wrap(result) : result;
+  };
+}
+
 async function withPlayer(browser, base, errors, run, options) {
   const context = await browser.newContext(options);
   await context.addInitScript(installPlayerClock);
   await context.addInitScript(observeStorage);
+  await context.addInitScript(observeLiveRtc);
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
   try {
@@ -410,10 +436,12 @@ async function recoveryChecks(page, file) {
 
 async function elapsedClockRecovery(page, file) {
   const rtcKey = saveSlot(file).replace(':save:', ':rtc:');
-  const time = () => page.evaluate(key => {
+  const storedClock = () => page.evaluate(key => {
     const data = atob(JSON.parse(localStorage.getItem(key)).data);
-    return Array.from(data.slice(8, 11), byte => byte.charCodeAt(0));
+    return Array.from(data, byte => byte.charCodeAt(0));
   }, rtcKey);
+  const time = async () => (await storedClock()).slice(8, 11);
+  const liveClock = () => page.evaluate(() => window.readLiveRtc());
   await localRom(page, file);
   await page.locator('#pause').click();
   await clickSave(page);
@@ -426,7 +454,14 @@ async function elapsedClockRecovery(page, file) {
     delete document.hidden;
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  assert.deepEqual(await time(), [0, 0, 0], 'autosave has not sampled the elapsed minute');
+  const before = await liveClock();
+  assert.deepEqual(before, await storedClock(), 'autosave has not sampled the elapsed minute');
+  await page.evaluate(() => { window.failStateWrite = true; });
+  await page.locator('#load-state').click();
+  await status(page, '#state-status', 'Could not save recovery progress');
+  assert.deepEqual(await liveClock(), before, 'failed Load preserves live RTC registers and host anchor');
+  assert.deepEqual(await storedClock(), before, 'failed Load preserves the stored RTC record');
+
   await page.locator('#load-state').click();
   await status(page, '#state-status', 'Save state loaded.');
   assert.match(await page.locator('#state-status').textContent(), /Previous progress is in the picker/);
