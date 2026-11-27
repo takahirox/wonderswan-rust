@@ -132,6 +132,12 @@ function waitForFullscreenExit() {
   return page.waitForFunction(() => !document.fullscreenElement
     && !document.querySelector('#controls').inert && document.activeElement.id === 'fullscreen');
 }
+async function checkIconButton(name) {
+  const button = page.getByRole('button', { name, exact:true });
+  assert.equal(await button.getAttribute('title'), name);
+  assert.equal((await button.textContent()).trim(), '');
+  assert.equal(await button.locator('svg[aria-hidden="true"]').isVisible(), true);
+}
 async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fullscreen = false,
   tightKeypads = false, insets } = {}) {
   // Let ResizeObserver snap the canvas edges after the grid reflows.
@@ -147,6 +153,7 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
         [element.scrollWidth - element.clientWidth, element.scrollHeight - element.clientHeight]),
       game:rect('#game'), player:rect('#player'), toolbar:rect('#controls'), cartridge:rect('.cartridge'),
       pause:rect('#pause'), reset:rect('#reset'), exit,
+      toolbarIcons:[rect('#sound'), rect('#fullscreen')],
       exitHit:document.elementFromPoint(exit.left + exit.width/2, exit.top + exit.height/2)?.id === 'exit-fullscreen',
       fullscreen:document.fullscreenElement?.id,
       xPad:rect('.x-pad'), yPad:rect('.y-pad'),
@@ -196,12 +203,15 @@ async function checkLayout({ orientation = 'horizontal', kind = 'desktop', fulls
       assert.ok(touch.every(target => target.width === 0));
       assert.equal(exit.width, 0);
     } else {
+      assert.ok(buttons.includes('Exit fullscreen'));
       assert.ok(withinSafeArea(exit), 'Exit fullscreen fits inside the safe area');
       assert.ok(layout.exitHit, 'Exit fullscreen receives hits at its center');
       assert.ok(exit.width >= 44 && exit.height >= 44 && !overlaps(exit, frame));
     }
   } else {
     assert.ok(toolbar.bottom <= game.top, 'toolbar precedes gameplay');
+    assert.ok(layout.toolbarIcons.every(({width,height}) => width >= 44 && height >= 44),
+      'Mute and Fullscreen have 44×44 hit targets');
     if (insets) {
       const [width] = layout.viewport;
       assert.deepEqual([player.left, player.right], [insets.left, width - insets.right],
@@ -332,6 +342,8 @@ try {
   assert.equal(await page.locator('#debug-panel').isVisible(), false);
   assert.equal(await page.locator('#help').isVisible(), false);
   assert.equal(await page.locator('#touch-controls').isVisible(), false);
+  await checkIconButton('Mute');
+  await checkIconButton('Fullscreen');
   const initialScreen = await checkLayout();
   await screenshot('desktop-empty');
   await page.setViewportSize({ width:744,height:800 });
@@ -562,7 +574,7 @@ try {
     const saved = await persisted();
     const effect = await page.locator('#screen').getAttribute('data-effect');
     const beforeFullscreen = await frames();
-    await page.locator('#fullscreen').focus();
+    await page.getByRole('button', { name:'Fullscreen', exact:true }).focus();
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => document.fullscreenElement?.id === 'game' && document.activeElement.id === 'screen');
     const fullscreenFrame = await checkLayout({ fullscreen:true });
@@ -643,6 +655,9 @@ try {
   await page.goto(base);
   assert.equal(await page.locator('#rom-status').textContent(), 'Loading WebAssembly…');
   assert.equal(await page.locator('#load-rom').isDisabled(), true);
+  for (const name of ['Mute', 'Fullscreen']) {
+    assert.equal(await page.getByRole('button', { name, exact:true }).isDisabled(), true);
+  }
   assert.equal(await page.locator('[data-button]:enabled').count(), 0, 'touch controls disabled before initialization');
   releaseWasm();
   await page.waitForFunction(() => !document.querySelector('#retry').hidden);
@@ -755,10 +770,11 @@ try {
   assert.equal(await page.locator('#touch-controls .dpad:visible').count(), 2);
   await screenshot('mobile-empty');
   assert.equal(await page.getByRole('slider',{name:'Volume',exact:true}).inputValue(),'70');
-  await page.locator('#sound').tap();
-  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true');
-  await page.locator('#sound').tap();
-  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false');
+  const mobileMute = page.getByRole('button', { name:'Mute', exact:true });
+  await mobileMute.tap();
+  assert.equal(await mobileMute.getAttribute('aria-pressed'),'true');
+  await mobileMute.tap();
+  assert.equal(await mobileMute.getAttribute('aria-pressed'),'false');
   await page.locator('#volume').tap();
   await load();
   await page.evaluate(() => window.scrollTo(0,0));
@@ -770,11 +786,12 @@ try {
   assert.deepEqual(await controlGeometry(), playingGeometry, 'Resume leaves the player and gameplay targets in place');
   await page.locator('#pause').tap();
   if (await page.evaluate(() => document.fullscreenEnabled)) {
-    await page.locator('#fullscreen').tap();
+    await page.getByRole('button', { name:'Fullscreen', exact:true }).tap();
     await page.waitForFunction(() => document.fullscreenElement?.id === 'game');
     await checkLayout({ kind:'portrait', fullscreen:true });
     await screenshot('mobile-portrait-horizontal-fullscreen', false);
-    await page.locator('#exit-fullscreen').tap();
+    await checkIconButton('Exit fullscreen');
+    await page.getByRole('button', { name:'Exit fullscreen', exact:true }).tap();
     await waitForFullscreenExit();
 
     for (const [trigger, dialog, close] of [
