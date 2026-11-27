@@ -35,6 +35,7 @@ export function statePicker(controls: StateControls) {
   let clearStatus: number | undefined;
   let pageKeys: IDBValidKey[] = [];
   let nextPage: IDBValidKey | undefined;
+  let deletePrompt: HTMLElement | undefined;
   const thumbnails: string[] = [];
 
   function refresh() {
@@ -96,6 +97,7 @@ export function statePicker(controls: StateControls) {
 
   function clearList() {
     list.replaceChildren();
+    deletePrompt = undefined;
     for (const url of thumbnails) URL.revokeObjectURL(url);
     thumbnails.length = 0;
   }
@@ -141,13 +143,30 @@ export function statePicker(controls: StateControls) {
         link.click();
         window.setTimeout(() => URL.revokeObjectURL(file), 1000);
       }));
-      const remove = button("Delete", () => void run(async () => {
-        if (!confirm(`Delete the save state “${name}”?`)) return;
-        await deleteState(entry);
-        if (selected === entry.id) selections.delete(scope);
-        await showPage(scope, keys);
-        feedback("Save state deleted.", true);
-      }));
+      const remove = button("Delete", () => {
+        if (busy) return;
+        deletePrompt?.remove();
+        const prompt = document.createElement("div");
+        prompt.className = "state-delete-confirmation";
+        prompt.setAttribute("role", "group");
+        prompt.setAttribute("aria-label", `Delete the save state “${name}”?`);
+        const cancel = button("Cancel", () => {
+          if (busy) return;
+          prompt.remove();
+          deletePrompt = undefined;
+          remove.focus();
+        });
+        const confirm = button("Confirm delete", () => void run(async () => {
+          await deleteState(entry);
+          if (selected === entry.id) selections.delete(scope);
+          await showPage(scope, keys);
+          feedback("Save state deleted.", true);
+        }));
+        prompt.append(cancel, confirm);
+        row.append(prompt);
+        deletePrompt = prompt;
+        cancel.focus();
+      });
       download.setAttribute("aria-label", `Export ${name}`);
       remove.setAttribute("aria-label", `Delete ${name}`);
       row.append(choice, download, remove);

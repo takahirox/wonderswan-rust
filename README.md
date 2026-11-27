@@ -76,7 +76,8 @@ validation does not establish that deployment has happened.
    that was playing resumes automatically when you return. If you chose
    **Pause**, use **Resume** to play again.
    **Fullscreen** shows the game picture and, on touch screens, the controller.
-   Use **Exit fullscreen** on touch screens or Escape on a keyboard to return.
+   **Save state**, **Save**, **Load**, and **Exit fullscreen** sit above the
+   picture. Use **Exit fullscreen** or Escape on a keyboard to return.
 4. **Display** switches live, including while paused. **Clean** keeps exact
    nearest-neighbor pixels; **LCD Light** adds
    subtle native pixel cells, softness and weak persistence; **LCD Authentic**
@@ -131,8 +132,9 @@ the current game, whether it is playing or paused. Saving again replaces the
 selected entry. Choose another screenshot to change the target, then press
 **Load** to restore it. The player stays playing or paused according to your
 current playback choice. Use **Import**, **Export**, or **Delete** in the same
-picker. Imports create separate entries, and deleting a state or remembered
-ROM leaves ordinary cartridge and console saves intact.
+picker in windowed or fullscreen play. Your browser may exit fullscreen when
+opening a file dialog. Imports create separate entries. Deleting a state or
+remembered ROM leaves ordinary cartridge and console saves intact.
 
 **Load** restores the selected state, including its cartridge save data, clock,
 and console EEPROM. The ordinary autosave can then replace newer saved progress
