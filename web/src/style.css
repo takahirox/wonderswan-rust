@@ -185,7 +185,7 @@ canvas {
   gap: 6px;
 }
 .toolbar { grid-area: toolbar; position: relative; gap: 8px 12px; margin-bottom: 24px; }
-.state-controls, .state-picker-actions { display: flex; align-items: center; gap: 4px; }
+.state-controls, .state-picker-actions, .state-delete-confirmation { display: flex; align-items: center; gap: 4px; }
 .state-controls { max-width: 100%; }
 #select-state {
   display: flex;
@@ -318,6 +318,7 @@ dialog p { margin-top: 6px; color: var(--muted); }
   gap: 4px;
   margin-bottom: 4px;
 }
+.state-delete-confirmation { grid-column: 1 / -1; justify-content: end; }
 .state-choice {
   display: flex;
   align-items: center;
@@ -421,7 +422,7 @@ dialog label[for="rtc-mode"] { display: block; margin-top: 8px; }
 .debug-setting label { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
 input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); }
 
-#exit-fullscreen { display: none; }
+.fullscreen-management { display: none; }
 
 @media (max-width: 700px) {
   :root { --page-gutter: 12px; }
@@ -620,26 +621,59 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 }
 
 #game:fullscreen {
-  display: block;
-  container: fullscreen-game / size;
+  display: grid;
+  grid-template: auto minmax(0, 1fr) / minmax(0, 1fr);
+  gap: 24px;
+  align-items: stretch;
   padding: max(8px, env(safe-area-inset-top))
     max(8px, env(safe-area-inset-right))
     max(8px, env(safe-area-inset-bottom))
     max(8px, env(safe-area-inset-left));
   background: var(--screen);
-  overflow: auto;
+}
+#game:fullscreen .fullscreen-management {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+.fullscreen-management .state-controls { flex: 0 1 auto; min-width: 0; margin: 0; }
+.fullscreen-management .state-controls button { min-height: 44px; padding-inline: 8px; }
+.fullscreen-management .state-controls button:not(#select-state) { flex: none; min-width: 44px; }
+.fullscreen-management .state-label {
+  /* The selected destination is the visible button label in fullscreen. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.fullscreen-management #state-status {
+  position: absolute;
+  inset-block-start: calc(100% + 3px);
+  inset-inline: 0;
+  z-index: 1;
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  padding-inline: 8px;
+  border-radius: 4px;
+  background: var(--screen);
+  color: var(--surface);
+  text-align: center;
+  pointer-events: none;
 }
 #game:fullscreen .fullscreen-viewport {
   display: block;
-  height: 100%;
-  container: fullscreen-viewport / size;
+  container: fullscreen-viewport / inline-size;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 #game:fullscreen .fullscreen-layout {
   display: grid;
   height: 100%;
-  grid-template: "screen" minmax(0, 1fr) / minmax(0, 1fr);
-  gap: 8px 12px;
+  grid-template: "screen" minmax(28px, 1fr) / minmax(0, 1fr);
+  gap: 8px;
   align-items: center;
 }
 #game:fullscreen .screen-frame {
@@ -651,269 +685,51 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 #game:fullscreen #touch-controls { display: none; }
 
 @media (any-pointer: coarse) {
-  #game:fullscreen .fullscreen-layout {
-    grid-template:
-      "exit   exit" 44px
-      "screen screen" minmax(9px, 1fr)
-      "y      actions" auto
-      "x      start" auto / minmax(132px, 1fr) 92px;
-  }
+  #game:fullscreen #touch-controls { display: contents; }
+  #game:fullscreen .action-buttons,
+  #game:fullscreen .start { margin: 0; align-self: center; }
   #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
-    --narrow-action-gap: clamp(0px, 100cqw - 220px, 4px);
-    --action-gap: var(--narrow-action-gap);
-    min-width: 220px;
-    grid-template-columns: minmax(132px, 1fr) calc(88px + var(--action-gap));
-  }
-  #game:fullscreen[data-orientation="horizontal"] .action-buttons {
-    column-gap: var(--action-gap);
-  }
-  @container fullscreen-game (width < 240px) {
-    /* Give the pad and the action column their full widths before adding a gap. */
-    #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
-      column-gap: clamp(0px, 100cqw - 224px, 4px);
-    }
-    #game:fullscreen[data-orientation="horizontal"] .dpad { column-gap: 0; }
+    grid-template:
+      "screen screen" minmax(126px, 1fr)
+      "y      actions" 108px
+      "x      start" 108px / minmax(132px, 1fr) 92px;
   }
   #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
-    --actions-height: 92px;
     grid-template:
-      "exit   exit" 44px
-      "screen actions" minmax(var(--actions-height), 1fr)
+      "screen actions" minmax(92px, 1fr)
       "screen start" 44px
       "pads   pads" auto / minmax(0, 1fr) 92px;
   }
-  #game:fullscreen[data-orientation="vertical"] .action-buttons {
-    grid-template-rows: calc(var(--actions-height) - 44px) 44px;
-    row-gap: 0;
-    align-items: start;
-  }
-  #game:fullscreen .action-buttons { margin-bottom: 0; }
-  #game:fullscreen .start { margin-bottom: 0; }
-  #game:fullscreen #touch-controls { display: contents; }
-  #game:fullscreen #exit-fullscreen {
-    grid-area: exit;
-    display: grid;
-    align-self: center;
-    justify-self: center;
-  }
-
-  /* The inner container and #game's content box share the safe dimensions.
-     Query the inner container so cqw/cqh resolve against #game. Each grid
-     switch first fits the controls, then compares the picture at native aspect.
-     The half-pixel offset advances the comparison to the next picture step
-     at whole-pixel widths that land exactly on a step. */
-  @container fullscreen-viewport
-      (height < calc(284px + round(up, (max(220px, 100cqw) - 132px
-        - clamp(0px, 100cqw - 224px, 2px) + .5px) * 9 / 14, 9px))) {
-    /* Stacked controls and gaps take 284px. Switch when the stacked picture
-       can gain a 9px step in height over the width-limited compact picture.
-       The stacked screen track can shrink to one step so it can't clip the pads. */
+  @container fullscreen-viewport (width < 236px) {
     #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
-      /* Fit two pads with at least a 1px directional offset and 1px
-         between them. Keep the 8px gaps above and below the picture. */
-      --keypad-gap: clamp(1px, 100cqh - 178px, 8px);
-      --keypad-height: clamp(89px, (100cqh - var(--keypad-gap)) / 2, 108px);
-      --action-gap: clamp(0px, 100cqw - 264px, 4px);
-      min-height: 179px;
-      grid-template:
-        "y exit   exit"    44px
-        "y .      ."       8px
-        "y screen screen"  minmax(calc(var(--keypad-height) - 52px), 1fr)
-        ". screen screen"  var(--keypad-gap)
-        "x screen screen"  minmax(calc(var(--keypad-height) - 76px), 1fr)
-        "x .      ."       8px
-        "x start  actions" 68px / 132px minmax(44px, 1fr) calc(88px + var(--action-gap));
-      row-gap: 0;
-      /* Restore the gap within A/B, then the gaps between grid columns. */
-      column-gap: clamp(0px, (100cqw - 268px) / 2, 2px);
-    }
-    #game:fullscreen[data-orientation="horizontal"] .dpad {
-      grid-template-rows: 44px calc(var(--keypad-height) - 88px) 44px;
+      grid-template-columns: minmax(132px, 1fr) 88px;
       column-gap: 0;
     }
-    #game:fullscreen[data-orientation="horizontal"] .action-buttons {
-      grid-template-rows: 24px 44px;
-      row-gap: 0;
-      column-gap: var(--action-gap);
-      align-items: start;
-    }
-    #game:fullscreen[data-orientation="horizontal"] .start {
-      align-self: center;
-      width: min(52px, 100%);
-    }
-    @container fullscreen-viewport (width < 272px) {
-      /* Keep Exit away from the Y pad when the column gap shrinks. */
-      #game:fullscreen[data-orientation="horizontal"] #exit-fullscreen {
-        justify-self: end;
-      }
-    }
-    @container fullscreen-viewport (width < 264px) {
-      /* Start shares the top row of A/B. The 92px action row plus the gap
-         already supply 100px of the X pad's height. */
+    #game:fullscreen[data-orientation="horizontal"] .dpad,
+    #game:fullscreen[data-orientation="horizontal"] .action-buttons { column-gap: 0; }
+  }
+  @media (orientation: landscape) {
+    @container fullscreen-viewport (width >= 440px) {
       #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
-        --keypad-height: clamp(89px, min((100cqh - 8px) / 2, 100cqh - 108px), 108px);
-        --action-gap: var(--narrow-action-gap);
-        min-height: 197px;
         grid-template:
-          "y exit"    44px
-          "y screen"  minmax(calc(var(--keypad-height) - 52px), 1fr)
-          "x screen"  minmax(calc(var(--keypad-height) - 100px), 1fr)
-          "x actions" 92px / 132px minmax(calc(88px + var(--action-gap)), 1fr);
-        row-gap: 8px;
-        column-gap: clamp(0px, 100cqw - 224px, 2px);
+          "y screen actions" minmax(108px, 1fr)
+          "x screen start" minmax(108px, 1fr) / 136px minmax(0, 1fr) 92px;
+        column-gap: 12px;
       }
-      #game:fullscreen[data-orientation="horizontal"] .action-buttons {
-        grid-template-rows: 44px 44px;
-        gap: 4px var(--action-gap);
-        justify-self: end;
-      }
-      #game:fullscreen[data-orientation="horizontal"] .start {
-        grid-area: actions;
-        align-self: start;
-        justify-self: start;
-        width: 44px;
-      }
-    }
-  }
-
-  @container fullscreen-viewport
-      (width >= calc(296px + (max(179px, 100cqh) - 128px) * 14 / 9)) {
-    /* Side columns take 296px including gaps. Compare their remaining width
-       with the picture allowed by the compact grid's height. The right column
-       takes 172px of height, so the two pads and their gap set the 179px minimum. */
-    #game:fullscreen[data-orientation="horizontal"] .fullscreen-layout {
-      grid-template:
-        "pads screen exit" 44px
-        "pads screen actions" minmax(68px, 1fr)
-        "pads screen start" 44px / 136px minmax(0, 1fr) 136px;
-      gap: 8px 12px;
-    }
-    #game:fullscreen[data-orientation="horizontal"] .dpad {
-      grid-area: pads;
-      column-gap: 2px;
-    }
-    #game:fullscreen[data-orientation="horizontal"] .y-pad {
-      margin-block-end: calc(var(--keypad-height) + var(--keypad-gap));
-    }
-    #game:fullscreen[data-orientation="horizontal"] .x-pad {
-      margin-block-start: calc(var(--keypad-height) + var(--keypad-gap));
-    }
-    #game:fullscreen[data-orientation="horizontal"] .action-buttons {
-      grid-template-rows: 24px 44px;
-      gap: 0 4px;
-      align-items: start;
-      align-self: end;
-      justify-self: center;
-    }
-    #game:fullscreen[data-orientation="horizontal"] .start { align-self: start; }
-  }
-
-  @container fullscreen-viewport (264px <= width < 280px) {
-    /* Two 132px rotated pads can share the 108px row down to 264px. */
-    #game:fullscreen[data-orientation="vertical"] .dpad {
-      width: auto;
-      grid-template-columns: repeat(3, 44px);
-      grid-template-rows: 44px 20px 44px;
-      column-gap: 0;
-    }
-  }
-
-  @container fullscreen-viewport (width < 264px) {
-    /* The tall pad row, Exit, Start and gaps take 248px in the stacked grid.
-       A/B are in separate columns and need only 45px with their vertical offset. */
-    #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
-      --actions-height: clamp(45px, 100cqh - 248px, 92px);
-    }
-  }
-
-  @container fullscreen-viewport
-      ((width >= 264px) and (height <= calc(168px + (100cqw - 152px) * 14 / 9)))
-      or ((width < 264px)
-        and (height < max(293px, calc(196px + round(up, (100cqw - 152px + .5px) * 14 / 9, 14px))))) {
-    /* Moving Exit alongside the picture frees height at the cost of width.
-       With tall pads, stacking needs 293px to fit and 196px outside the
-       picture. Stay compact until stacking fits and gains a 14px picture step. */
-    #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
-      --min-pad-height: 136px;
-      --pad-gap: 8px;
-      /* Reserve the 44px Exit row, both 8px gaps, and the pad row.
-         A and B occupy separate columns, so a 1px offset keeps A above B. */
-      --actions-height: clamp(45px, 100cqh - 60px - var(--min-pad-height), 60px);
-      min-height: calc(97px + var(--pad-gap) + var(--min-pad-height));
-      grid-template:
-        "screen exit    exit" 44px
-        "screen .       ." 8px
-        "screen actions start" minmax(var(--actions-height), 1fr)
-        ".      .       ." var(--pad-gap)
-        "pads   pads    pads" auto / minmax(0, 1fr) 92px 52px;
-      gap: 0 4px;
-    }
-    #game:fullscreen[data-orientation="vertical"] .start { align-self: center; }
-    @container fullscreen-viewport (width >= 264px) {
       #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
-        --min-pad-height: clamp(88px, 100cqh - 97px, 89px);
-        /* Keep Exit separated from A/B and Start, using the gap above the
-           pads to fit shorter safe areas before switching to the side grid. */
-        --pad-gap: clamp(0px, 100cqh - 186px, 8px);
+        grid-template:
+          ". screen actions" 68px
+          ". screen start" 44px
+          "y screen x" minmax(108px, 1fr) / 136px minmax(0, 1fr) 136px;
       }
-      #game:fullscreen[data-orientation="vertical"] .dpad {
-        /* Reserve 120px for Exit, A/B, and the gaps, plus two 44px pad
-           rows. The center targets use separate columns and can overhang. */
-        grid-template-rows: 44px clamp(calc(var(--min-pad-height) - 88px), 100cqh - 208px, 20px) 44px;
+      #game:fullscreen[data-orientation="vertical"] .y-pad { grid-area: y; }
+      #game:fullscreen[data-orientation="vertical"] .x-pad { grid-area: x; }
+      #game:fullscreen[data-orientation="vertical"] .action-buttons {
+        grid-template-rows: 24px 44px;
+        gap: 0 4px;
+        align-items: start;
+        justify-self: center;
       }
     }
-  }
-
-  @container fullscreen-viewport (width >= 286px) and (height < 186px) {
-    /* Put Exit, A/B and Start in one row beside the picture. Their tracks
-       take 232px including gaps, leaving at least 54px for the picture.
-       The two 89px pads below set the minimum safe height with that row. */
-    #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
-      --actions-height: 60px;
-      min-height: 157px;
-      grid-template:
-        "screen exit actions start" minmax(60px, 1fr)
-        "pads   pads pads    pads"  89px / minmax(0, 1fr) 76px 88px 44px;
-      gap: 8px;
-    }
-    #game:fullscreen[data-orientation="vertical"] .dpad {
-      grid-template-rows: 44px 1px 44px;
-    }
-    #game:fullscreen[data-orientation="vertical"] .action-buttons { column-gap: 0; }
-    #game:fullscreen[data-orientation="vertical"] .start { width: 44px; }
-  }
-
-  @container fullscreen-viewport
-      ((height < 186px)
-        and (width >= calc(304px + round(down, max(60px, 100cqh - 97px), 14px) * 9 / 14)))
-      or ((height >= 186px)
-        and (width >= calc(304px + max(97px, min(100cqh - 97px, max(112px, 100cqh - 116px))) * 9 / 14))) {
-    /* Use the side grid when its 304px of controls and gaps leave enough
-       room to match the picture in the compact grid. Below 186px, the
-       compact picture gets the height left above the 89px pads and 8px gap.
-       Above that, the compact picture height stays at 97px as the pad gap
-       grows, then rises to 112px, holds as the pad row grows, and rises again. */
-    #game:fullscreen[data-orientation="vertical"] .fullscreen-layout {
-      /* The top row and gap take 68px. Tighten the pads in the room left
-         below, keeping the two 44px rows and the 1px directional offset. */
-      --keypad-height: clamp(89px, 100cqh - 68px, 108px);
-      min-height: 157px;
-      grid-template:
-        "exit screen actions start" 60px
-        "y    screen x       x" minmax(var(--keypad-height), 1fr) / 136px minmax(0, 1fr) 92px 52px;
-      gap: 8px;
-    }
-    #game:fullscreen[data-orientation="vertical"] .dpad {
-      grid-template-rows: 44px calc(var(--keypad-height) - 88px) 44px;
-    }
-    #game:fullscreen[data-orientation="vertical"] .action-buttons {
-      grid-template-rows: 16px 44px;
-      row-gap: 0;
-      column-gap: 4px;
-      align-items: start;
-    }
-    #game:fullscreen[data-orientation="vertical"] .start { align-self: center; }
-    #game:fullscreen[data-orientation="vertical"] .y-pad { grid-area: y; justify-self: center; }
-    #game:fullscreen[data-orientation="vertical"] .x-pad { grid-area: x; justify-self: center; }
   }
 }

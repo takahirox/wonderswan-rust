@@ -547,16 +547,29 @@ async function main() {
     }
   }
   exitFullscreenButton.addEventListener("click", exitFullscreen);
+  const brand = player.querySelector(".brand")!;
+  const stateControls = brand.querySelector(".state-controls")!;
+  const stateStatus = element("state-status");
+  const fullscreenManagement = exitFullscreenButton.parentElement!;
+  const fullscreenViewport = game.querySelector(".fullscreen-viewport")!;
   const playerChrome = [...player.querySelectorAll<HTMLElement>(":scope > :not(#game)"), debugPanel];
   let gameplayFullscreen = false;
   document.addEventListener("fullscreenchange", () => {
     const active = document.fullscreenElement === game;
     if (active === gameplayFullscreen) return;
     gameplayFullscreen = active;
-    const modalOpen = help.open || picker.open || states.open;
-    // A dialog opened during the request takes precedence and must remain usable.
-    if (active && modalOpen) exitFullscreen();
-    for (const item of playerChrome) item.inert = active && !modalOpen;
+    if (active) {
+      exitFullscreenButton.before(stateControls);
+      fullscreenManagement.append(stateStatus);
+      fullscreenViewport.scrollTo(0, 0);
+    } else {
+      brand.append(stateControls);
+      toolbar.append(stateStatus);
+    }
+    // A dialog outside the fullscreen target may have opened during the request.
+    const outsideDialogOpen = help.open || picker.open;
+    if (active && outsideDialogOpen) exitFullscreen();
+    for (const item of playerChrome) item.inert = active && !outsideDialogOpen;
     clearKeys();
     if (framePending) captureFrame();
     sizeScreen();

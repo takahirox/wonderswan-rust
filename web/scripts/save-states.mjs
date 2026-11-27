@@ -46,6 +46,126 @@ async function clickLoad(page) {
   await stateIdle(page);
 }
 
+async function fullscreenChecks(page, rom) {
+  const scope = `${saveSlot(rom)}:crystal`;
+  const frame = () => page.locator('#screen').evaluate(canvas => canvas.toDataURL());
+  const selected = () => page.locator('#state-selection').textContent();
+  const active = () => page.evaluate(() => document.fullscreenElement?.id);
+  const focus = () => page.evaluate(() => document.activeElement.id);
+  async function play(key, time) {
+    await page.locator('#screen').focus();
+    await page.keyboard.down(key);
+    await page.evaluate(stepPlayerClock, time);
+    await page.keyboard.up(key);
+  }
+
+  await localRom(page, rom);
+  const firstFrame = await frame();
+  await clickSave(page);
+  const firstSelection = await selected();
+  const firstHistory = await history(page, 'list', scope);
+  await page.locator('#game').evaluate(game => {
+    const request = game.requestFullscreen;
+    game.requestFullscreen = function () {
+      game.requestFullscreen = request;
+      const entering = request.call(this);
+      document.querySelector('#select-state').click();
+      return entering;
+    };
+  });
+  await page.locator('#fullscreen').click();
+  await page.waitForFunction(() => document.fullscreenElement?.id === 'game'
+    && document.querySelector('.fullscreen-management #select-state'), undefined, { polling: 30 });
+  await stateIdle(page);
+  assert.equal(await focus(), 'state-close', 'the picker keeps focus during fullscreen entry');
+  assert.ok(await page.locator('#state-close').evaluate(button => {
+    const box = button.getBoundingClientRect();
+    return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === button;
+  }), 'the dialog stays above gameplay during fullscreen entry');
+  assert.equal(await selected(), firstSelection);
+  await page.keyboard.press('Tab');
+  assert.equal(await focus(), 'state-new');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('.is-pressed').count(), 0);
+  await page.keyboard.press('Escape');
+  await page.locator('#state-picker').waitFor({ state: 'hidden' });
+  assert.equal(await active(), 'game');
+  assert.equal(await focus(), 'select-state');
+
+  await picker(page);
+  await page.locator('#state-new').click();
+  assert.equal(await selected(), 'New state');
+  assert.equal(await page.locator('#load-state').isDisabled(), true);
+  assert.equal(await frame(), firstFrame);
+  assert.deepEqual(await history(page, 'list', scope), firstHistory);
+  await play('ArrowRight', 120);
+  const secondFrame = await frame();
+  assert.notEqual(secondFrame, firstFrame);
+  await page.evaluate(() => { window.stateNow += 1000; });
+  await clickSave(page);
+  assert.equal(await focus(), 'save-state');
+  const afterSave = await history(page, 'list', scope);
+  assert.equal(afterSave.length, 2);
+  await play('ArrowUp', 170);
+  const overwrittenFrame = await frame();
+  assert.notEqual(overwrittenFrame, secondFrame);
+  await page.evaluate(() => { window.stateNow += 1000; });
+  await clickSave(page);
+  const afterOverwrite = await history(page, 'list', scope);
+  assert.deepEqual(afterOverwrite.map(entry => entry.id), afterSave.map(entry => entry.id));
+  const overwrittenSelection = await selected();
+
+  await picker(page);
+  await page.getByRole('button', { name: firstSelection, exact: true }).click();
+  assert.equal(await frame(), overwrittenFrame, 'selection leaves the guest frame intact');
+  await clickLoad(page);
+  assert.equal(await frame(), firstFrame);
+  assert.equal(await focus(), 'screen');
+  assert.equal(await active(), 'game');
+  await status(page, '#rom-status', 'Running');
+  assert.deepEqual(await history(page, 'list', scope), afterOverwrite, 'Load creates no backup');
+
+  await picker(page);
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: `Export ${overwrittenSelection}` }).click();
+  const exported = await readFile(await (await downloading).path());
+  await importState(page, exported);
+  await status(page, '#state-picker-status', 'Save state imported.');
+  const remove = page.getByRole('button', { name: /^Delete Imported state/ });
+  await remove.click();
+  const cancel = page.getByRole('button', { name: 'Cancel', exact: true });
+  assert.equal(await cancel.evaluate(button => document.activeElement === button), true);
+  await cancel.click();
+  assert.equal(await choices(page).count(), 3);
+  await remove.click();
+  await page.getByRole('button', { name: 'Confirm delete' }).click();
+  await status(page, '#state-picker-status', 'Save state deleted.');
+  assert.deepEqual(await history(page, 'list', scope), afterOverwrite);
+  assert.equal(await active(), 'game');
+
+  const chooser = page.waitForEvent('filechooser');
+  await page.locator('#state-import').click();
+  await (await chooser).setFiles([]);
+  assert.equal(await focus(), 'state-import');
+  const pending = page.waitForEvent('filechooser');
+  await page.locator('#state-import').click();
+  const file = await pending;
+  await page.evaluate(() => document.exitFullscreen());
+  await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector('.brand').inert,
+    undefined, { polling: 30 });
+  assert.equal(await focus(), 'state-import');
+  await file.setFiles({ name: 'export.wsstate', mimeType: 'application/octet-stream', buffer: exported });
+  await status(page, '#state-picker-status', 'Save state imported.');
+  assert.equal(await selected(), firstSelection);
+  assert.equal(await choices(page).count(), 3);
+  await page.locator('#state-close').click();
+  assert.equal(await focus(), 'select-state');
+  await picker(page);
+  await page.getByRole('button', { name: overwrittenSelection, exact: true }).click();
+  await clickLoad(page);
+  assert.equal(await frame(), overwrittenFrame, 'windowed Load restores the fullscreen overwrite');
+}
+
 async function importState(page, bytes) {
   const chooser = page.waitForEvent('filechooser');
   await page.locator('#state-import').click();
@@ -302,12 +422,11 @@ async function pickerChecks(page, horizontal, vertical) {
   assert.deepEqual(await history(page, 'list', scope), importedHistory);
 
   await picker(page);
-  page.once('dialog', dialog => dialog.dismiss());
   await page.getByRole('button', { name: /^Delete Imported state/ }).click();
-  await stateIdle(page);
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   assert.equal(await choices(page).count(), 2);
-  page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: /^Delete Imported state/ }).click();
+  await page.getByRole('button', { name: 'Confirm delete' }).click();
   await status(page, '#state-picker-status', 'Save state deleted.');
   assert.equal(await choices(page).count(), 1);
   await page.locator('#state-close').click();
@@ -463,16 +582,56 @@ async function touchChecks(page, horizontal, vertical) {
   }
 }
 
+async function fullscreenTouchChecks(page, rom) {
+  const targets = page.locator('#screen, #touch-controls button');
+  const geometry = () => targets.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON()));
+  await localRom(page, rom);
+  await page.locator('#fullscreen').tap();
+  await page.waitForFunction(() => document.fullscreenElement?.id === 'game', undefined, { polling: 30 });
+  await picker(page, true);
+  const start = page.locator('#touch-controls .start');
+  const box = await start.boundingBox();
+  await start.evaluate(button => {
+    window.gameplayPointerDown = 0;
+    button.addEventListener('pointerdown', () => window.gameplayPointerDown++);
+  });
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.locator('#state-picker').waitFor({ state: 'hidden' });
+  assert.equal(await page.evaluate(() => window.gameplayPointerDown), 0, 'backdrop taps never reach the controller');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'select-state');
+  await picker(page, true);
+  await page.locator('#state-new').tap();
+  const gameplayGeometry = await geometry();
+  await page.locator('#save-state').tap();
+  await status(page, '#state-status', 'Save state saved.');
+  assert.deepEqual(await geometry(), gameplayGeometry);
+  const feedback = page.locator('#state-status');
+  assert.ok(await feedback.isVisible());
+  assert.equal(await feedback.evaluate(element => getComputedStyle(element).pointerEvents), 'none');
+  await page.evaluate(() => { window.failStateWrite = true; });
+  await page.locator('#save-state').tap();
+  await status(page, '#state-status', 'aborted');
+  assert.ok(await feedback.isVisible());
+  assert.deepEqual(await geometry(), gameplayGeometry);
+  await start.tap();
+  assert.equal(await page.evaluate(() => window.gameplayPointerDown), 1);
+  await page.locator('#exit-fullscreen').tap();
+  await page.waitForFunction(() => !document.fullscreenElement && document.activeElement.id === 'fullscreen',
+    undefined, { polling: 30 });
+}
+
 export async function saveStateChecks(browser, base, errors) {
   const [horizontal, vertical, rtc, cartridgeEeprom, internalEeprom] = await Promise.all([
     fixture('keypad-horizontal'), fixture('keypad-vertical'), fixture('sram128-2003'),
     fixture('eeprom128'), fixture('internal-eeprom'),
   ]);
   await withPlayer(browser, base, errors, page => pickerChecks(page, horizontal, vertical));
+  await withPlayer(browser, base, errors, page => fullscreenChecks(page, horizontal));
   await withPlayer(browser, base, errors, page => rtcLoadChecks(page, rtc));
   await withPlayer(browser, base, errors, page => eepromLoadChecks(page, cartridgeEeprom, saveSlot(cartridgeEeprom), 0));
   await withPlayer(browser, base, errors, page => eepromLoadChecks(page, internalEeprom, 'wonderswan:console:v1:crystal', 2));
-  await withPlayer(browser, base, errors, page => touchChecks(page, horizontal, vertical),
-    { isMobile: true, hasTouch: true, viewport: { width: 375, height: 812 } });
-  console.log('Save states: selector, explicit Save/Load, atomic overwrite, rotated screenshots, import/export, paging, identity, direct Load with no history growth, native SRAM/EEPROM/RTC persistence, keyboard and touch passed');
+  const mobile = { isMobile: true, hasTouch: true, viewport: { width: 375, height: 812 } };
+  await withPlayer(browser, base, errors, page => touchChecks(page, horizontal, vertical), mobile);
+  await withPlayer(browser, base, errors, page => fullscreenTouchChecks(page, horizontal), mobile);
+  console.log('Save states: windowed and native fullscreen workflows, atomic overwrite, rotated screenshots, import/export, paging, identity, direct Load with no history growth, native SRAM/EEPROM/RTC persistence, keyboard and touch passed');
 }
