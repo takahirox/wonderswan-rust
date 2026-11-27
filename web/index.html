@@ -20,7 +20,7 @@
           </nav>
           <div class="state-controls" role="group" aria-label="Save state">
             <button id="select-state" type="button" aria-haspopup="dialog" aria-controls="state-picker" disabled>
-              Save state <span id="state-selection">New state</span> <span aria-hidden="true">▾</span>
+              <span class="state-label">Save state</span> <span id="state-selection">New state</span> <span aria-hidden="true">▾</span>
             </button>
             <button id="save-state" type="button" disabled>Save</button>
             <button id="load-state" type="button" disabled>Load</button>
@@ -64,6 +64,14 @@
           <p id="state-status" role="status"></p>
         </div>
         <div id="game" data-orientation="horizontal">
+          <div class="fullscreen-management">
+            <button id="exit-fullscreen" class="icon-button" type="button" aria-label="Exit fullscreen" title="Exit fullscreen">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 9h6V3m6 0v6h6M9 21v-6H3m18 0h-6v6" />
+              </svg>
+            </button>
+          </div>
           <div class="fullscreen-viewport">
             <div class="fullscreen-layout">
               <div id="display" class="screen-frame">
@@ -95,14 +103,25 @@
                 </div>
                 <button class="start" type="button" data-button="2" aria-label="Start (Enter)" disabled>Start</button>
               </div>
-              <button id="exit-fullscreen" class="icon-button" type="button" aria-label="Exit fullscreen" title="Exit fullscreen">
-                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor"
-                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 9h6V3m6 0v6h6M9 21v-6H3m18 0h-6v6" />
-                </svg>
-              </button>
             </div>
           </div>
+          <dialog id="state-picker" aria-labelledby="state-picker-title">
+            <div class="dialog-heading">
+              <h2 id="state-picker-title">Save state</h2>
+              <button id="state-close" type="button" autofocus>Close</button>
+            </div>
+            <div class="state-picker-actions">
+              <button id="state-new" type="button" aria-pressed="true">New state</button>
+              <button id="state-import" type="button">Import…</button>
+              <input id="state-file" type="file" accept=".wsstate" aria-label="Local save state file" hidden />
+            </div>
+            <p id="state-picker-status" role="status"></p>
+            <ul id="state-list" role="list" aria-label="Saved states"></ul>
+            <div class="state-picker-actions">
+              <button id="state-newer" type="button" hidden>Newer states</button>
+              <button id="state-older" type="button" hidden>Older states</button>
+            </div>
+          </dialog>
         </div>
         <div class="cartridge-area">
           <section class="cartridge" aria-labelledby="cartridge-label">
@@ -163,23 +182,6 @@
             <button id="open-local-rom" class="primary" type="button">Open local ROM…</button>
           </div>
         </dialog>
-        <dialog id="state-picker" aria-labelledby="state-picker-title">
-          <div class="dialog-heading">
-            <h2 id="state-picker-title">Save state</h2>
-            <button id="state-close" type="button" autofocus>Close</button>
-          </div>
-          <div class="state-picker-actions">
-            <button id="state-new" type="button" aria-pressed="true">New state</button>
-            <button id="state-import" type="button">Import…</button>
-            <input id="state-file" type="file" accept=".wsstate" aria-label="Local save state file" hidden />
-          </div>
-          <p id="state-picker-status" role="status"></p>
-          <ul id="state-list" role="list" aria-label="Saved states"></ul>
-          <div class="state-picker-actions">
-            <button id="state-newer" type="button" hidden>Newer states</button>
-            <button id="state-older" type="button" hidden>Older states</button>
-          </div>
-        </dialog>
         <dialog id="help" aria-labelledby="help-title">
           <div class="dialog-heading"><h2 id="help-title">Help</h2><button id="help-close" type="button" autofocus>Close</button></div>
           <p>Choose Insert cartridge → Open local ROM… to open a .ws or .wsc file.
@@ -215,7 +217,8 @@
           <p id="orientation-help">Auto uses the cartridge header. Choose Horizontal or Vertical to rotate the picture and touch controls together without restarting. Your choice is saved in this browser for this cartridge’s ROM contents. Turning your phone only changes how the player fits on screen.</p>
           <p>Each keypad keeps its physical X or Y labels and keyboard bindings. Clockwise from the top, the buttons are 1, 2, 3, 4 in Horizontal and 2, 3, 4, 1 in Vertical.</p>
           <h3>Display</h3>
-          <p>Fullscreen shows the picture and, on touch screens, the controller. Use Exit fullscreen or Escape to return to the player.</p>
+          <p>Fullscreen keeps the Save state picker, Save and Load above the picture, with the controller on touch screens.
+            Use Exit fullscreen or Escape to return to the player. Your browser may leave fullscreen when opening a file dialog.</p>
           <p>Retro CRT adds a mask and scanlines. Clean shows sharp pixels. LCD Light adds subtle cells and persistence. LCD Authentic uses a stronger effect tailored to each console. Your choice stays in this browser. If graphics effects fail, the player uses Clean.</p>
           <p>After choosing a display effect, press Escape or click the game screen to return to gameplay input.</p>
           <h3>Cartridge settings</h3>
