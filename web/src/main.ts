@@ -80,6 +80,7 @@ async function main() {
   const sound = new Sound(refreshSound);
   function refreshSound() {
     soundButton.setAttribute("aria-pressed", String(sound.muted));
+    soundButton.title = sound.muted ? "Unmute" : "Mute";
     volume.value = String(sound.volume);
     element("volume-value").textContent = `${sound.volume}%`;
     const status = element("sound-status");

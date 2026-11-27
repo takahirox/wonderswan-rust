@@ -52,6 +52,14 @@ button:active:enabled, button[aria-pressed="true"], button.is-pressed {
   border-color: var(--accent);
 }
 button:disabled, select:disabled { opacity: .55; cursor: default; }
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+}
+.icon-button svg { pointer-events: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 a { color: var(--accent); text-underline-offset: 3px; }
 .primary { color: #fff; background: var(--accent); border-color: var(--accent); }
@@ -196,11 +204,12 @@ canvas {
 .display-control, .sound-controls { color: var(--muted); font-size: 13px; }
 .display-control select, #sound { color: #252c2a; }
 #pause { width: 82px; }
-#sound { min-width: 58px; }
 #sound[aria-pressed="true"] { color: var(--accent); }
+#sound[aria-pressed="false"] .mute-mark,
+#sound[aria-pressed="true"] .sound-waves { display: none; }
 #volume { width: clamp(62px, 13vw, 106px); min-height: 44px; margin: 0; accent-color: var(--accent); }
 #volume-value { min-width: 4ch; font-variant-numeric: tabular-nums; }
-#fullscreen { white-space: nowrap; -webkit-tap-highlight-color: transparent; }
+#fullscreen { -webkit-tap-highlight-color: transparent; }
 #fullscreen-status {
   position: absolute;
   inset-block-start: 100%;
@@ -683,7 +692,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
   #game:fullscreen #touch-controls { display: contents; }
   #game:fullscreen #exit-fullscreen {
     grid-area: exit;
-    display: block;
+    display: grid;
     align-self: center;
     justify-self: center;
   }
@@ -733,12 +742,9 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
       width: min(52px, 100%);
     }
     @container fullscreen-viewport (width < 272px) {
-      /* Keep 8px between Exit and the Y pad even when the column gap shrinks. */
+      /* Keep Exit away from the Y pad when the column gap shrinks. */
       #game:fullscreen[data-orientation="horizontal"] #exit-fullscreen {
         justify-self: end;
-        max-width: calc(100% - 8px);
-        padding: 4px;
-        line-height: 1.2;
       }
     }
     @container fullscreen-viewport (width < 264px) {
@@ -869,10 +875,6 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
         "screen exit actions start" minmax(60px, 1fr)
         "pads   pads pads    pads"  89px / minmax(0, 1fr) 76px 88px 44px;
       gap: 8px;
-    }
-    #game:fullscreen[data-orientation="vertical"] #exit-fullscreen {
-      padding: 4px;
-      line-height: 1.2;
     }
     #game:fullscreen[data-orientation="vertical"] .dpad {
       grid-template-rows: 44px 1px 44px;

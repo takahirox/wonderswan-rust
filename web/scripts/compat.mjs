@@ -172,9 +172,16 @@ async function saved(probe, expected, bankOffset=0) {
 async function pause() {
   if (await page.locator('#pause').textContent() === 'Pause') await page.locator('#pause').click();
 }
+async function expectMuteState(muted) {
+  const button = page.getByRole('button', { name:'Mute', exact:true });
+  assert.equal(await button.getAttribute('aria-pressed'), String(muted));
+  assert.equal(await button.getAttribute('title'), muted ? 'Unmute' : 'Mute');
+  assert.equal(await button.locator('.sound-waves').isVisible(), !muted);
+  assert.equal(await button.locator('.mute-mark').isVisible(), muted);
+}
 try {
   await page.goto(base); await ready();
-  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false');
+  await expectMuteState(false);
   assert.equal(await page.locator('#volume').inputValue(),'70');
   assert.match(await page.locator('#sound-status').textContent(),/Start a game/);
   assert.equal(await page.locator('#sound-status.visually-hidden').count(),1,'ordinary sound status uses no layout space');
@@ -235,13 +242,18 @@ try {
     assert.ok(Math.abs(ratio.output/ratio.input-value/100)<0.025,'measured output follows gain');
     await display(); // Video and execution continue at every volume.
   }
-  for (const value of [0,35,100,70]) await level(value);
+  await level(0);
+  await expectMuteState(false);
+  for (const value of [35,100,70]) await level(value);
   await page.locator('#volume').focus();
   await page.keyboard.press('ArrowLeft');
   assert.equal(await page.locator('#volume').inputValue(),'69','native keyboard slider');
   await level(70);
-  await page.locator('#sound').click();
-  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true');
+  const mute = page.getByRole('button', { name:'Mute', exact:true });
+  await mute.focus();
+  assert.equal(await mute.evaluate(button => button.matches(':focus-visible')),true);
+  await page.keyboard.press('Space');
+  await expectMuteState(true);
   assert.equal(await page.locator('#volume').inputValue(),'70');
   assert.equal(await page.evaluate(() => window.audioProbe.lastGain),0);
   assert.equal(await page.evaluate(() => window.audioProbe.active),0);
@@ -253,12 +265,13 @@ try {
   await page.locator('#volume').fill('42');
   assert.equal(await page.evaluate(() => window.audioProbe.lastGain),0,'slider respects explicit mute');
   await page.reload(); await ready();
-  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true');
+  await expectMuteState(true);
   assert.equal(await page.locator('#volume').inputValue(),'42');
   assert.equal(await page.evaluate(() => window.audioProbe.contexts),0,'remembered mute creates no context');
   await load(probes[0]);
   assert.equal(await page.evaluate(() => window.audioProbe.contexts),0);
-  await page.locator('#sound').click();
+  await mute.click();
+  await expectMuteState(false);
   await page.waitForFunction(() => window.audioProbe.nonzero > 3);
   await level(42);
   for (let i=0; i<5; i++) {
@@ -350,6 +363,7 @@ try {
     assert.equal(await page.locator('#rom-status').textContent(),'Running');
     assert.equal(await page.locator('#error').textContent(),'');
     assert.equal(await page.locator('#enable-audio').isVisible(),true);
+    await expectMuteState(false);
     assert.doesNotMatch(await page.locator('#sound-status').textContent(),/Audio ready|Sound playing/);
     if (mode === 'reject') {
       await page.waitForFunction(() => /Enable audio/.test(document.querySelector('#sound-status').textContent));
